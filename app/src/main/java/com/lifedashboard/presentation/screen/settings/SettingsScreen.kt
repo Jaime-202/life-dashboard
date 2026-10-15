@@ -63,6 +63,7 @@ data class SettingsState(
     val showAiInsight: Boolean = true,
     val showUpcomingEvents: Boolean = true,
     val dailyReminders: Boolean = true,
+    val geminiApiKey: String = "",
     val symmetryFolderUri: String? = null,
     val healthConnectGranted: Boolean = false,
     val calendarGranted: Boolean = false
@@ -80,7 +81,20 @@ class SettingsViewModel @Inject constructor(
     init {
         userPreferences.userGoals
             .onEach { goals ->
-                _state.value = _state.value.copy(userName = goals.userName)
+                val currentTheme = when (goals.themeMode) {
+                    "CLARO"   -> ThemeMode.CLARO
+                    "SISTEMA" -> ThemeMode.SISTEMA
+                    else      -> ThemeMode.OSCURO
+                }
+                _state.value = _state.value.copy(
+                    userName           = goals.userName,
+                    themeMode          = currentTheme,
+                    showHeroRings      = goals.showHeroRings,
+                    showAiInsight      = goals.showAiInsight,
+                    showUpcomingEvents = goals.showUpcomingEvents,
+                    dailyReminders     = goals.dailyReminders,
+                    geminiApiKey       = goals.geminiApiKey
+                )
             }
             .launchIn(viewModelScope)
     }
@@ -89,6 +103,10 @@ class SettingsViewModel @Inject constructor(
         if (name.isNotBlank()) {
             viewModelScope.launch { userPreferences.updateUserName(name.trim()) }
         }
+    }
+
+    fun updateGeminiApiKey(apiKey: String) {
+        viewModelScope.launch { userPreferences.updateGeminiApiKey(apiKey.trim()) }
     }
 
     fun checkPermissions(context: Context) {
@@ -110,23 +128,33 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setThemeMode(mode: ThemeMode) {
-        _state.value = _state.value.copy(themeMode = mode)
+        viewModelScope.launch {
+            userPreferences.updateThemeMode(mode.name)
+        }
     }
 
     fun toggleShowHeroRings(enabled: Boolean) {
-        _state.value = _state.value.copy(showHeroRings = enabled)
+        viewModelScope.launch {
+            userPreferences.updateShowHeroRings(enabled)
+        }
     }
 
     fun toggleShowAiInsight(enabled: Boolean) {
-        _state.value = _state.value.copy(showAiInsight = enabled)
+        viewModelScope.launch {
+            userPreferences.updateShowAiInsight(enabled)
+        }
     }
 
     fun toggleShowUpcomingEvents(enabled: Boolean) {
-        _state.value = _state.value.copy(showUpcomingEvents = enabled)
+        viewModelScope.launch {
+            userPreferences.updateShowUpcomingEvents(enabled)
+        }
     }
 
     fun toggleDailyReminders(enabled: Boolean) {
-        _state.value = _state.value.copy(dailyReminders = enabled)
+        viewModelScope.launch {
+            userPreferences.updateDailyReminders(enabled)
+        }
     }
 
     fun onSymmetryFolderSelected(uri: Uri, context: Context) {
@@ -163,7 +191,7 @@ class SettingsViewModel @Inject constructor(
         CoroutineScope(Dispatchers.IO).launch {
             calendarRepository.syncCalendarEvents()
         }
-        Toast.makeText(context, "Sincronizando Health Connect y Calendario…", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Sincronizando fuentes de datos…", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -174,6 +202,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     var showUserModal by remember { mutableStateOf(false) }
+    var showApiKeyModal by remember { mutableStateOf(false) }
 
     val healthPermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
@@ -230,6 +259,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             onSyncAll = { viewModel.forceSyncAll(context) }
         )
 
+        // ─── Apariencia & Tema ─────────────────────────────────────────────
         SectionHeader("Apariencia & Tema")
         SettingsCard {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -249,18 +279,19 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             }
         }
 
+        // ─── Personalización del Panel ─────────────────────────────────────
         SectionHeader("Personalización del Panel")
         SettingsCard {
             SwitchSettingItem(
-                title    = "Mostrar Anillos Hero",
-                subtitle = "Resumen gráfico principal en la parte superior",
+                title    = "Mostrar Anillos de Progreso",
+                subtitle = "Resumen de pasos, calorías y sueño en la cabecera",
                 checked  = state.showHeroRings,
                 onCheckedChange = { viewModel.toggleShowHeroRings(it) }
             )
             HorizontalDivider(color = Indigo700)
             SwitchSettingItem(
-                title    = "Mostrar Análisis de IA (Gemini)",
-                subtitle = "Tarjeta con consejos inteligentes accionables",
+                title    = "Mostrar Análisis de IA",
+                subtitle = "Tarjeta con consejos inteligentes y accionables",
                 checked  = state.showAiInsight,
                 onCheckedChange = { viewModel.toggleShowAiInsight(it) }
             )
@@ -273,6 +304,31 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             )
         }
 
+        // ─── Inteligencia Artificial (Gemini) ──────────────────────────────
+        SectionHeader("Inteligencia Artificial (Gemini)")
+        SettingsCard {
+            SettingsItem(
+                icon      = Icons.Default.AutoAwesome,
+                iconColor = Violet400,
+                title     = "Google Gemini API Key",
+                subtitle  = if (state.geminiApiKey.isNotBlank()) "Clave personalizada activa ✓"
+                            else "Motor inteligente local activo (toca para añadir clave)",
+                trailing  = {
+                    OutlinedButton(
+                        onClick = { showApiKeyModal = true },
+                        colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                        border  = BorderStroke(1.dp, Violet400)
+                    ) {
+                        Text(
+                            if (state.geminiApiKey.isNotBlank()) "Modificar" else "Configurar",
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
+            )
+        }
+
+        // ─── Notificaciones ────────────────────────────────────────────────
         SectionHeader("Notificaciones & Recordatorios")
         SettingsCard {
             SwitchSettingItem(
@@ -283,6 +339,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             )
         }
 
+        // ─── Fuentes de Datos ──────────────────────────────────────────────
         SectionHeader("Fuentes de Datos")
         SettingsCard {
             SettingsItem(
@@ -322,7 +379,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             else "Permiso READ_CALENDAR requerido",
                 trailing  = {
                     if (state.calendarGranted) {
-                        Icon(Icons.Default.CheckCircle, null, tint = Emerald400, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.CheckCircle, contentDescription = "Concedido", tint = Emerald400, modifier = Modifier.size(20.dp))
                     } else {
                         OutlinedButton(
                             onClick = { calendarPermissionLauncher.launch(Manifest.permission.READ_CALENDAR) },
@@ -356,13 +413,14 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             )
         }
 
+        // ─── Información ───────────────────────────────────────────────────
         SectionHeader("Información")
         SettingsCard {
             SettingsItem(
                 icon      = Icons.Default.Info,
                 iconColor = Gray400,
                 title     = "Life Dashboard",
-                subtitle  = "v1.0 · Panel de Vida Inteligente",
+                subtitle  = "v1.2 · Panel de Vida Inteligente",
                 trailing  = {}
             )
         }
@@ -375,6 +433,18 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             onSave      = { newName ->
                 viewModel.updateUserName(newName)
                 showUserModal = false
+            }
+        )
+    }
+
+    if (showApiKeyModal) {
+        EditApiKeyModal(
+            currentKey = state.geminiApiKey,
+            onDismiss  = { showApiKeyModal = false },
+            onSave     = { newKey ->
+                viewModel.updateGeminiApiKey(newKey)
+                showApiKeyModal = false
+                Toast.makeText(context, "Clave de Gemini guardada correctamente", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -403,15 +473,15 @@ private fun UserProfileCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(22.dp))
             .background(Indigo800)
-            .border(1.dp, Indigo700, RoundedCornerShape(20.dp))
+            .border(1.dp, Indigo700, RoundedCornerShape(22.dp))
             .padding(14.dp)
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
+            modifier              = Modifier.fillMaxWidth()
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -444,7 +514,7 @@ private fun UserProfileCard(
                     containerColor = Violet400.copy(alpha = 0.2f),
                     contentColor   = Violet300
                 ),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                 shape          = RoundedCornerShape(10.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -468,44 +538,84 @@ private fun EditUserProfileModal(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor   = Indigo800,
+        shape            = RoundedCornerShape(22.dp),
         title = { Text("Perfil de Usuario", color = White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
-                    value = nameInput,
+                    value         = nameInput,
                     onValueChange = { nameInput = it },
-                    label = { Text("Tu nombre") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Violet400, unfocusedBorderColor = Indigo600,
-                        focusedTextColor = White, unfocusedTextColor = White
+                    label         = { Text("Tu nombre") },
+                    singleLine    = true,
+                    colors        = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor   = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor     = White,
+                        unfocusedTextColor   = White
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
-
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Indigo700),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Info, null, tint = Violet300, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("¿Para qué sirve 'Sincronizar'?", style = MaterialTheme.typography.labelMedium, color = White, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "El botón 'Sincronizar' fuerza la lectura instantánea de pasos, calorías, sueño y entrenamientos de Health Connect/Symmetry, actualizando los datos en toda la app y la IA de Gemini.",
-                            style = MaterialTheme.typography.bodySmall, color = Gray300
-                        )
-                    }
-                }
             }
         },
         confirmButton = {
             Button(
                 onClick = { onSave(nameInput) },
+                colors  = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)
+            ) {
+                Text("Guardar", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = Gray400) }
+        }
+    )
+}
+
+@Composable
+private fun EditApiKeyModal(
+    currentKey: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var keyInput by remember { mutableStateOf(currentKey) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = Indigo800,
+        shape            = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Key, contentDescription = null, tint = Violet300, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Google Gemini API Key", color = White, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text  = "Puedes conseguir una clave de API gratis en Google AI Studio (aistudio.google.com). Si la dejas en blanco, la app usará el motor de análisis local.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray300
+                )
+
+                OutlinedTextField(
+                    value         = keyInput,
+                    onValueChange = { keyInput = it },
+                    label         = { Text("Clave API (AIzaSy...)") },
+                    singleLine    = true,
+                    colors        = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor   = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor     = White,
+                        unfocusedTextColor   = White
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(keyInput) },
                 colors  = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)
             ) {
                 Text("Guardar", fontWeight = FontWeight.Bold)
@@ -528,7 +638,7 @@ private fun ThemeOptionChip(label: String, icon: ImageVector, isSelected: Boolea
             .padding(vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = if (isSelected) Indigo900 else White, modifier = Modifier.size(16.dp))
+            Icon(icon, contentDescription = null, tint = if (isSelected) Indigo900 else White, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text(label, style = MaterialTheme.typography.labelMedium, color = if (isSelected) Indigo900 else White, fontWeight = FontWeight.Bold)
         }
@@ -543,9 +653,9 @@ private fun SwitchSettingItem(
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = Modifier
+        modifier              = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
@@ -555,11 +665,11 @@ private fun SwitchSettingItem(
         }
         Spacer(Modifier.width(12.dp))
         Switch(
-            checked = checked,
+            checked         = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Indigo900,
-                checkedTrackColor = Violet400,
+                checkedThumbColor   = Indigo900,
+                checkedTrackColor   = Violet400,
                 uncheckedThumbColor = Gray400,
                 uncheckedTrackColor = Indigo700
             )
@@ -582,8 +692,9 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Indigo800),
-        content = content
+            .background(Indigo800)
+            .border(1.dp, Indigo700, RoundedCornerShape(20.dp)),
+        content  = content
     )
 }
 
@@ -597,7 +708,7 @@ private fun SettingsItem(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
+        modifier          = Modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
@@ -608,21 +719,21 @@ private fun SettingsItem(
                 .clip(RoundedCornerShape(12.dp))
                 .background(iconColor.copy(alpha = 0.15f))
         ) {
-            Icon(icon, null, tint = iconColor, modifier = Modifier.size(18.dp))
+            Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(18.dp))
         }
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = White,
+                text     = title,
+                style    = MaterialTheme.typography.labelLarge,
+                color    = White,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
             Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = Gray500,
+                text     = subtitle,
+                style    = MaterialTheme.typography.bodySmall,
+                color    = Gray500,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )

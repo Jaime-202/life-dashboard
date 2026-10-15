@@ -16,7 +16,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,9 +36,9 @@ fun DashboardScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     DashboardContent(
-        state = state,
+        state        = state,
         onSelectDate = { viewModel.selectDate(it) },
-        onRefreshAi = { viewModel.requestAiInsight() }
+        onRefreshAi  = { viewModel.requestAiInsight() }
     )
 }
 
@@ -50,13 +49,14 @@ fun DashboardContent(
     onRefreshAi: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
-    val greeting = remember {
+    val greeting = remember(state.userName) {
         val hour = LocalDateTime.now().hour
-        when {
+        val timeGreeting = when {
             hour < 12 -> "Buenos días"
             hour < 20 -> "Buenas tardes"
             else      -> "Buenas noches"
         }
+        "$timeGreeting, ${state.userName}"
     }
 
     Box(
@@ -64,9 +64,9 @@ fun DashboardContent(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    colors    = listOf(GradientStart, GradientEnd),
-                    startY    = 0f,
-                    endY      = 1200f
+                    colors = listOf(GradientStart, GradientEnd),
+                    startY = 0f,
+                    endY   = 1400f
                 )
             )
     ) {
@@ -75,41 +75,49 @@ fun DashboardContent(
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp)
-                // FIX #5: Usa WindowInsets para respetar la status bar del sistema;
-                // el padding(top = 56.dp) se reemplaza por consumo de insets real.
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(top = 8.dp, bottom = 100.dp),
+                .padding(top = 56.dp, bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            // Cabecera principal con saludo y estado del día
             DashboardHeader(greeting = greeting, state = state)
 
-            DayHeroSection(state = state)
+            // 1. Resumen Hero (Anillos de progreso) - controlado por preferencia
+            if (state.showHeroRings) {
+                DayHeroSection(state = state)
+            }
 
+            // 2. Pilares de Salud y Rendimiento (Pasos, Sueño, Entreno)
             PillarGrid(state = state)
 
-            SectionTitle("Calendario de Actividad")
+            // 3. Calendario de Actividad y consistencia
+            SectionTitle("Calendario de Hábitos")
             CalendarView(
                 progressByDate = state.progressByDate,
                 selectedDate   = state.selectedDate,
                 onDateSelected = onSelectDate
             )
 
+            // 4. Detalle del día seleccionado
             SelectedDayDetailCard(
                 selectedDate = state.selectedDate,
                 progress     = state.progressByDate[state.selectedDate]
             )
 
-            // Siempre mostramos la sección de eventos: si está vacía se muestra
-            // el estado vacío; si tiene datos, se listan las fichas.
-            SectionTitle("Próximos Eventos")
-            UpcomingEventsList(events = state.upcomingEvents)
+            // 5. Próximos Eventos - controlado por preferencia
+            if (state.showUpcomingEvents) {
+                SectionTitle("Próximos Eventos")
+                UpcomingEventsList(events = state.upcomingEvents)
+            }
 
-            SectionTitle("Análisis Inteligente")
-            AiInsightCard(
-                insight   = state.aiInsight,
-                isLoading = state.isAiLoading,
-                onRefresh = onRefreshAi
-            )
+            // 6. Análisis Inteligente - controlado por preferencia
+            if (state.showAiInsight) {
+                SectionTitle("Análisis Inteligente")
+                AiInsightCard(
+                    insight   = state.aiInsight,
+                    isLoading = state.isAiLoading,
+                    onRefresh = onRefreshAi
+                )
+            }
         }
     }
 }
@@ -127,44 +135,40 @@ private fun DashboardHeader(greeting: String, state: DashboardUiState) {
     ) {
         Column {
             Text(
-                text  = greeting,
-                style = MaterialTheme.typography.headlineSmall,
-                color = White,
+                text       = greeting,
+                style      = MaterialTheme.typography.headlineSmall,
+                color      = White,
                 fontWeight = FontWeight.Bold
             )
+            Spacer(Modifier.height(2.dp))
             Text(
                 text  = dateStr,
                 style = MaterialTheme.typography.bodyMedium,
                 color = Gray400
             )
         }
+
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(48.dp)
                 .clip(CircleShape)
                 .background(
-                    if (state.workoutDoneToday) Violet400.copy(alpha = 0.2f)
-                    else Indigo700
+                    if (state.workoutDoneToday) Violet400.copy(alpha = 0.25f)
+                    else Indigo800
                 )
-                .border(1.5.dp, if (state.workoutDoneToday) Violet400 else Indigo600, CircleShape)
+                .border(1.5.dp, if (state.workoutDoneToday) Violet400 else Indigo700, CircleShape)
         ) {
             Icon(
                 imageVector = when (state.workoutTypeToday) {
                     WorkoutType.STRENGTH -> Icons.Default.FitnessCenter
-                    WorkoutType.CARDIO   -> Icons.Default.DirectionsBike
+                    WorkoutType.CARDIO   -> Icons.Default.DirectionsRun
                     WorkoutType.REST     -> Icons.Default.Bedtime
                     null                 -> Icons.Default.Person
                 },
-                // Accesibilidad: describe el estado del entrenamiento de hoy
-                contentDescription = when (state.workoutTypeToday) {
-                    WorkoutType.STRENGTH -> "Entrenamiento de fuerza completado"
-                    WorkoutType.CARDIO   -> "Entrenamiento de cardio completado"
-                    WorkoutType.REST     -> "Día de descanso"
-                    null                 -> "Sin entrenamiento registrado"
-                },
-                tint     = if (state.workoutDoneToday) Violet300 else Gray400,
-                modifier = Modifier.size(24.dp)
+                contentDescription = "Estado del día",
+                tint               = if (state.workoutDoneToday) Violet300 else Gray400,
+                modifier           = Modifier.size(22.dp)
             )
         }
     }
@@ -175,37 +179,37 @@ private fun DayHeroSection(state: DashboardUiState) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(26.dp))
             .background(
                 Brush.radialGradient(
                     colors = listOf(
-                        Violet400.copy(alpha = 0.15f),
+                        Violet400.copy(alpha = 0.18f),
                         Indigo800
                     ),
-                    radius = 600f
+                    radius = 700f
                 )
             )
-            .border(1.dp, Indigo600, RoundedCornerShape(24.dp))
-            .padding(18.dp)
+            .border(1.dp, Indigo700, RoundedCornerShape(26.dp))
+            .padding(20.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
+            modifier          = Modifier.fillMaxWidth()
         ) {
             DayProgressRings(
                 stepsProgress    = state.stepsProgress,
                 caloriesProgress = state.caloriesProgress,
                 sleepProgress    = state.sleepProgress,
-                size             = 110.dp,
+                size             = 114.dp,
                 strokeWidth      = 10.dp,
                 gap              = 5.dp
             )
 
             Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier            = Modifier
                     .weight(1f)
-                    .padding(start = 14.dp)
+                    .padding(start = 16.dp)
             ) {
                 FillableStatItem(
                     value    = "${state.todaySteps} / ${if (state.stepsTarget >= 1000) "${state.stepsTarget / 1000}K" else state.stepsTarget}",
@@ -221,7 +225,7 @@ private fun DayHeroSection(state: DashboardUiState) {
                 )
                 FillableStatItem(
                     value    = "${state.todayCalories.toInt()} / ${state.caloriesTarget.toInt()} kcal",
-                    label    = "calorías activas",
+                    label    = "calorías",
                     progress = state.caloriesProgress,
                     color    = Amber400
                 )
@@ -238,9 +242,9 @@ private fun FillableStatItem(
     color: Color
 ) {
     val animatedProgress by animateFloatAsState(
-        targetValue  = progress.coerceIn(0f, 1f),
+        targetValue   = progress.coerceIn(0f, 1f),
         animationSpec = tween(1000, easing = FastOutSlowInEasing),
-        label = "stat_fill"
+        label         = "stat_fill"
     )
 
     Column {
@@ -268,13 +272,13 @@ private fun FillableStatItem(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(5.dp))
         LinearProgressIndicator(
             progress   = { animatedProgress },
             modifier   = Modifier
                 .fillMaxWidth()
-                .height(5.dp)
-                .clip(RoundedCornerShape(2.5.dp)),
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
             color      = color,
             trackColor = RingTrack
         )
@@ -291,7 +295,7 @@ private fun PillarGrid(state: DashboardUiState) {
                 unit     = "/ ${state.stepsTarget}",
                 subtitle = when {
                     state.todaySteps >= state.stepsTarget -> "¡Meta superada!"
-                    state.todaySteps >= 7_000             -> "Meta mínima cumplida"
+                    state.todaySteps >= 7_000             -> "Meta saludable cumplida"
                     else                                  -> "${state.stepsTarget - state.todaySteps} para la meta"
                 },
                 progress  = state.stepsProgress,
@@ -315,16 +319,14 @@ private fun PillarGrid(state: DashboardUiState) {
             )
         }
 
-        // FIX #4: Emoji de checkmark corregido — se usa "✅" directamente como
-        // carácter Unicode literal para evitar codificación incorrecta de "✓".
         PillarCard(
             title    = "Entrenamiento",
             value    = if (state.workoutDoneToday) "Completado" else "Pendiente",
-            unit     = if (state.workoutDoneToday) "✅" else "",
+            unit     = if (state.workoutDoneToday) "✓" else "",
             subtitle = when (state.workoutTypeToday) {
                 WorkoutType.STRENGTH -> "Sesión de fuerza registrada"
                 WorkoutType.CARDIO   -> "Sesión de cardio completada"
-                WorkoutType.REST     -> "Día de descanso"
+                WorkoutType.REST     -> "Día de descanso programado"
                 null                 -> "Sin registro para hoy"
             },
             progress  = if (state.workoutDoneToday) 1f else 0f,
@@ -348,12 +350,12 @@ private fun SelectedDayDetailCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(22.dp))
             .background(Indigo800)
-            .border(1.dp, Indigo700, RoundedCornerShape(20.dp))
-            .padding(16.dp)
+            .border(1.dp, Indigo700, RoundedCornerShape(22.dp))
+            .padding(18.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment     = Alignment.CenterVertically,
@@ -363,14 +365,14 @@ private fun SelectedDayDetailCard(
                     Icon(
                         imageVector        = Icons.Default.Event,
                         contentDescription = "Fecha seleccionada",
-                        tint     = Violet300,
-                        modifier = Modifier.size(18.dp)
+                        tint               = Violet300,
+                        modifier           = Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text  = dateStr,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = White,
+                        text       = dateStr,
+                        style      = MaterialTheme.typography.titleSmall,
+                        color      = White,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -395,21 +397,18 @@ private fun SelectedDayDetailCard(
                 ) {
                     DayStatChip(
                         label = "Entreno",
-                        value = if (progress.workoutCompleted) "Hecho \u2713" else "No",
-                        color = Color(0xFF3B82F6)
+                        value = if (progress.workoutCompleted) "Hecho ✓" else "Pendiente",
+                        color = Color(0xFF60A5FA)
                     )
                     DayStatChip(
                         label = "Pasos",
                         value = "${progress.actualSteps}",
-                        color = Color(0xFF1D4ED8)
+                        color = Cyan400
                     )
-                    // FIX #1: DailyProgress no tiene campo actualSleepHours, solo
-                    // sleepProgress (0f..1f). Se asume meta de 8h y se formatea
-                    // con String.format para evitar decimales imprecisos.
                     DayStatChip(
                         label = "Sueño",
-                        value = String.format("%.1f", progress.sleepProgress * 8f) + "h",
-                        color = RingSleep
+                        value = "${String.format(Locale.US, "%.1f", progress.sleepProgress * 8f)}h",
+                        color = Teal400
                     )
                 }
             } else {
@@ -427,43 +426,43 @@ private fun SelectedDayDetailCard(
 private fun DayStatChip(label: String, value: String, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = value, style = MaterialTheme.typography.titleSmall, color = White, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(2.dp))
         Text(text = label, style = MaterialTheme.typography.labelSmall, color = color)
     }
 }
 
-/**
- * Lista de eventos próximos.
- * FIX #2: Cuando la lista está vacía se muestra un estado visual con icono y
- * mensaje en lugar de no renderizar nada (evita sección vacía confusa).
- */
 @Composable
 private fun UpcomingEventsList(events: List<CalendarEvent>) {
     if (events.isEmpty()) {
-        // Estado vacío: caja con fondo Indigo800 y esquinas redondeadas
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(18.dp))
                 .background(Indigo800)
-                .border(1.dp, Indigo700, RoundedCornerShape(16.dp))
-                .padding(vertical = 28.dp, horizontal = 16.dp)
+                .border(1.dp, Indigo700, RoundedCornerShape(18.dp))
+                .padding(vertical = 24.dp, horizontal = 16.dp)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
-                    imageVector        = Icons.Default.EventBusy,
-                    contentDescription = "Sin eventos próximos",
-                    tint     = Gray500,
-                    modifier = Modifier.size(32.dp)
+                    imageVector        = Icons.Default.EventAvailable,
+                    contentDescription = null,
+                    tint               = Violet300,
+                    modifier           = Modifier.size(28.dp)
                 )
                 Text(
-                    text      = "No hay eventos próximos",
-                    style     = MaterialTheme.typography.bodyMedium,
-                    color     = Gray500,
-                    textAlign = TextAlign.Center
+                    text  = "No hay eventos próximos",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Gray300,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text  = "Tu agenda está despejada para el resto del día",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray400
                 )
             }
         }
@@ -485,8 +484,9 @@ private fun EventChip(event: CalendarEvent) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(Indigo800)
+            .border(1.dp, Indigo700, RoundedCornerShape(16.dp))
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Box(
@@ -497,11 +497,14 @@ private fun EventChip(event: CalendarEvent) {
         )
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(event.title, style = MaterialTheme.typography.labelLarge, color = White)
-            // FIX #3: Separador entre fecha y hora — se usa " \u00B7 " (U+00B7 MIDDLE DOT)
-            // explícitamente como escape Unicode para garantizar la codificación correcta.
             Text(
-                "${event.startTime.format(dateFormatter)} \u00B7 ${event.startTime.format(timeFormatter)}",
+                text     = event.title,
+                style    = MaterialTheme.typography.labelLarge,
+                color    = White,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text  = "${event.startTime.format(dateFormatter)} · ${event.startTime.format(timeFormatter)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = Gray400
             )

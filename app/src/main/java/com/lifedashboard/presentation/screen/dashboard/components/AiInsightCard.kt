@@ -18,7 +18,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.lifedashboard.presentation.theme.*
 
 @Composable
@@ -150,25 +152,43 @@ fun AiInsightCard(
                     }
 
                     else -> {
-                        // Estado vacío inicial: no hay insight todavía
+                        // Estado inicial interactivo con botón directo
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
                             modifier            = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 8.dp)
+                                .padding(vertical = 6.dp)
                         ) {
-                            Icon(
-                                imageVector        = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint               = Gray500,
-                                modifier           = Modifier.size(24.dp)
-                            )
                             Text(
-                                text  = "Toca \u21BB para obtener tu an\u00E1lisis del d\u00EDa",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Gray500
+                                text      = "Cruza tus datos de sueño, pasos y entreno para descubrir correlaciones clave.",
+                                style     = MaterialTheme.typography.bodySmall,
+                                color     = Gray400,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
+                            Button(
+                                onClick = onRefresh,
+                                colors  = ButtonDefaults.buttonColors(
+                                    containerColor = Violet400,
+                                    contentColor   = Indigo900
+                                ),
+                                shape   = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector        = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier           = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text       = "Generar Análisis",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize   = 13.sp
+                                    )
+                                }
+                            }
                         }
                     }
                 }

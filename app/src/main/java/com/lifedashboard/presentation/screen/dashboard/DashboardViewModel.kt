@@ -22,6 +22,7 @@ import java.time.ZoneId
 import javax.inject.Inject
 
 data class DashboardUiState(
+    val userName: String = "Jaime",
     val todaySteps: Int = 0,
     val todaySleepHours: Float = 0f,
     val todayCalories: Float = 0f,
@@ -38,7 +39,10 @@ data class DashboardUiState(
     val aiInsight: String? = null,
     val isAiLoading: Boolean = false,
     val selectedDate: LocalDate = LocalDate.now(),
-    val isDataLoading: Boolean = true
+    val isDataLoading: Boolean = true,
+    val showHeroRings: Boolean = true,
+    val showAiInsight: Boolean = true,
+    val showUpcomingEvents: Boolean = true
 )
 
 @HiltViewModel
@@ -71,12 +75,16 @@ class DashboardViewModel @Inject constructor(
                     val calProg   = (state.todayCalories / goals.caloriesTarget).coerceIn(0f, 1f)
 
                     state.copy(
-                        stepsTarget      = goals.stepsTarget,
-                        sleepTargetHours = goals.sleepTargetHours,
-                        caloriesTarget   = goals.caloriesTarget,
-                        stepsProgress    = stepsProg,
-                        sleepProgress    = sleepProg,
-                        caloriesProgress = calProg
+                        userName           = goals.userName,
+                        stepsTarget        = goals.stepsTarget,
+                        sleepTargetHours   = goals.sleepTargetHours,
+                        caloriesTarget     = goals.caloriesTarget,
+                        stepsProgress      = stepsProg,
+                        sleepProgress      = sleepProg,
+                        caloriesProgress   = calProg,
+                        showHeroRings      = goals.showHeroRings,
+                        showAiInsight      = goals.showAiInsight,
+                        showUpcomingEvents = goals.showUpcomingEvents
                     )
                 }
             }
@@ -128,7 +136,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun observeCalendar() {
-        calendarRepository.getUpcomingEvents(limit = 3)
+        calendarRepository.getUpcomingEvents(limit = 4)
             .onEach { events ->
                 _uiState.update { it.copy(upcomingEvents = events) }
             }

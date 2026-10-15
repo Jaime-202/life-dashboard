@@ -1,5 +1,7 @@
 package com.lifedashboard.presentation.screen.workout
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -32,6 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoField
@@ -43,6 +46,7 @@ import javax.inject.Inject
 data class WorkoutUiState(
     val recentSessions: List<WorkoutSessionEntity> = emptyList(),
     val weekSessions: List<WorkoutSessionEntity> = emptyList(),
+    val uniqueTrainedDaysThisWeek: Int = 0,
     val totalMinutesThisWeek: Int = 0,
     val isLoading: Boolean = true
 )
@@ -59,32 +63,48 @@ class WorkoutViewModel @Inject constructor(
         loadData()
     }
 
-    fun loadData() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val weekStart = com.lifedashboard.core.util.DateUtils.weekStartMillis()
-            val nextWeek = weekStart + 7 * 24 * 60 * 60 * 1000L
-            val recent = workoutDao.getRecentSessions(20)
+    private fun loadData() {
+        val weekStart = com.lifedashboard.core.util.DateUtils.weekStartMillis()
+        val nextWeek = weekStart + 7 * 24 * 60 * 60 * 1000L
+        val zone = ZoneId.systemDefault()
 
-            // Consultar las sesiones de la semana actual para el resumen y los indicadores
-            workoutDao.getSessionsInRange(weekStart, nextWeek).collectLatest { weekSessionsList ->
-                val totalMins = weekSessionsList.sumOf { it.durationMinutes }
-
-                // Desduplicar sesiones para mostrar un listado limpio
-                val deduplicatedRecent = recent
-                    .groupBy { Instant.ofEpochMilli(it.dateMillis).atZone(ZoneId.systemDefault()).toLocalDate() }
-                    .map { (_, list) -> list.first() }
-                    .sortedByDescending { it.dateMillis }
-
-                _state.update {
-                    it.copy(
-                        recentSessions       = deduplicatedRecent,
-                        weekSessions         = weekSessionsList,
-                        totalMinutesThisWeek = totalMins,
-                        isLoading            = false
-                    )
-                }
+        combine(
+            workoutDao.getSessionsInRange(weekStart, nextWeek),
+            workoutDao.observeRecentSessions(30)
+        ) { weekSessionsList, allRecent ->
+            // Agrupar sesiones por día de calendario único para evitar conteos duplicados
+            val uniqueDays = weekSessionsList.groupBy {
+                Instant.ofEpochMilli(it.dateMillis).atZone(zone).toLocalDate()
             }
+
+            // Cada día cuenta como una sesión/día de entrenamiento completado
+            val trainedDaysCount = uniqueDays.size
+
+            // Sumar la duración real por cada día único (evitando duplicaciones de series)
+            val totalMins = uniqueDays.values.sumOf { daySessions ->
+                val maxDuration = daySessions.maxOfOrNull { it.durationMinutes } ?: 0
+                if (maxDuration > 0) maxDuration else 45 // 45 min por defecto para sesiones de fuerza
+            }
+
+            // Desduplicar el historial reciente por día para mostrar una tarjeta por fecha
+            val deduplicatedRecent = allRecent
+                .groupBy { Instant.ofEpochMilli(it.dateMillis).atZone(zone).toLocalDate() }
+                .map { (_, list) -> list.first() }
+                .sortedByDescending { it.dateMillis }
+
+            WorkoutUiState(
+                recentSessions            = deduplicatedRecent,
+                weekSessions              = weekSessionsList,
+                uniqueTrainedDaysThisWeek = trainedDaysCount,
+                totalMinutesThisWeek      = totalMins,
+                isLoading                 = false
+            )
         }
+        .flowOn(Dispatchers.Default)
+        .onEach { newState ->
+            _state.value = newState
+        }
+        .launchIn(viewModelScope)
     }
 
     fun addManualWorkout(
@@ -94,13 +114,13 @@ class WorkoutViewModel @Inject constructor(
         weightKg: Float
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            val todayMillis = java.time.LocalDate.now().toStartOfDayMillis()
+            val todayMillis = LocalDate.now().toStartOfDayMillis()
 
             val sessionId = workoutDao.upsertSession(
                 WorkoutSessionEntity(
                     dateMillis      = todayMillis,
                     type            = "STRENGTH",
-                    durationMinutes = durationMinutes,
+                    durationMinutes = if (durationMinutes > 0) durationMinutes else 45,
                     sourceFile      = "manual"
                 )
             )
@@ -110,17 +130,15 @@ class WorkoutViewModel @Inject constructor(
                     listOf(
                         ExerciseSetEntity(
                             sessionId    = sessionId,
-                            exerciseName = exerciseName,
+                            exerciseName = exerciseName.trim(),
                             setNumber    = 1,
                             reps         = reps,
                             weightKg     = weightKg,
-                            volumeKg     = reps * weightKg
+                            volumeKg     = weightKg * reps
                         )
                     )
                 )
             }
-
-            loadData()
         }
     }
 }
@@ -139,21 +157,28 @@ fun WorkoutScreen(viewModel: WorkoutViewModel = hiltViewModel()) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             .padding(top = 56.dp, bottom = 100.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
+        // Encabezado
         Row(
             verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
             modifier              = Modifier.fillMaxWidth()
         ) {
-            Text(
-                text       = "Entrenamiento",
-                style      = MaterialTheme.typography.headlineSmall,
-                color      = White,
-                fontWeight = FontWeight.Bold
-            )
+            Column {
+                Text(
+                    text       = "Entrenamiento",
+                    style      = MaterialTheme.typography.headlineSmall,
+                    color      = White,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text  = "Registro y evolución física",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray400
+                )
+            }
 
-            // FAB con contentDescription para accesibilidad
             Button(
                 onClick = { showAddDialog = true },
                 colors  = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900),
@@ -162,9 +187,9 @@ fun WorkoutScreen(viewModel: WorkoutViewModel = hiltViewModel()) {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.Add,
+                        imageVector        = Icons.Default.Add,
                         contentDescription = "Añadir entrenamiento",
-                        modifier = Modifier.size(18.dp)
+                        modifier           = Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(4.dp))
                     Text("Añadir", fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -174,33 +199,52 @@ fun WorkoutScreen(viewModel: WorkoutViewModel = hiltViewModel()) {
 
         // ─── Tarjeta Resumen Semanal ───────────────────────────────────────
         WeeklySummaryCard(
-            totalSessions = state.weekSessions.size,
+            trainedDays  = state.uniqueTrainedDaysThisWeek,
             totalMinutes = state.totalMinutesThisWeek
         )
 
         // ─── Días de la Semana (Diseño de Pastillas) ───────────────────────
-        Text("Días de Actividad", style = MaterialTheme.typography.titleMedium, color = White, fontWeight = FontWeight.Bold)
+        Text(
+            text       = "Días de Actividad Semanal",
+            style      = MaterialTheme.typography.titleMedium,
+            color      = White,
+            fontWeight = FontWeight.Bold
+        )
         NewWeekDayIndicator(weekSessions = state.weekSessions)
 
         // ─── Línea de Tiempo de Entrenamientos Recientes ───────────────────
-        Text("Historial Reciente", style = MaterialTheme.typography.titleMedium, color = White, fontWeight = FontWeight.Bold)
+        Text(
+            text       = "Historial de Sesiones",
+            style      = MaterialTheme.typography.titleMedium,
+            color      = White,
+            fontWeight = FontWeight.Bold
+        )
 
         if (state.recentSessions.isNotEmpty()) {
             RecentWorkoutsTimeline(sessions = state.recentSessions)
         } else if (!state.isLoading) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Indigo800),
-                shape = RoundedCornerShape(16.dp),
+                shape  = RoundedCornerShape(18.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(24.dp).fillMaxWidth()
+                    modifier            = Modifier.padding(32.dp).fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.FitnessCenter, contentDescription = null, tint = Gray500, modifier = Modifier.size(36.dp))
-                    Spacer(Modifier.height(10.dp))
-                    Text("No hay entrenamientos recientes", color = Gray300, fontWeight = FontWeight.Bold)
-                    Text("Toca en + Añadir o usa Health Connect", color = Gray400, fontSize = 12.sp)
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(Indigo700)
+                    ) {
+                        Icon(Icons.Default.FitnessCenter, contentDescription = null, tint = Violet300, modifier = Modifier.size(26.dp))
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("Sin entrenamientos registrados", color = White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Toca en '+ Añadir' o sincroniza tus datos", color = Gray400, fontSize = 12.sp)
                 }
             }
         }
@@ -217,19 +261,23 @@ fun WorkoutScreen(viewModel: WorkoutViewModel = hiltViewModel()) {
     }
 }
 
-// ─── Componente: Resumen Semanal ──────────────────────────────────────────────
+// ─── Componente: Resumen Semanal Rediseñado ───────────────────────────────────
 
 @Composable
-private fun WeeklySummaryCard(totalSessions: Int, totalMinutes: Int) {
-    // Objetivo recomendado de la OMS: 150 mins de actividad moderada a la semana
-    val goalMinutes = 150
-    val progress = (totalMinutes.toFloat() / goalMinutes).coerceIn(0f, 1f)
+private fun WeeklySummaryCard(trainedDays: Int, totalMinutes: Int) {
+    val targetDays = 4 // Meta semanal habitual: 4 días
+    val targetMinutes = 180 // 3 horas semanales
+    val progress = (totalMinutes.toFloat() / targetMinutes).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(Indigo800)
+            .background(
+                Brush.linearGradient(
+                    listOf(Indigo800, Color(0xFF231450))
+                )
+            )
             .border(1.dp, Indigo700, RoundedCornerShape(24.dp))
             .padding(20.dp)
     ) {
@@ -243,23 +291,63 @@ private fun WeeklySummaryCard(totalSessions: Int, totalMinutes: Int) {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(42.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(Violet400.copy(alpha = 0.2f))
                     ) {
-                        Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Violet300, modifier = Modifier.size(22.dp))
+                        Icon(
+                            imageVector        = Icons.Default.LocalFireDepartment,
+                            contentDescription = null,
+                            tint               = Violet300,
+                            modifier           = Modifier.size(24.dp)
+                        )
                     }
                     Spacer(Modifier.width(12.dp))
                     Column {
-                        Text("Actividad Semanal", style = MaterialTheme.typography.titleMedium, color = White, fontWeight = FontWeight.Bold)
-                        Text("Recomendación de la OMS: 150m", style = MaterialTheme.typography.bodySmall, color = Gray400)
+                        Text(
+                            text       = "Volumen Semanal",
+                            style      = MaterialTheme.typography.titleMedium,
+                            color      = White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text  = "Meta de consistencia: $targetDays días",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray400
+                        )
                     }
+                }
+
+                // Badge de días
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (trainedDays >= targetDays) Emerald400.copy(alpha = 0.2f) else Indigo700)
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text       = "$trainedDays / $targetDays días",
+                        style      = MaterialTheme.typography.labelSmall,
+                        color      = if (trainedDays >= targetDays) Emerald400 else Violet300,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
+            // Datos grandes
             Row(verticalAlignment = Alignment.Bottom) {
-                Text("$totalMinutes", style = MaterialTheme.typography.headlineLarge, color = White, fontWeight = FontWeight.Bold)
-                Text(" min / 150 min", style = MaterialTheme.typography.bodyMedium, color = Gray400, modifier = Modifier.padding(bottom = 5.dp, start = 6.dp))
+                Text(
+                    text       = "$totalMinutes",
+                    style      = MaterialTheme.typography.headlineLarge,
+                    color      = White,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text     = " min / $targetMinutes min objetivo",
+                    style    = MaterialTheme.typography.bodyMedium,
+                    color    = Gray400,
+                    modifier = Modifier.padding(bottom = 6.dp, start = 6.dp)
+                )
             }
 
             LinearProgressIndicator(
@@ -268,19 +356,23 @@ private fun WeeklySummaryCard(totalSessions: Int, totalMinutes: Int) {
                     .fillMaxWidth()
                     .height(8.dp)
                     .clip(RoundedCornerShape(4.dp)),
-                color      = RingWorkout,
+                color      = Violet400,
                 trackColor = RingTrack
             )
 
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            Row(
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier              = Modifier.fillMaxWidth()
+            ) {
                 Text(
-                    text  = if (totalMinutes >= goalMinutes) "¡Objetivo Semanal Superado! \uD83C\uDF89" else "Te faltan ${goalMinutes - totalMinutes} mins",
+                    text  = if (totalMinutes >= targetMinutes) "¡Meta semanal superada! 🎉" 
+                            else "Faltan ${targetMinutes - totalMinutes} min para el objetivo",
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (totalMinutes >= goalMinutes) Emerald400 else Violet300,
+                    color = if (totalMinutes >= targetMinutes) Emerald400 else Violet300,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text  = "$totalSessions sesiones",
+                    text  = "$trainedDays ${if (trainedDays == 1) "sesión" else "sesiones"}",
                     style = MaterialTheme.typography.labelSmall,
                     color = Gray400
                 )
@@ -289,22 +381,24 @@ private fun WeeklySummaryCard(totalSessions: Int, totalMinutes: Int) {
     }
 }
 
-// ─── Componente: Indicador de Días (Nuevo Diseño) ─────────────────────────────
+// ─── Componente: Indicador de Días ───────────────────────────────────────────
 
 @Composable
 private fun NewWeekDayIndicator(weekSessions: List<WorkoutSessionEntity>) {
     val days = listOf("L", "M", "X", "J", "V", "S", "D")
     val zone = ZoneId.systemDefault()
-    val todayIdx = java.time.LocalDate.now().dayOfWeek.value - 1 // 0 (Lunes) a 6 (Domingo)
+    val todayIdx = LocalDate.now().dayOfWeek.value - 1 // 0 (Lunes) a 6 (Domingo)
 
-    // Agrupar sesiones de esta semana por el índice del día (0 a 6)
-    val workedOutDays = weekSessions.map {
-        Instant.ofEpochMilli(it.dateMillis).atZone(zone).get(ChronoField.DAY_OF_WEEK) - 1
-    }.toSet()
+    // Agrupar sesiones por día de la semana (0 a 6)
+    val workedOutDays = remember(weekSessions) {
+        weekSessions.map {
+            Instant.ofEpochMilli(it.dateMillis).atZone(zone).get(ChronoField.DAY_OF_WEEK) - 1
+        }.toSet()
+    }
 
     Row(
         horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = Modifier.fillMaxWidth()
+        modifier              = Modifier.fillMaxWidth()
     ) {
         days.forEachIndexed { idx, dayLabel ->
             val hasWorkout = workedOutDays.contains(idx)
@@ -318,19 +412,33 @@ private fun NewWeekDayIndicator(weekSessions: List<WorkoutSessionEntity>) {
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .width(42.dp)
-                    .height(56.dp)
-                    .clip(RoundedCornerShape(24.dp))
+                    .height(58.dp)
+                    .clip(RoundedCornerShape(22.dp))
                     .background(bgColor)
-                    .border(1.5.dp, borderColor, RoundedCornerShape(24.dp))
+                    .border(1.5.dp, borderColor, RoundedCornerShape(22.dp))
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(dayLabel, style = MaterialTheme.typography.labelMedium, color = textColor, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text       = dayLabel,
+                        style      = MaterialTheme.typography.labelMedium,
+                        color      = textColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.height(5.dp))
                     if (hasWorkout) {
-                        Icon(Icons.Default.Check, contentDescription = null, tint = Indigo900, modifier = Modifier.size(14.dp))
+                        Icon(
+                            imageVector        = Icons.Default.Check,
+                            contentDescription = "Entrenado",
+                            tint               = Indigo900,
+                            modifier           = Modifier.size(15.dp)
+                        )
                     } else {
-                        // Gray600 ahora proviene de Color.kt via el import theme.*
-                        Box(Modifier.size(6.dp).clip(CircleShape).background(if (isToday) Violet400 else Gray600))
+                        Box(
+                            Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (isToday) Violet400 else Gray600)
+                        )
                     }
                 }
             }
@@ -340,58 +448,64 @@ private fun NewWeekDayIndicator(weekSessions: List<WorkoutSessionEntity>) {
 
 // ─── Componente: Timeline de Historial Reciente ───────────────────────────────
 
-/**
- * Devuelve el nombre legible del tipo de entrenamiento basado en [type].
- */
 private fun workoutTypeName(type: String): String = when (type) {
     "STRENGTH" -> "Entrenamiento de Fuerza"
     "CARDIO"   -> "Entrenamiento de Cardio"
     "REST"     -> "Día de Descanso"
-    else       -> "Entrenamiento"
+    else       -> "Entrenamiento General"
 }
 
 @Composable
 private fun RecentWorkoutsTimeline(sessions: List<WorkoutSessionEntity>) {
     val zone = ZoneId.systemDefault()
-    val today = java.time.LocalDate.now()
+    val today = LocalDate.now()
     val formatter = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", Locale("es"))
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(22.dp))
             .background(Indigo800)
-            .padding(16.dp),
+            .border(1.dp, Indigo700, RoundedCornerShape(22.dp))
+            .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        sessions.take(5).forEachIndexed { index, session ->
+        sessions.take(6).forEachIndexed { index, session ->
             val dt = Instant.ofEpochMilli(session.dateMillis).atZone(zone).toLocalDate()
             val dateStr = when {
-                dt == today             -> "Hoy"
+                dt == today -> "Hoy"
                 dt == today.minusDays(1) -> "Ayer"
                 else -> dt.format(formatter).replaceFirstChar { it.uppercase() }
             }
 
-            // Nombre legible derivado del tipo de sesión almacenado
-            val sessionName = workoutTypeName(session.type)
+            val typeTitle = workoutTypeName(session.type)
+            val isStrength = session.type == "STRENGTH"
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 // Eje visual del timeline
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(end = 16.dp)) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier            = Modifier.padding(end = 16.dp)
+                ) {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
                             .background(Violet400.copy(alpha = 0.2f))
                     ) {
-                        Icon(Icons.Default.FitnessCenter, contentDescription = null, tint = Violet300, modifier = Modifier.size(18.dp))
+                        Icon(
+                            imageVector        = if (isStrength) Icons.Default.FitnessCenter else Icons.Default.DirectionsRun,
+                            contentDescription = null,
+                            tint               = Violet300,
+                            modifier           = Modifier.size(19.dp)
+                        )
                     }
-                    if (index < sessions.take(5).size - 1) {
+                    if (index < sessions.take(6).size - 1) {
                         Box(
                             modifier = Modifier
                                 .width(2.dp)
-                                .height(40.dp)
+                                .height(42.dp)
                                 .background(Indigo600)
                         )
                     }
@@ -399,14 +513,18 @@ private fun RecentWorkoutsTimeline(sessions: List<WorkoutSessionEntity>) {
 
                 // Contenido de la sesión
                 Column(modifier = Modifier.weight(1f).padding(top = 4.dp)) {
-                    Text(sessionName, style = MaterialTheme.typography.titleSmall, color = White, fontWeight = FontWeight.Bold)
+                    Text(
+                        text       = typeTitle,
+                        style      = MaterialTheme.typography.titleSmall,
+                        color      = White,
+                        fontWeight = FontWeight.Bold
+                    )
                     Spacer(Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Schedule, contentDescription = null, tint = Gray500, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.Schedule, contentDescription = null, tint = Gray500, modifier = Modifier.size(13.dp))
                         Spacer(Modifier.width(4.dp))
-                        // U+00B7 MIDDLE DOT como separador entre fecha y duración
                         Text(
-                            text  = "$dateStr \u00B7 ${if (session.durationMinutes > 0) "${session.durationMinutes} min" else "45 min"}",
+                            text  = "$dateStr · ${if (session.durationMinutes > 0) "${session.durationMinutes} min" else "45 min"}",
                             style = MaterialTheme.typography.bodySmall,
                             color = Gray400
                         )
@@ -428,78 +546,83 @@ private fun AddWorkoutDialog(
     var repsText by remember { mutableStateOf("10") }
     var weightText by remember { mutableStateOf("60") }
     var durationText by remember { mutableStateOf("45") }
-
-    // Estado de error de validación para la duración
     var durationError by remember { mutableStateOf(false) }
 
-    // Colores compartidos para los OutlinedTextField, coherentes con el resto de la app
     val textFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor   = Violet400,
         unfocusedBorderColor = Indigo600,
         focusedTextColor     = White,
         unfocusedTextColor   = White,
         focusedLabelColor    = Violet300,
-        unfocusedLabelColor  = Gray400
+        unfocusedLabelColor  = Gray400,
+        errorBorderColor     = MaterialTheme.colorScheme.error,
+        errorLabelColor      = MaterialTheme.colorScheme.error
     )
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor   = Indigo800,
-        title = { Text("Registrar Entrenamiento", color = White, fontWeight = FontWeight.Bold) },
+        shape            = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.FitnessCenter, contentDescription = null, tint = Violet300, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Registrar Entrenamiento", color = White, fontWeight = FontWeight.Bold)
+            }
+        },
         text = {
             Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.verticalScroll(rememberScrollState())
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier            = Modifier.verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    text = "Añade manualmente la duración de tu sesión. Si lo deseas, puedes apuntar tu ejercicio principal.",
+                    text  = "Añade la duración y si lo deseas el ejercicio principal que realizaste hoy.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Gray300
                 )
 
-                // Campo duración con validación: debe ser > 0
                 OutlinedTextField(
-                    value = durationText,
-                    onValueChange = {
+                    value           = durationText,
+                    onValueChange   = {
                         durationText = it
-                        // Limpiar error en cuanto el usuario empiece a corregir el valor
-                        durationError = false
+                        durationError = (it.toIntOrNull() ?: 0) <= 0
                     },
-                    label = { Text("Duración Total (minutos)") },
+                    label           = { Text("Duración Total (minutos)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                    isError = durationError,
-                    supportingText = if (durationError) {
+                    singleLine      = true,
+                    modifier        = Modifier.fillMaxWidth(),
+                    isError         = durationError,
+                    supportingText  = if (durationError) {
                         { Text("La duración debe ser mayor que 0", color = MaterialTheme.colorScheme.error) }
                     } else null,
                     colors = textFieldColors
                 )
 
                 OutlinedTextField(
-                    value = exerciseName,
+                    value         = exerciseName,
                     onValueChange = { exerciseName = it },
-                    label = { Text("Ejercicio Principal (Opcional)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = textFieldColors
+                    label         = { Text("Ejercicio Principal (Opcional)") },
+                    singleLine    = true,
+                    modifier      = Modifier.fillMaxWidth(),
+                    colors        = textFieldColors
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
-                        value = repsText,
-                        onValueChange = { repsText = it },
-                        label = { Text("Reps") },
+                        value           = repsText,
+                        onValueChange   = { repsText = it },
+                        label           = { Text("Reps") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                        colors = textFieldColors
+                        modifier        = Modifier.weight(1f),
+                        colors          = textFieldColors
                     )
                     OutlinedTextField(
-                        value = weightText,
-                        onValueChange = { weightText = it },
-                        label = { Text("Peso (kg)") },
+                        value           = weightText,
+                        onValueChange   = { weightText = it },
+                        label           = { Text("Peso (kg)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                        colors = textFieldColors
+                        modifier        = Modifier.weight(1f),
+                        colors          = textFieldColors
                     )
                 }
             }
@@ -508,7 +631,6 @@ private fun AddWorkoutDialog(
             Button(
                 onClick = {
                     val duration = durationText.toIntOrNull() ?: 0
-                    // Validación: la duración debe ser mayor que 0
                     if (duration <= 0) {
                         durationError = true
                         return@Button
@@ -517,7 +639,8 @@ private fun AddWorkoutDialog(
                     val weight = weightText.toFloatOrNull() ?: 0f
                     onSave(duration, exerciseName.trim(), reps, weight)
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)
+                colors = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900),
+                shape  = RoundedCornerShape(12.dp)
             ) {
                 Text("Guardar", fontWeight = FontWeight.Bold)
             }

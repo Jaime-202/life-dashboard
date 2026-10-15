@@ -26,6 +26,9 @@ interface WorkoutDao {
     @Query("SELECT * FROM workout_sessions ORDER BY dateMillis DESC LIMIT :limit")
     suspend fun getRecentSessions(limit: Int): List<WorkoutSessionEntity>
 
+    @Query("SELECT * FROM workout_sessions ORDER BY dateMillis DESC LIMIT :limit")
+    fun observeRecentSessions(limit: Int): Flow<List<WorkoutSessionEntity>>
+
     @Query("SELECT COUNT(*) FROM workout_sessions WHERE type = 'STRENGTH' AND dateMillis >= :weekStartMillis")
     suspend fun countStrengthSessionsThisWeek(weekStartMillis: Long): Int
 
