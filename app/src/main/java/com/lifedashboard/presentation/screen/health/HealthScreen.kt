@@ -6,8 +6,10 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,8 +21,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -94,24 +95,6 @@ class HealthViewModel @Inject constructor(
             _uiState.update { it.copy(isSyncing = false) }
         }
     }
-
-    fun updateStepsTarget(newTarget: Int) {
-        if (newTarget > 0) {
-            viewModelScope.launch { userPreferences.updateStepsTarget(newTarget) }
-        }
-    }
-
-    fun updateSleepTarget(newTarget: Float) {
-        if (newTarget > 0f) {
-            viewModelScope.launch { userPreferences.updateSleepTarget(newTarget) }
-        }
-    }
-
-    fun updateCaloriesTarget(newTarget: Int) {
-        if (newTarget > 0) {
-            viewModelScope.launch { userPreferences.updateCaloriesTarget(newTarget.toFloat()) }
-        }
-    }
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -119,6 +102,7 @@ class HealthViewModel @Inject constructor(
 @Composable
 fun HealthScreen(
     initialTabName: String = "PASOS",
+    onBack: () -> Unit = {},
     viewModel: HealthViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -131,7 +115,6 @@ fun HealthScreen(
     }
     var selectedTab by remember { mutableStateOf(initialTab) }
 
-    // Si cambia el parámetro de navegación (ej: el usuario pulsó en otro hábito en el dashboard)
     LaunchedEffect(initialTabName) {
         selectedTab = when (initialTabName.uppercase()) {
             "SUENO", "SUEÑO" -> HealthTab.SUENO
@@ -149,8 +132,9 @@ fun HealthScreen(
             .padding(top = 56.dp, bottom = 100.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // Cabecera superior moderna con botón de sincronización directa
+        // Cabecera superior moderna con botón de volver al panel y sincronización
         HealthHeader(
+            onBack = onBack,
             isSyncing = state.isSyncing,
             onSyncClick = { viewModel.triggerSync() }
         )
@@ -161,34 +145,26 @@ fun HealthScreen(
             onTabSelected = { selectedTab = it }
         )
 
-        // ─── Contenido según sub-apartado ────────────────────────────────
+        // ─── Contenido según sub-apartado (Visualización e Insights) ───────
         AnimatedContent(
             targetState = selectedTab,
             transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(180)) },
             label = "health_tab_content"
         ) { tab ->
             when (tab) {
-                HealthTab.PASOS -> PasosSubSection(
-                    state = state,
-                    onTargetChange = { viewModel.updateStepsTarget(it) }
-                )
-                HealthTab.SUENO -> SuenoSubSection(
-                    state = state,
-                    onTargetChange = { viewModel.updateSleepTarget(it) }
-                )
-                HealthTab.CALORIAS -> CaloriasSubSection(
-                    state = state,
-                    onTargetChange = { viewModel.updateCaloriesTarget(it) }
-                )
+                HealthTab.PASOS    -> PasosSubSection(state = state)
+                HealthTab.SUENO    -> SuenoSubSection(state = state)
+                HealthTab.CALORIAS -> CaloriasSubSection(state = state)
             }
         }
     }
 }
 
-// ─── Header ───────────────────────────────────────────────────────────────────
+// ─── Header con botón de volver al Panel ─────────────────────────────────────
 
 @Composable
 private fun HealthHeader(
+    onBack: () -> Unit,
     isSyncing: Boolean,
     onSyncClick: () -> Unit
 ) {
@@ -208,19 +184,38 @@ private fun HealthHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier              = Modifier.fillMaxWidth()
     ) {
-        Column {
-            Text(
-                text       = "Salud & Rendimiento",
-                style      = MaterialTheme.typography.headlineSmall,
-                color      = White,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text  = "Métricas biométricas en tiempo real",
-                style = MaterialTheme.typography.bodySmall,
-                color = Gray400
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick  = onBack,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Indigo800)
+                    .border(1.dp, Indigo700, CircleShape)
+            ) {
+                Icon(
+                    imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Volver al Panel",
+                    tint               = White,
+                    modifier           = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(Modifier.width(12.dp))
+
+            Column {
+                Text(
+                    text       = "Salud & Metas",
+                    style      = MaterialTheme.typography.titleLarge,
+                    color      = White,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text  = "Métricas biométricas en tiempo real",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray400
+                )
+            }
         }
 
         FilledTonalButton(
@@ -232,17 +227,17 @@ private fun HealthHeader(
             ),
             border         = BorderStroke(1.dp, Indigo700),
             shape          = RoundedCornerShape(14.dp),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector        = Icons.Default.Sync,
                     contentDescription = "Sincronizar Salud",
                     modifier           = Modifier
-                        .size(17.dp)
+                        .size(16.dp)
                         .then(if (isSyncing) Modifier.rotate(rotation) else Modifier)
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(4.dp))
                 Text(
                     text       = if (isSyncing) "Sincronizando..." else "Sincronizar",
                     fontSize   = 12.sp,
@@ -275,7 +270,7 @@ private fun ModernTabSelector(
             HealthTab.entries.forEach { tab ->
                 val isSelected = tab == selectedTab
                 val (label, icon, color) = when (tab) {
-                    HealthTab.PASOS    -> Triple("Pasos", Icons.Default.DirectionsWalk, RingSteps)
+                    HealthTab.PASOS    -> Triple("Pasos", Icons.AutoMirrored.Filled.DirectionsWalk, RingSteps)
                     HealthTab.SUENO    -> Triple("Sueño", Icons.Default.Bedtime, RingSleep)
                     HealthTab.CALORIAS -> Triple("Calorías", Icons.Default.LocalFireDepartment, Amber400)
                 }
@@ -313,20 +308,17 @@ private fun ModernTabSelector(
 // ─── Sub-apartado Pasos ───────────────────────────────────────────────────────
 
 @Composable
-private fun PasosSubSection(state: HealthUiState, onTargetChange: (Int) -> Unit) {
+private fun PasosSubSection(state: HealthUiState) {
     val todaySteps = state.last14Days.firstOrNull()?.steps ?: 0
     val todayDistKm = if ((state.last14Days.firstOrNull()?.distanceMeters ?: 0f) > 0f) {
         (state.last14Days.firstOrNull()?.distanceMeters ?: 0f) / 1000f
     } else {
-        todaySteps * 0.00075f // Estimación media
+        todaySteps * 0.00075f
     }
     val todayKcal = (todaySteps * 0.04f).toInt()
     val activeMinutes = (todaySteps / 100).coerceAtLeast(0)
 
-    val avgSteps = if (state.last14Days.isNotEmpty()) state.last14Days.map { it.steps }.average().toInt() else 0
     val progress = (todaySteps.toFloat() / state.stepsTarget).coerceIn(0f, 1f)
-
-    // Días cumplidos en la última semana
     val metDaysThisWeek = state.last14Days.take(7).count { it.steps >= state.stepsTarget }
 
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -338,7 +330,7 @@ private fun PasosSubSection(state: HealthUiState, onTargetChange: (Int) -> Unit)
             unit          = "pasos",
             progress      = progress,
             color         = RingSteps,
-            icon          = Icons.Default.DirectionsWalk,
+            icon          = Icons.AutoMirrored.Filled.DirectionsWalk,
             metric1Label  = "Distancia",
             metric1Value  = "${String.format(Locale.US, "%.2f", todayDistKm)} km",
             metric2Label  = "Quemadas",
@@ -359,23 +351,12 @@ private fun PasosSubSection(state: HealthUiState, onTargetChange: (Int) -> Unit)
 
         // Tarjeta de Consistencia y Racha
         ConsistencyCard(
-            title = "Racha de Pasos",
-            subtitle = if (metDaysThisWeek >= 5) "¡Excelente ritmo! Has cumplido la meta $metDaysThisWeek de los últimos 7 días."
-                       else "Has alcanzado tu objetivo $metDaysThisWeek de 7 días esta semana. ¡Sigue sumando!",
-            color = RingSteps,
-            badgeText = "$metDaysThisWeek / 7 días cumplidos",
-            icon = Icons.Default.EmojiEvents
-        )
-
-        // Ajuste de Objetivo con botones rápidos y campo manual
-        CustomTargetInputCard(
-            title          = "Ajustar Objetivo de Pasos",
-            unitLabel      = "pasos",
-            currentVal     = state.stepsTarget.toString(),
-            presets        = listOf(6000, 8000, 10000, 12000, 15000),
-            formatPreset   = { "${it / 1000}K" },
-            onPresetSelect = onTargetChange,
-            onSaveCustom   = { input -> input.toIntOrNull()?.let { onTargetChange(it) } }
+            title     = "Racha de Pasos Semanal",
+            subtitle  = if (metDaysThisWeek >= 5) "¡Excelente ritmo! Has cumplido la meta $metDaysThisWeek de los últimos 7 días."
+                        else "Has alcanzado tu objetivo $metDaysThisWeek de 7 días esta semana. ¡Sigue sumando pasos!",
+            color     = RingSteps,
+            badgeText = "$metDaysThisWeek / 7 días",
+            icon      = Icons.Default.EmojiEvents
         )
 
         // Historial Detallado
@@ -397,7 +378,7 @@ private fun PasosSubSection(state: HealthUiState, onTargetChange: (Int) -> Unit)
 // ─── Sub-apartado Sueño ───────────────────────────────────────────────────────
 
 @Composable
-private fun SuenoSubSection(state: HealthUiState, onTargetChange: (Float) -> Unit) {
+private fun SuenoSubSection(state: HealthUiState) {
     val todayEntity = state.last14Days.firstOrNull()
     val todaySleep = todayEntity?.sleepHours ?: 0f
     val deepHours  = todayEntity?.sleepDeepHours ?: 0f
@@ -431,8 +412,8 @@ private fun SuenoSubSection(state: HealthUiState, onTargetChange: (Float) -> Uni
             progress      = progress,
             color         = RingSleep,
             icon          = Icons.Default.Bedtime,
-            metric1Label  = "Puntuación",
-            metric1Value  = if (sleepScore > 0) "$sleepScore / 100" else "--",
+            metric1Label  = "Calidad",
+            metric1Value  = if (sleepScore > 0) "$sleepScore/100" else "--",
             metric2Label  = "Profundo",
             metric2Value  = "${String.format(Locale.US, "%.1f", deepHours)}h",
             metric3Label  = "Fase REM",
@@ -459,25 +440,14 @@ private fun SuenoSubSection(state: HealthUiState, onTargetChange: (Float) -> Uni
             formatVal = { "${String.format(Locale.US, "%.1f", it)}h" }
         )
 
-        // Deuda de Sueño
+        // Balance de Sueño Semanal (Diseño perfectamente balanceado)
         ConsistencyCard(
-            title = "Balance de Sueño Semanal",
-            subtitle = if (sleepDebt <= 0.5f) "¡Sin deuda de sueño! Estás descansando el tiempo óptimo para recuperarte."
-                       else "Deuda de sueño acumulada: ${String.format(Locale.US, "%.1f", sleepDebt)}h. Intenta acostarte 30 min antes hoy.",
-            color = if (sleepDebt <= 1f) Emerald400 else Rose400,
-            badgeText = if (sleepDebt <= 0.5f) "Descanso Óptimo" else "-${String.format(Locale.US, "%.1f", sleepDebt)}h déficit",
-            icon = Icons.Default.Nightlight
-        )
-
-        // Ajuste de Objetivo de Sueño
-        CustomTargetInputCard(
-            title          = "Ajustar Objetivo de Sueño",
-            unitLabel      = "horas",
-            currentVal     = state.sleepTarget.toString(),
-            presets        = listOf(6.5f, 7.0f, 7.5f, 8.0f, 8.5f, 9.0f),
-            formatPreset   = { "${it}h" },
-            onPresetSelect = onTargetChange,
-            onSaveCustom   = { input -> input.toFloatOrNull()?.let { onTargetChange(it) } }
+            title     = "Balance de Sueño Semanal",
+            subtitle  = if (sleepDebt <= 0.5f) "¡Sin deuda de sueño! Estás descansando el tiempo óptimo para recuperarte por completo."
+                        else "Déficit acumulado: ${String.format(Locale.US, "%.1f", sleepDebt)}h esta semana. Intenta descansar 30 min más hoy.",
+            color     = if (sleepDebt <= 1f) Emerald400 else Rose400,
+            badgeText = if (sleepDebt <= 0.5f) "Óptimo" else "-${String.format(Locale.US, "%.1f", sleepDebt)}h deuda",
+            icon      = Icons.Default.Nightlight
         )
 
         // Historial Detallado
@@ -496,12 +466,11 @@ private fun SuenoSubSection(state: HealthUiState, onTargetChange: (Float) -> Uni
 // ─── Sub-apartado Calorías ────────────────────────────────────────────────────
 
 @Composable
-private fun CaloriasSubSection(state: HealthUiState, onTargetChange: (Int) -> Unit) {
+private fun CaloriasSubSection(state: HealthUiState) {
     val todayCal = state.last14Days.firstOrNull()?.activeCalories?.toInt() ?: 0
     val progress = (todayCal.toFloat() / state.caloriesTarget).coerceIn(0f, 1f)
-    val bmr = 1650 // Tasa metabólica basal estimada
+    val bmr = 1650
     val totalExpenditure = bmr + todayCal
-
     val avgCal = if (state.last14Days.isNotEmpty()) state.last14Days.map { it.activeCalories }.average().toInt() else 0
 
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -534,26 +503,15 @@ private fun CaloriasSubSection(state: HealthUiState, onTargetChange: (Int) -> Un
 
         // Intensidad y Equivalencias
         ConsistencyCard(
-            title = "Intensidad del Gasto Calórico",
-            subtitle = when {
-                todayCal >= state.caloriesTarget -> "¡Nivel de actividad alto! Has alcanzado tu gasto objetivo para hoy."
-                todayCal >= (state.caloriesTarget * 0.6f) -> "Actividad moderada. Una caminata o entrenamiento ligero te pondrá en tu meta."
+            title     = "Intensidad del Gasto Calórico",
+            subtitle  = when {
+                todayCal >= state.caloriesTarget -> "¡Nivel de actividad alto! Has alcanzado tu gasto calórico objetivo para hoy."
+                todayCal >= (state.caloriesTarget * 0.6f) -> "Actividad moderada. Una caminata o sesión ligera completará tu objetivo diario."
                 else -> "Día de baja actividad o recuperación. Mantén una buena hidratación."
             },
-            color = Amber400,
-            badgeText = if (todayCal >= state.caloriesTarget) "Objetivo Superado" else "En Progreso",
-            icon = Icons.Default.Bolt
-        )
-
-        // Ajuste de Objetivo de Calorías
-        CustomTargetInputCard(
-            title          = "Ajustar Objetivo de Calorías",
-            unitLabel      = "kcal",
-            currentVal     = state.caloriesTarget.toString(),
-            presets        = listOf(400, 600, 800, 1000, 1200),
-            formatPreset   = { "$it" },
-            onPresetSelect = onTargetChange,
-            onSaveCustom   = { input -> input.toIntOrNull()?.let { onTargetChange(it) } }
+            color     = Amber400,
+            badgeText = if (todayCal >= state.caloriesTarget) "Cumplido" else "En Progreso",
+            icon      = Icons.Default.Bolt
         )
 
         // Historial Detallado
@@ -657,7 +615,7 @@ private fun HealthHeroCard(
                     style      = MaterialTheme.typography.headlineLarge,
                     color      = White,
                     fontWeight = FontWeight.Bold,
-                    fontSize   = 36.sp
+                    fontSize   = 34.sp
                 )
                 Text(
                     text     = " / $targetVal $unit",
@@ -678,25 +636,40 @@ private fun HealthHeroCard(
                 trackColor = RingTrack
             )
 
-            // Sub-métricas complementarias
+            // Sub-métricas perfectamente equilibradas en 3 columnas
             Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier              = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth()
             ) {
-                SubMetricPill(label = metric1Label, value = metric1Value)
-                SubMetricPill(label = metric2Label, value = metric2Value)
-                SubMetricPill(label = metric3Label, value = metric3Value)
+                SubMetricPill(label = metric1Label, value = metric1Value, modifier = Modifier.weight(1f))
+                SubMetricPill(label = metric2Label, value = metric2Value, modifier = Modifier.weight(1f))
+                SubMetricPill(label = metric3Label, value = metric3Value, modifier = Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun SubMetricPill(label: String, value: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = value, style = MaterialTheme.typography.titleSmall, color = White, fontWeight = FontWeight.Bold)
+private fun SubMetricPill(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier            = modifier
+    ) {
+        Text(
+            text       = value,
+            style      = MaterialTheme.typography.titleSmall,
+            color      = White,
+            fontWeight = FontWeight.Bold,
+            maxLines   = 1,
+            overflow   = TextOverflow.Ellipsis
+        )
         Spacer(Modifier.height(2.dp))
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp)
+        Text(
+            text     = label,
+            style    = MaterialTheme.typography.labelSmall,
+            color    = Gray400,
+            fontSize = 11.sp,
+            maxLines = 1
+        )
     }
 }
 
@@ -776,10 +749,9 @@ private fun WeeklyBarChart(
                             )
                             Spacer(Modifier.height(4.dp))
 
-                            // Barra vertical animada
                             Box(
                                 modifier = Modifier
-                                    .width(22.dp)
+                                    .width(20.dp)
                                     .fillMaxHeight(fraction)
                                     .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
                                     .background(
@@ -840,7 +812,7 @@ private fun SleepStagesCard(
                 fontWeight = FontWeight.Bold
             )
 
-            // Barra segmentada multicolor de fases
+            // Barra segmentada de fases
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -873,22 +845,27 @@ private fun SleepStagesCard(
                 }
             }
 
-            // Leyendas de las 3 fases
+            // Leyendas equilibradas en 3 columnas
             Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier              = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth()
             ) {
-                StageLegend(label = "Profundo", hours = deepHours, pct = deepPct, color = Violet400)
-                StageLegend(label = "Fase REM", hours = remHours, pct = remPct, color = RingSleep)
-                StageLegend(label = "Ligero", hours = lightHours, pct = lightPct, color = Indigo600)
+                StageLegend(label = "Profundo", hours = deepHours, pct = deepPct, color = Violet400, modifier = Modifier.weight(1f))
+                StageLegend(label = "Fase REM", hours = remHours, pct = remPct, color = RingSleep, modifier = Modifier.weight(1f))
+                StageLegend(label = "Ligero", hours = lightHours, pct = lightPct, color = Indigo600, modifier = Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun StageLegend(label: String, hours: Float, pct: Int, color: Color) {
-    Column {
+private fun StageLegend(
+    label: String,
+    hours: Float,
+    pct: Int,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
@@ -897,7 +874,7 @@ private fun StageLegend(label: String, hours: Float, pct: Int, color: Color) {
                     .background(color)
             )
             Spacer(Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelSmall, color = Gray400)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp)
         }
         Spacer(Modifier.height(2.dp))
         Text(
@@ -909,7 +886,7 @@ private fun StageLegend(label: String, hours: Float, pct: Int, color: Color) {
     }
 }
 
-// ─── Componente: Consistencia & Racha ─────────────────────────────────────────
+// ─── Componente: Consistencia & Racha (Sin estiramientos) ─────────────────────
 
 @Composable
 private fun ConsistencyCard(
@@ -922,132 +899,66 @@ private fun ConsistencyCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(22.dp))
             .background(Indigo800)
-            .border(1.dp, Indigo700, RoundedCornerShape(20.dp))
+            .border(1.dp, Indigo700, RoundedCornerShape(22.dp))
             .padding(16.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier          = Modifier.fillMaxWidth()
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(color.copy(alpha = 0.18f))
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier              = Modifier.fillMaxWidth()
             ) {
-                Icon(icon, null, tint = color, modifier = Modifier.size(22.dp))
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
                 Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment     = Alignment.CenterVertically,
-                    modifier              = Modifier.fillMaxWidth()
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier          = Modifier.weight(1f, fill = false)
                 ) {
-                    Text(title, style = MaterialTheme.typography.titleSmall, color = White, fontWeight = FontWeight.Bold)
                     Box(
+                        contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(color.copy(alpha = 0.2f))
-                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(color.copy(alpha = 0.18f))
                     ) {
-                        Text(badgeText, style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                        Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
                     }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text       = title,
+                        style      = MaterialTheme.typography.titleSmall,
+                        color      = White,
+                        fontWeight = FontWeight.Bold,
+                        maxLines   = 1,
+                        overflow   = TextOverflow.Ellipsis
+                    )
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Gray400, lineHeight = 16.sp)
-            }
-        }
-    }
-}
 
-// ─── Componente: Ajuste de Meta Personalizada ─────────────────────────────────
+                Spacer(Modifier.width(8.dp))
 
-@Composable
-private fun <T> CustomTargetInputCard(
-    title: String,
-    unitLabel: String,
-    currentVal: String,
-    presets: List<T>,
-    formatPreset: (T) -> String,
-    onPresetSelect: (T) -> Unit,
-    onSaveCustom: (String) -> Unit
-) {
-    var textInput by remember(currentVal) { mutableStateOf(currentVal) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Indigo800)
-            .border(1.dp, Indigo700, RoundedCornerShape(20.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text(title, style = MaterialTheme.typography.titleSmall, color = White, fontWeight = FontWeight.Bold)
-
-        Row(
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier              = Modifier.fillMaxWidth()
-        ) {
-            OutlinedTextField(
-                value           = textInput,
-                onValueChange   = { textInput = it },
-                label           = { Text("Objetivo ($unitLabel)") },
-                singleLine      = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors          = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor   = Violet400,
-                    unfocusedBorderColor = Indigo600,
-                    focusedTextColor     = White,
-                    unfocusedTextColor   = White,
-                    focusedLabelColor    = Violet300,
-                    unfocusedLabelColor  = Gray400
-                ),
-                modifier = Modifier.weight(1f)
-            )
-
-            Button(
-                onClick = { onSaveCustom(textInput) },
-                colors  = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900),
-                shape   = RoundedCornerShape(12.dp),
-                modifier = Modifier.padding(top = 4.dp)
-            ) {
-                Text("Guardar", fontWeight = FontWeight.Bold)
-            }
-        }
-
-        // Acceso rápido / Presets
-        Text("Acceso rápido:", style = MaterialTheme.typography.labelSmall, color = Gray400)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier              = Modifier.fillMaxWidth()
-        ) {
-            presets.forEach { option ->
                 Box(
-                    contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Indigo700)
-                        .clickable {
-                            textInput = option.toString()
-                            onPresetSelect(option)
-                        }
-                        .padding(vertical = 8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(color.copy(alpha = 0.18f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text       = formatPreset(option),
+                        text       = badgeText,
                         style      = MaterialTheme.typography.labelSmall,
-                        color      = White,
-                        fontWeight = FontWeight.Bold
+                        color      = color,
+                        fontWeight = FontWeight.Bold,
+                        fontSize   = 11.sp,
+                        maxLines   = 1
                     )
                 }
             }
+
+            Text(
+                text       = subtitle,
+                style      = MaterialTheme.typography.bodySmall,
+                color      = Gray300,
+                lineHeight = 18.sp
+            )
         }
     }
 }
@@ -1104,9 +1015,9 @@ private fun HistoryListCard(
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            text  = subFormat(item),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Gray400,
+                            text     = subFormat(item),
+                            style    = MaterialTheme.typography.bodySmall,
+                            color    = Gray400,
                             fontSize = 11.sp
                         )
                     }

@@ -40,7 +40,11 @@ fun NavGraph(navController: NavHostController) {
             )
         }
         composable(Screen.Workout.route) {
-            WorkoutScreen()
+            WorkoutScreen(
+                onBack = {
+                    navController.popBackStack(Screen.Dashboard.route, inclusive = false)
+                }
+            )
         }
         composable(
             route = Screen.Health.route,
@@ -52,7 +56,12 @@ fun NavGraph(navController: NavHostController) {
             )
         ) { backStackEntry ->
             val tab = backStackEntry.arguments?.getString("tab") ?: "PASOS"
-            HealthScreen(initialTabName = tab)
+            HealthScreen(
+                initialTabName = tab,
+                onBack = {
+                    navController.popBackStack(Screen.Dashboard.route, inclusive = false)
+                }
+            )
         }
         composable(Screen.Settings.route) {
             SettingsScreen()

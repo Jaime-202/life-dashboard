@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,6 +19,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -26,6 +29,7 @@ import androidx.lifecycle.viewModelScope
 import com.lifedashboard.core.worker.WorkManagerScheduler
 import com.lifedashboard.data.local.dao.WorkoutDao
 import com.lifedashboard.data.local.entity.WorkoutSessionEntity
+import com.lifedashboard.data.repository.UserPreferencesRepository
 import com.lifedashboard.presentation.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +50,8 @@ data class WorkoutUiState(
     val weekSessions: List<WorkoutSessionEntity> = emptyList(),
     val uniqueTrainedDaysThisWeek: Int = 0,
     val totalMinutesThisWeek: Int = 0,
+    val workoutDaysTarget: Int = 4,
+    val workoutMinutesTarget: Int = 180,
     val strengthCount: Int = 0,
     val cardioCount: Int = 0,
     val isLoading: Boolean = true,
@@ -55,7 +61,8 @@ data class WorkoutUiState(
 @HiltViewModel
 class WorkoutViewModel @Inject constructor(
     private val workoutDao: WorkoutDao,
-    private val scheduler: WorkManagerScheduler
+    private val scheduler: WorkManagerScheduler,
+    private val userPreferences: UserPreferencesRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(WorkoutUiState())
@@ -72,8 +79,9 @@ class WorkoutViewModel @Inject constructor(
 
         combine(
             workoutDao.getSessionsInRange(weekStart, nextWeek),
-            workoutDao.observeRecentSessions(30)
-        ) { weekSessionsList, allRecent ->
+            workoutDao.observeRecentSessions(30),
+            userPreferences.userGoals
+        ) { weekSessionsList, allRecent, goals ->
             val uniqueDays = weekSessionsList.groupBy {
                 Instant.ofEpochMilli(it.dateMillis).atZone(zone).toLocalDate()
             }
@@ -98,6 +106,8 @@ class WorkoutViewModel @Inject constructor(
                 weekSessions              = weekSessionsList,
                 uniqueTrainedDaysThisWeek = trainedDaysCount,
                 totalMinutesThisWeek      = totalMins,
+                workoutDaysTarget         = goals.workoutDaysTarget,
+                workoutMinutesTarget      = goals.workoutMinutesTarget,
                 strengthCount             = strength,
                 cardioCount               = cardio,
                 isLoading                 = false,
@@ -124,7 +134,10 @@ class WorkoutViewModel @Inject constructor(
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 @Composable
-fun WorkoutScreen(viewModel: WorkoutViewModel = hiltViewModel()) {
+fun WorkoutScreen(
+    onBack: () -> Unit = {},
+    viewModel: WorkoutViewModel = hiltViewModel()
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column(
@@ -136,16 +149,19 @@ fun WorkoutScreen(viewModel: WorkoutViewModel = hiltViewModel()) {
             .padding(top = 56.dp, bottom = 100.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // Encabezado con acción de sincronización directa
+        // Encabezado con acción de volver al panel y sincronización directa
         WorkoutHeader(
+            onBack = onBack,
             isSyncing = state.isSyncing,
             onSyncClick = { viewModel.triggerSync() }
         )
 
         // ─── Tarjeta de Volumen & Racha Semanal ─────────────────────────────
         WeeklySummaryCard(
-            trainedDays  = state.uniqueTrainedDaysThisWeek,
-            totalMinutes = state.totalMinutesThisWeek
+            trainedDays   = state.uniqueTrainedDaysThisWeek,
+            totalMinutes  = state.totalMinutesThisWeek,
+            targetDays    = state.workoutDaysTarget,
+            targetMinutes = state.workoutMinutesTarget
         )
 
         // ─── Calendario Semanal de Consistencia (L a D) ───────────────────
@@ -201,6 +217,7 @@ fun WorkoutScreen(viewModel: WorkoutViewModel = hiltViewModel()) {
 
 @Composable
 private fun WorkoutHeader(
+    onBack: () -> Unit,
     isSyncing: Boolean,
     onSyncClick: () -> Unit
 ) {
@@ -220,27 +237,47 @@ private fun WorkoutHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier              = Modifier.fillMaxWidth()
     ) {
-        Column {
-            Text(
-                text       = "Entrenamiento",
-                style      = MaterialTheme.typography.headlineSmall,
-                color      = White,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(Emerald400)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick  = onBack,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Indigo800)
+                    .border(1.dp, Indigo700, CircleShape)
+            ) {
+                Icon(
+                    imageVector        = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Volver al Panel",
+                    tint               = White,
+                    modifier           = Modifier.size(20.dp)
                 )
-                Spacer(Modifier.width(6.dp))
+            }
+
+            Spacer(Modifier.width(12.dp))
+
+            Column {
                 Text(
-                    text  = "Sincronizado vía Health Connect",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Gray400
+                    text       = "Entrenamiento",
+                    style      = MaterialTheme.typography.titleLarge,
+                    color      = White,
+                    fontWeight = FontWeight.Bold
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(Emerald400)
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        text  = "Health Connect activo",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Gray400,
+                        fontSize = 11.sp
+                    )
+                }
             }
         }
 
@@ -253,17 +290,17 @@ private fun WorkoutHeader(
             ),
             border         = BorderStroke(1.dp, Indigo700),
             shape          = RoundedCornerShape(14.dp),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector        = Icons.Default.Sync,
                     contentDescription = "Sincronizar entrenamientos",
                     modifier           = Modifier
-                        .size(17.dp)
+                        .size(16.dp)
                         .then(if (isSyncing) Modifier.rotate(rotation) else Modifier)
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(4.dp))
                 Text(
                     text       = if (isSyncing) "Sincronizando..." else "Sincronizar",
                     fontSize   = 12.sp,
@@ -277,10 +314,13 @@ private fun WorkoutHeader(
 // ─── Componente: Resumen Semanal ──────────────────────────────────────────────
 
 @Composable
-private fun WeeklySummaryCard(trainedDays: Int, totalMinutes: Int) {
-    val targetDays = 4
-    val targetMinutes = 180
-    val progress = (totalMinutes.toFloat() / targetMinutes).coerceIn(0f, 1f)
+private fun WeeklySummaryCard(
+    trainedDays: Int,
+    totalMinutes: Int,
+    targetDays: Int,
+    targetMinutes: Int
+) {
+    val progress = (totalMinutes.toFloat() / targetMinutes.coerceAtLeast(1)).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier
@@ -300,7 +340,10 @@ private fun WeeklySummaryCard(trainedDays: Int, totalMinutes: Int) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier              = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier          = Modifier.weight(1f, fill = false)
+                ) {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
@@ -324,12 +367,14 @@ private fun WeeklySummaryCard(trainedDays: Int, totalMinutes: Int) {
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text  = "Meta de consistencia: $targetDays sesiones/sem",
+                            text  = "Meta: $targetDays sesiones / semana",
                             style = MaterialTheme.typography.bodySmall,
                             color = Gray400
                         )
                     }
                 }
+
+                Spacer(Modifier.width(8.dp))
 
                 Box(
                     modifier = Modifier
@@ -341,7 +386,8 @@ private fun WeeklySummaryCard(trainedDays: Int, totalMinutes: Int) {
                         text       = "$trainedDays / $targetDays días",
                         style      = MaterialTheme.typography.labelSmall,
                         color      = if (trainedDays >= targetDays) Emerald400 else Violet300,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines   = 1
                     )
                 }
             }
@@ -381,8 +427,10 @@ private fun WeeklySummaryCard(trainedDays: Int, totalMinutes: Int) {
                             else "Faltan ${targetMinutes - totalMinutes} min para tu meta",
                     style = MaterialTheme.typography.labelMedium,
                     color = if (totalMinutes >= targetMinutes) Emerald400 else Violet300,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
+                Spacer(Modifier.width(8.dp))
                 Text(
                     text  = "$trainedDays ${if (trainedDays == 1) "sesión" else "sesiones"}",
                     style = MaterialTheme.typography.labelSmall,
@@ -393,7 +441,7 @@ private fun WeeklySummaryCard(trainedDays: Int, totalMinutes: Int) {
     }
 }
 
-// ─── Componente: Indicador de Días de la Semana ───────────────────────────────
+// ─── Componente: Indicador de Días de la Semana (Equilibrado para cualquier pantalla) ──
 
 @Composable
 private fun NewWeekDayIndicator(weekSessions: List<WorkoutSessionEntity>) {
@@ -408,7 +456,7 @@ private fun NewWeekDayIndicator(weekSessions: List<WorkoutSessionEntity>) {
     }
 
     Row(
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier              = Modifier.fillMaxWidth()
     ) {
         days.forEachIndexed { idx, dayLabel ->
@@ -422,11 +470,11 @@ private fun NewWeekDayIndicator(weekSessions: List<WorkoutSessionEntity>) {
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .width(42.dp)
-                    .height(58.dp)
-                    .clip(RoundedCornerShape(22.dp))
+                    .weight(1f)
+                    .height(56.dp)
+                    .clip(RoundedCornerShape(18.dp))
                     .background(bgColor)
-                    .border(1.5.dp, borderColor, RoundedCornerShape(22.dp))
+                    .border(1.5.dp, borderColor, RoundedCornerShape(18.dp))
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
@@ -435,7 +483,7 @@ private fun NewWeekDayIndicator(weekSessions: List<WorkoutSessionEntity>) {
                         color      = textColor,
                         fontWeight = FontWeight.Bold
                     )
-                    Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(4.dp))
                     if (hasWorkout) {
                         Icon(
                             imageVector        = Icons.Default.Check,
@@ -446,7 +494,7 @@ private fun NewWeekDayIndicator(weekSessions: List<WorkoutSessionEntity>) {
                     } else {
                         Box(
                             Modifier
-                                .size(6.dp)
+                                .size(5.dp)
                                 .clip(CircleShape)
                                 .background(if (isToday) Violet400 else Gray600)
                         )
@@ -517,7 +565,7 @@ private fun TrainingDistributionCard(
                 ) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.DirectionsRun, null, tint = Cyan400, modifier = Modifier.size(16.dp))
+                            Icon(Icons.AutoMirrored.Filled.DirectionsRun, null, tint = Cyan400, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("Cardio", style = MaterialTheme.typography.labelSmall, color = Gray300)
                         }
@@ -584,7 +632,7 @@ private fun RecentWorkoutsTimeline(sessions: List<WorkoutSessionEntity>) {
                             .background(Violet400.copy(alpha = 0.2f))
                     ) {
                         Icon(
-                            imageVector        = if (isStrength) Icons.Default.FitnessCenter else Icons.Default.DirectionsRun,
+                            imageVector        = if (isStrength) Icons.Default.FitnessCenter else Icons.AutoMirrored.Filled.DirectionsRun,
                             contentDescription = null,
                             tint               = Violet300,
                             modifier           = Modifier.size(19.dp)
@@ -611,8 +659,12 @@ private fun RecentWorkoutsTimeline(sessions: List<WorkoutSessionEntity>) {
                             text       = typeTitle,
                             style      = MaterialTheme.typography.titleSmall,
                             color      = White,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines   = 1,
+                            overflow   = TextOverflow.Ellipsis,
+                            modifier   = Modifier.weight(1f, fill = false)
                         )
+                        Spacer(Modifier.width(8.dp))
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
@@ -620,10 +672,11 @@ private fun RecentWorkoutsTimeline(sessions: List<WorkoutSessionEntity>) {
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text     = if (session.durationMinutes > 0) "${session.durationMinutes} min" else "45 min",
-                                style    = MaterialTheme.typography.labelSmall,
-                                color    = Violet300,
-                                fontWeight = FontWeight.SemiBold
+                                text       = if (session.durationMinutes > 0) "${session.durationMinutes} min" else "45 min",
+                                style      = MaterialTheme.typography.labelSmall,
+                                color      = Violet300,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines   = 1
                             )
                         }
                     }
@@ -632,22 +685,25 @@ private fun RecentWorkoutsTimeline(sessions: List<WorkoutSessionEntity>) {
                         Icon(Icons.Default.Schedule, contentDescription = null, tint = Gray500, modifier = Modifier.size(13.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            text  = dateStr,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Gray400
+                            text     = dateStr,
+                            style    = MaterialTheme.typography.bodySmall,
+                            color    = Gray400,
+                            maxLines = 1
                         )
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.width(8.dp))
                         Box(
                             modifier = Modifier
                                 .size(4.dp)
                                 .clip(CircleShape)
                                 .background(Gray600)
                         )
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.width(8.dp))
                         Text(
-                            text  = "Health Connect ✓",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Emerald400
+                            text       = "Health Connect ✓",
+                            style      = MaterialTheme.typography.labelSmall,
+                            color      = Emerald400,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines   = 1
                         )
                     }
                 }

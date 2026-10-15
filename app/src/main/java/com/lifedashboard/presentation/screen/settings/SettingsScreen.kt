@@ -12,7 +12,9 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -32,6 +35,7 @@ import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.DistanceRecord
+import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -50,6 +54,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import java.util.Locale
 import javax.inject.Inject
 
 enum class ThemeMode { OSCURO, CLARO, SISTEMA }
@@ -64,6 +69,11 @@ data class SettingsState(
     val showUpcomingEvents: Boolean = true,
     val dailyReminders: Boolean = true,
     val geminiApiKey: String = "",
+    val stepsTarget: Int = 10000,
+    val sleepTargetHours: Float = 8.0f,
+    val caloriesTarget: Float = 2200f,
+    val workoutDaysTarget: Int = 4,
+    val workoutMinutesTarget: Int = 180,
     val healthConnectGranted: Boolean = false,
     val calendarGranted: Boolean = false
 )
@@ -86,13 +96,18 @@ class SettingsViewModel @Inject constructor(
                     else      -> ThemeMode.OSCURO
                 }
                 _state.value = _state.value.copy(
-                    userName           = goals.userName,
-                    themeMode          = currentTheme,
-                    showHeroRings      = goals.showHeroRings,
-                    showAiInsight      = goals.showAiInsight,
-                    showUpcomingEvents = goals.showUpcomingEvents,
-                    dailyReminders     = goals.dailyReminders,
-                    geminiApiKey       = goals.geminiApiKey
+                    userName             = goals.userName,
+                    themeMode            = currentTheme,
+                    showHeroRings        = goals.showHeroRings,
+                    showAiInsight        = goals.showAiInsight,
+                    showUpcomingEvents   = goals.showUpcomingEvents,
+                    dailyReminders       = goals.dailyReminders,
+                    geminiApiKey         = goals.geminiApiKey,
+                    stepsTarget          = goals.stepsTarget,
+                    sleepTargetHours     = goals.sleepTargetHours,
+                    caloriesTarget       = goals.caloriesTarget,
+                    workoutDaysTarget    = goals.workoutDaysTarget,
+                    workoutMinutesTarget = goals.workoutMinutesTarget
                 )
             }
             .launchIn(viewModelScope)
@@ -106,6 +121,31 @@ class SettingsViewModel @Inject constructor(
 
     fun updateGeminiApiKey(apiKey: String) {
         viewModelScope.launch { userPreferences.updateGeminiApiKey(apiKey.trim()) }
+    }
+
+    fun updateStepsTarget(target: Int) {
+        if (target > 0) {
+            viewModelScope.launch { userPreferences.updateStepsTarget(target) }
+        }
+    }
+
+    fun updateSleepTarget(target: Float) {
+        if (target > 0f) {
+            viewModelScope.launch { userPreferences.updateSleepTarget(target) }
+        }
+    }
+
+    fun updateCaloriesTarget(target: Float) {
+        if (target > 0f) {
+            viewModelScope.launch { userPreferences.updateCaloriesTarget(target) }
+        }
+    }
+
+    fun updateWorkoutTargets(days: Int, minutes: Int) {
+        viewModelScope.launch {
+            if (days > 0) userPreferences.updateWorkoutDaysTarget(days)
+            if (minutes > 0) userPreferences.updateWorkoutMinutesTarget(minutes)
+        }
     }
 
     fun checkPermissions(context: Context) {
@@ -185,15 +225,20 @@ class SettingsViewModel @Inject constructor(
 fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+
     var showUserModal by remember { mutableStateOf(false) }
     var showApiKeyModal by remember { mutableStateOf(false) }
+    var showStepsModal by remember { mutableStateOf(false) }
+    var showSleepModal by remember { mutableStateOf(false) }
+    var showCaloriesModal by remember { mutableStateOf(false) }
+    var showWorkoutModal by remember { mutableStateOf(false) }
 
     val healthPermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
         HealthPermission.getReadPermission(DistanceRecord::class),
         HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
         HealthPermission.getReadPermission(SleepSessionRecord::class),
-        HealthPermission.getReadPermission(androidx.health.connect.client.records.ExerciseSessionRecord::class)
+        HealthPermission.getReadPermission(ExerciseSessionRecord::class)
     )
 
     val healthPermissionLauncher = rememberLauncherForActivityResult(
@@ -237,6 +282,80 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             onOpenProfile = { showUserModal = true },
             onSyncAll = { viewModel.forceSyncAll(context) }
         )
+
+        // ─── Metas & Objetivos Personales (Centralizado) ───────────────────
+        SectionHeader("Metas & Objetivos Personales")
+        SettingsCard {
+            SettingsItem(
+                icon      = Icons.AutoMirrored.Filled.DirectionsWalk,
+                iconColor = RingSteps,
+                title     = "Objetivo de Pasos",
+                subtitle  = "${state.stepsTarget} pasos al día",
+                trailing  = {
+                    OutlinedButton(
+                        onClick = { showStepsModal = true },
+                        colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                        border  = BorderStroke(1.dp, Violet400)
+                    ) {
+                        Text("Modificar", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            )
+
+            HorizontalDivider(color = Indigo700)
+
+            SettingsItem(
+                icon      = Icons.Default.Bedtime,
+                iconColor = RingSleep,
+                title     = "Objetivo de Sueño",
+                subtitle  = "${String.format(Locale.US, "%.1f", state.sleepTargetHours)} horas por noche",
+                trailing  = {
+                    OutlinedButton(
+                        onClick = { showSleepModal = true },
+                        colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                        border  = BorderStroke(1.dp, Violet400)
+                    ) {
+                        Text("Modificar", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            )
+
+            HorizontalDivider(color = Indigo700)
+
+            SettingsItem(
+                icon      = Icons.Default.LocalFireDepartment,
+                iconColor = Amber400,
+                title     = "Objetivo de Calorías Activas",
+                subtitle  = "${state.caloriesTarget.toInt()} kcal al día",
+                trailing  = {
+                    OutlinedButton(
+                        onClick = { showCaloriesModal = true },
+                        colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                        border  = BorderStroke(1.dp, Violet400)
+                    ) {
+                        Text("Modificar", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            )
+
+            HorizontalDivider(color = Indigo700)
+
+            SettingsItem(
+                icon      = Icons.Default.FitnessCenter,
+                iconColor = Violet400,
+                title     = "Sesiones de Entrenamiento",
+                subtitle  = "${state.workoutDaysTarget} días / semana (${state.workoutMinutesTarget} min)",
+                trailing  = {
+                    OutlinedButton(
+                        onClick = { showWorkoutModal = true },
+                        colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                        border  = BorderStroke(1.dp, Violet400)
+                    ) {
+                        Text("Modificar", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            )
+        }
 
         // ─── Apariencia & Tema ─────────────────────────────────────────────
         SectionHeader("Apariencia & Tema")
@@ -377,11 +496,13 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 icon      = Icons.Default.Info,
                 iconColor = Gray400,
                 title     = "Life Dashboard",
-                subtitle  = "v1.2 · Panel de Vida Inteligente",
+                subtitle  = "v1.3 · Panel de Vida Inteligente",
                 trailing  = {}
             )
         }
     }
+
+    // ─── Diálogos Modales ──────────────────────────────────────────────────
 
     if (showUserModal) {
         EditUserProfileModal(
@@ -402,6 +523,55 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 viewModel.updateGeminiApiKey(newKey)
                 showApiKeyModal = false
                 Toast.makeText(context, "Clave de Gemini guardada correctamente", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showStepsModal) {
+        EditStepsGoalModal(
+            currentValue = state.stepsTarget,
+            onDismiss    = { showStepsModal = false },
+            onSave       = { newSteps ->
+                viewModel.updateStepsTarget(newSteps)
+                showStepsModal = false
+                Toast.makeText(context, "Objetivo de pasos actualizado", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showSleepModal) {
+        EditSleepGoalModal(
+            currentValue = state.sleepTargetHours,
+            onDismiss    = { showSleepModal = false },
+            onSave       = { newSleep ->
+                viewModel.updateSleepTarget(newSleep)
+                showSleepModal = false
+                Toast.makeText(context, "Objetivo de sueño actualizado", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showCaloriesModal) {
+        EditCaloriesGoalModal(
+            currentValue = state.caloriesTarget,
+            onDismiss    = { showCaloriesModal = false },
+            onSave       = { newCal ->
+                viewModel.updateCaloriesTarget(newCal)
+                showCaloriesModal = false
+                Toast.makeText(context, "Objetivo de calorías actualizado", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showWorkoutModal) {
+        EditWorkoutGoalModal(
+            currentDays    = state.workoutDaysTarget,
+            currentMinutes = state.workoutMinutesTarget,
+            onDismiss      = { showWorkoutModal = false },
+            onSave         = { days, minutes ->
+                viewModel.updateWorkoutTargets(days, minutes)
+                showWorkoutModal = false
+                Toast.makeText(context, "Objetivos de entrenamiento actualizados", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -484,6 +654,301 @@ private fun UserProfileCard(
     }
 }
 
+// ─── Modal: Editar Pasos ──────────────────────────────────────────────────────
+
+@Composable
+private fun EditStepsGoalModal(
+    currentValue: Int,
+    onDismiss: () -> Unit,
+    onSave: (Int) -> Unit
+) {
+    var textInput by remember { mutableStateOf(currentValue.toString()) }
+    val presets = listOf(6000, 8000, 10000, 12000, 15000)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = Indigo800,
+        shape            = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.AutoMirrored.Filled.DirectionsWalk, null, tint = RingSteps, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Meta de Pasos Diarios", color = White, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value           = textInput,
+                    onValueChange   = { textInput = it },
+                    label           = { Text("Pasos diarios objetivo") },
+                    singleLine      = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors          = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor   = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor     = White,
+                        unfocusedTextColor   = White
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("Valores recomendados:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    presets.forEach { preset ->
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Indigo700)
+                                .clickable { textInput = preset.toString() }
+                                .padding(vertical = 6.dp)
+                        ) {
+                            Text("${preset / 1000}K", style = MaterialTheme.typography.labelSmall, color = White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { textInput.toIntOrNull()?.let { onSave(it) } },
+                colors  = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)
+            ) { Text("Guardar", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = Gray400) }
+        }
+    )
+}
+
+// ─── Modal: Editar Sueño ──────────────────────────────────────────────────────
+
+@Composable
+private fun EditSleepGoalModal(
+    currentValue: Float,
+    onDismiss: () -> Unit,
+    onSave: (Float) -> Unit
+) {
+    var textInput by remember { mutableStateOf(currentValue.toString()) }
+    val presets = listOf(6.5f, 7.0f, 7.5f, 8.0f, 8.5f, 9.0f)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = Indigo800,
+        shape            = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Bedtime, null, tint = RingSleep, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Meta de Sueño Diario", color = White, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value           = textInput,
+                    onValueChange   = { textInput = it },
+                    label           = { Text("Horas de sueño por noche") },
+                    singleLine      = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors          = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor   = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor     = White,
+                        unfocusedTextColor   = White
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("Valores recomendados:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    presets.forEach { preset ->
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Indigo700)
+                                .clickable { textInput = preset.toString() }
+                                .padding(vertical = 6.dp)
+                        ) {
+                            Text("${preset}h", style = MaterialTheme.typography.labelSmall, color = White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { textInput.toFloatOrNull()?.let { onSave(it) } },
+                colors  = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)
+            ) { Text("Guardar", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = Gray400) }
+        }
+    )
+}
+
+// ─── Modal: Editar Calorías ───────────────────────────────────────────────────
+
+@Composable
+private fun EditCaloriesGoalModal(
+    currentValue: Float,
+    onDismiss: () -> Unit,
+    onSave: (Float) -> Unit
+) {
+    var textInput by remember { mutableStateOf(currentValue.toInt().toString()) }
+    val presets = listOf(400, 500, 600, 750, 1000)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = Indigo800,
+        shape            = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.LocalFireDepartment, null, tint = Amber400, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Meta de Calorías Activas", color = White, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value           = textInput,
+                    onValueChange   = { textInput = it },
+                    label           = { Text("Calorías activas diarias (kcal)") },
+                    singleLine      = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors          = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor   = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor     = White,
+                        unfocusedTextColor   = White
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("Valores recomendados:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    presets.forEach { preset ->
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Indigo700)
+                                .clickable { textInput = preset.toString() }
+                                .padding(vertical = 6.dp)
+                        ) {
+                            Text("$preset", style = MaterialTheme.typography.labelSmall, color = White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { textInput.toFloatOrNull()?.let { onSave(it) } },
+                colors  = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)
+            ) { Text("Guardar", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = Gray400) }
+        }
+    )
+}
+
+// ─── Modal: Editar Entrenamientos Semanales ───────────────────────────────────
+
+@Composable
+private fun EditWorkoutGoalModal(
+    currentDays: Int,
+    currentMinutes: Int,
+    onDismiss: () -> Unit,
+    onSave: (Int, Int) -> Unit
+) {
+    var selectedDays by remember { mutableIntStateOf(currentDays) }
+    var selectedMinutes by remember { mutableIntStateOf(currentMinutes) }
+    val dayOptions = listOf(2, 3, 4, 5, 6)
+    val minuteOptions = listOf(120, 150, 180, 240, 300)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = Indigo800,
+        shape            = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.FitnessCenter, null, tint = Violet300, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Meta de Entrenamientos", color = White, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("Días de entrenamiento por semana:", style = MaterialTheme.typography.labelMedium, color = Gray300)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    dayOptions.forEach { days ->
+                        val isSelected = days == selectedDays
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) Violet400 else Indigo700)
+                                .clickable { selectedDays = days }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(
+                                text       = "$days d",
+                                style      = MaterialTheme.typography.labelSmall,
+                                color      = if (isSelected) Indigo900 else White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                Text("Minutos totales por semana:", style = MaterialTheme.typography.labelMedium, color = Gray300)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    minuteOptions.forEach { mins ->
+                        val isSelected = mins == selectedMinutes
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) Violet400 else Indigo700)
+                                .clickable { selectedMinutes = mins }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(
+                                text       = "${mins}m",
+                                style      = MaterialTheme.typography.labelSmall,
+                                color      = if (isSelected) Indigo900 else White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(selectedDays, selectedMinutes) },
+                colors  = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)
+            ) { Text("Guardar", fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = Gray400) }
+        }
+    )
+}
+
+// ─── Modal: Perfil ────────────────────────────────────────────────────────────
+
 @Composable
 private fun EditUserProfileModal(
     currentName: String,
@@ -527,6 +992,8 @@ private fun EditUserProfileModal(
         }
     )
 }
+
+// ─── Modal: API Key Gemini ────────────────────────────────────────────────────
 
 @Composable
 private fun EditApiKeyModal(

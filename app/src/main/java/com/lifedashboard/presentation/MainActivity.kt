@@ -77,11 +77,15 @@ private fun LifeDashboardApp() {
             LifeDashboardBottomNav(
                 currentRoute = currentRoute,
                 onNavigate   = { screen ->
-                    val targetRoute = if (screen is Screen.Health) Screen.Health.createRoute("PASOS") else screen.route
-                    navController.navigate(targetRoute) {
-                        popUpTo(Screen.Dashboard.route) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
+                    if (screen == Screen.Dashboard) {
+                        navController.popBackStack(Screen.Dashboard.route, inclusive = false)
+                    } else {
+                        val targetRoute = if (screen is Screen.Health) Screen.Health.createRoute("PASOS") else screen.route
+                        navController.navigate(targetRoute) {
+                            popUpTo(Screen.Dashboard.route) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
                 }
             )

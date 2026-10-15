@@ -17,6 +17,8 @@ data class UserGoals(
     val stepsTarget: Int = 10000,
     val sleepTargetHours: Float = 8.0f,
     val caloriesTarget: Float = 2200f,
+    val workoutDaysTarget: Int = 4,
+    val workoutMinutesTarget: Int = 180,
     val userName: String = "Jaime",
     val showHeroRings: Boolean = true,
     val showAiInsight: Boolean = true,
@@ -31,16 +33,18 @@ class UserPreferencesRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private object Keys {
-        val STEPS_TARGET         = intPreferencesKey("steps_target")
-        val SLEEP_TARGET         = floatPreferencesKey("sleep_target")
-        val CALORIES_TARGET      = floatPreferencesKey("calories_target")
-        val USER_NAME            = stringPreferencesKey("user_name")
-        val SHOW_HERO_RINGS      = booleanPreferencesKey("show_hero_rings")
-        val SHOW_AI_INSIGHT      = booleanPreferencesKey("show_ai_insight")
-        val SHOW_UPCOMING_EVENTS = booleanPreferencesKey("show_upcoming_events")
-        val DAILY_REMINDERS      = booleanPreferencesKey("daily_reminders")
-        val THEME_MODE           = stringPreferencesKey("theme_mode")
-        val GEMINI_API_KEY       = stringPreferencesKey("gemini_api_key")
+        val STEPS_TARGET           = intPreferencesKey("steps_target")
+        val SLEEP_TARGET           = floatPreferencesKey("sleep_target")
+        val CALORIES_TARGET        = floatPreferencesKey("calories_target")
+        val WORKOUT_DAYS_TARGET    = intPreferencesKey("workout_days_target")
+        val WORKOUT_MINUTES_TARGET = intPreferencesKey("workout_minutes_target")
+        val USER_NAME              = stringPreferencesKey("user_name")
+        val SHOW_HERO_RINGS        = booleanPreferencesKey("show_hero_rings")
+        val SHOW_AI_INSIGHT        = booleanPreferencesKey("show_ai_insight")
+        val SHOW_UPCOMING_EVENTS   = booleanPreferencesKey("show_upcoming_events")
+        val DAILY_REMINDERS        = booleanPreferencesKey("daily_reminders")
+        val THEME_MODE             = stringPreferencesKey("theme_mode")
+        val GEMINI_API_KEY         = stringPreferencesKey("gemini_api_key")
     }
 
     val userGoals: Flow<UserGoals> = context.dataStore.data
@@ -53,16 +57,18 @@ class UserPreferencesRepository @Inject constructor(
         }
         .map { prefs ->
             UserGoals(
-                stepsTarget        = prefs[Keys.STEPS_TARGET] ?: 10000,
-                sleepTargetHours   = prefs[Keys.SLEEP_TARGET] ?: 8.0f,
-                caloriesTarget     = prefs[Keys.CALORIES_TARGET] ?: 2200f,
-                userName           = prefs[Keys.USER_NAME] ?: "Jaime",
-                showHeroRings      = prefs[Keys.SHOW_HERO_RINGS] ?: true,
-                showAiInsight      = prefs[Keys.SHOW_AI_INSIGHT] ?: true,
-                showUpcomingEvents = prefs[Keys.SHOW_UPCOMING_EVENTS] ?: true,
-                dailyReminders     = prefs[Keys.DAILY_REMINDERS] ?: true,
-                themeMode          = prefs[Keys.THEME_MODE] ?: "OSCURO",
-                geminiApiKey       = prefs[Keys.GEMINI_API_KEY] ?: ""
+                stepsTarget          = prefs[Keys.STEPS_TARGET] ?: 10000,
+                sleepTargetHours     = prefs[Keys.SLEEP_TARGET] ?: 8.0f,
+                caloriesTarget       = prefs[Keys.CALORIES_TARGET] ?: 2200f,
+                workoutDaysTarget    = prefs[Keys.WORKOUT_DAYS_TARGET] ?: 4,
+                workoutMinutesTarget = prefs[Keys.WORKOUT_MINUTES_TARGET] ?: 180,
+                userName             = prefs[Keys.USER_NAME] ?: "Jaime",
+                showHeroRings        = prefs[Keys.SHOW_HERO_RINGS] ?: true,
+                showAiInsight        = prefs[Keys.SHOW_AI_INSIGHT] ?: true,
+                showUpcomingEvents   = prefs[Keys.SHOW_UPCOMING_EVENTS] ?: true,
+                dailyReminders       = prefs[Keys.DAILY_REMINDERS] ?: true,
+                themeMode            = prefs[Keys.THEME_MODE] ?: "OSCURO",
+                geminiApiKey         = prefs[Keys.GEMINI_API_KEY] ?: ""
             )
         }
 
@@ -76,6 +82,14 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun updateCaloriesTarget(targetCalories: Float) {
         context.dataStore.edit { prefs -> prefs[Keys.CALORIES_TARGET] = targetCalories }
+    }
+
+    suspend fun updateWorkoutDaysTarget(days: Int) {
+        context.dataStore.edit { prefs -> prefs[Keys.WORKOUT_DAYS_TARGET] = days }
+    }
+
+    suspend fun updateWorkoutMinutesTarget(minutes: Int) {
+        context.dataStore.edit { prefs -> prefs[Keys.WORKOUT_MINUTES_TARGET] = minutes }
     }
 
     suspend fun updateUserName(name: String) {
