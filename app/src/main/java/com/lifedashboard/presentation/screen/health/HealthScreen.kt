@@ -184,7 +184,10 @@ private fun HealthHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier              = Modifier.fillMaxWidth()
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier          = Modifier.weight(1f)
+        ) {
             IconButton(
                 onClick  = onBack,
                 modifier = Modifier
@@ -203,20 +206,26 @@ private fun HealthHeader(
 
             Spacer(Modifier.width(12.dp))
 
-            Column {
+            Column(modifier = Modifier.weight(1f, fill = false)) {
                 Text(
                     text       = "Salud & Metas",
                     style      = MaterialTheme.typography.titleLarge,
                     color      = White,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines   = 1,
+                    overflow   = TextOverflow.Ellipsis
                 )
                 Text(
-                    text  = "Métricas biométricas en tiempo real",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Gray400
+                    text       = "Métricas biométricas en tiempo real",
+                    style      = MaterialTheme.typography.bodySmall,
+                    color      = Gray400,
+                    maxLines   = 1,
+                    overflow   = TextOverflow.Ellipsis
                 )
             }
         }
+
+        Spacer(Modifier.width(10.dp))
 
         IconButton(
             onClick  = onSyncClick,

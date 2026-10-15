@@ -137,7 +137,7 @@ class LifeDashboard1x2Widget : GlanceAppWidget() {
                     .fillMaxSize()
                     .background(ColorProvider(GlassBackground))
                     .cornerRadius(18.dp)
-                    .padding(6.dp),
+                    .padding(8.dp),
                 verticalAlignment   = Alignment.Vertical.CenterVertically,
                 horizontalAlignment = Alignment.Horizontal.CenterHorizontally
             ) {
@@ -147,8 +147,8 @@ class LifeDashboard1x2Widget : GlanceAppWidget() {
                         .defaultWeight()
                         .fillMaxHeight()
                         .background(ColorProvider(GlassColumnBackground))
-                        .cornerRadius(12.dp)
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                        .cornerRadius(14.dp)
+                        .padding(horizontal = 6.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
                     verticalAlignment   = Alignment.Vertical.CenterVertically
                 ) {
@@ -156,22 +156,17 @@ class LifeDashboard1x2Widget : GlanceAppWidget() {
                         text  = "PASOS",
                         style = TextStyle(color = ColorProvider(NeonCyan), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     )
-                    Spacer(GlanceModifier.height(2.dp))
+                    Spacer(GlanceModifier.height(4.dp))
                     Text(
                         text  = data.steps.formatK(),
-                        style = TextStyle(color = ColorProvider(White), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        style = TextStyle(color = ColorProvider(White), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     )
-                    Spacer(GlanceModifier.height(3.dp))
+                    Spacer(GlanceModifier.height(6.dp))
                     LinearProgressIndicator(
                         progress        = (data.steps.toFloat() / data.stepsTarget).coerceIn(0f, 1f),
                         modifier        = GlanceModifier.fillMaxWidth().height(3.dp).padding(horizontal = 4.dp),
                         color           = ColorProvider(NeonCyan),
                         backgroundColor = ColorProvider(TrackColor)
-                    )
-                    Spacer(GlanceModifier.height(2.dp))
-                    Text(
-                        text  = "/${data.stepsTarget.formatK()}",
-                        style = TextStyle(color = ColorProvider(Gray300), fontSize = 8.sp)
                     )
                 }
 
@@ -183,8 +178,8 @@ class LifeDashboard1x2Widget : GlanceAppWidget() {
                         .defaultWeight()
                         .fillMaxHeight()
                         .background(ColorProvider(GlassColumnBackground))
-                        .cornerRadius(12.dp)
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                        .cornerRadius(14.dp)
+                        .padding(horizontal = 6.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
                     verticalAlignment   = Alignment.Vertical.CenterVertically
                 ) {
@@ -192,22 +187,17 @@ class LifeDashboard1x2Widget : GlanceAppWidget() {
                         text  = "KCAL",
                         style = TextStyle(color = ColorProvider(NeonAmber), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     )
-                    Spacer(GlanceModifier.height(2.dp))
+                    Spacer(GlanceModifier.height(4.dp))
                     Text(
                         text  = "${data.calories}",
-                        style = TextStyle(color = ColorProvider(White), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        style = TextStyle(color = ColorProvider(White), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     )
-                    Spacer(GlanceModifier.height(3.dp))
+                    Spacer(GlanceModifier.height(6.dp))
                     LinearProgressIndicator(
                         progress        = (data.calories.toFloat() / data.caloriesTarget).coerceIn(0f, 1f),
                         modifier        = GlanceModifier.fillMaxWidth().height(3.dp).padding(horizontal = 4.dp),
                         color           = ColorProvider(NeonAmber),
                         backgroundColor = ColorProvider(TrackColor)
-                    )
-                    Spacer(GlanceModifier.height(2.dp))
-                    Text(
-                        text  = "/${data.caloriesTarget.toInt()}",
-                        style = TextStyle(color = ColorProvider(Gray300), fontSize = 8.sp)
                     )
                 }
 
@@ -219,8 +209,8 @@ class LifeDashboard1x2Widget : GlanceAppWidget() {
                         .defaultWeight()
                         .fillMaxHeight()
                         .background(ColorProvider(GlassColumnBackground))
-                        .cornerRadius(12.dp)
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                        .cornerRadius(14.dp)
+                        .padding(horizontal = 6.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
                     verticalAlignment   = Alignment.Vertical.CenterVertically
                 ) {
@@ -228,22 +218,17 @@ class LifeDashboard1x2Widget : GlanceAppWidget() {
                         text  = "SUEÑO",
                         style = TextStyle(color = ColorProvider(NeonTeal), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     )
-                    Spacer(GlanceModifier.height(2.dp))
+                    Spacer(GlanceModifier.height(4.dp))
                     Text(
                         text  = "${data.sleepHours}h",
-                        style = TextStyle(color = ColorProvider(White), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        style = TextStyle(color = ColorProvider(White), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     )
-                    Spacer(GlanceModifier.height(3.dp))
+                    Spacer(GlanceModifier.height(6.dp))
                     LinearProgressIndicator(
                         progress        = (data.sleepHours / data.sleepTarget).coerceIn(0f, 1f),
                         modifier        = GlanceModifier.fillMaxWidth().height(3.dp).padding(horizontal = 4.dp),
                         color           = ColorProvider(NeonTeal),
                         backgroundColor = ColorProvider(TrackColor)
-                    )
-                    Spacer(GlanceModifier.height(2.dp))
-                    Text(
-                        text  = "/${data.sleepTarget.toInt()}h",
-                        style = TextStyle(color = ColorProvider(Gray300), fontSize = 8.sp)
                     )
                 }
             }
