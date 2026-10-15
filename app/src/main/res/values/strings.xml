@@ -2,4 +2,8 @@
 <resources>
     <string name="app_name">Life Dashboard</string>
     <string name="widget_description">Panel de vida con pasos, sueño y próximos eventos</string>
+    <string name="widget_expanded_name">Life Dashboard - Completo (4x2)</string>
+    <string name="widget_expanded_description">Pasos, sueño, entrenamiento y agenda en vista amplia</string>
+    <string name="widget_compact_name">Life Dashboard - Mini (2x2)</string>
+    <string name="widget_compact_description">Mini resumen biométrico para pantalla de bloqueo o inicio</string>
 </resources>

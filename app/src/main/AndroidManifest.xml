@@ -61,7 +61,8 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- ─── Glance Widget ───────────────────────────────────── -->
+        <!-- ─── Glance Widgets ──────────────────────────────────── -->
+        <!-- Widget Completo / Amplio (4x2 / Responsive) -->
         <receiver
             android:name=".presentation.widget.LifeDashboardWidgetReceiver"
             android:exported="true">
@@ -71,6 +72,18 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/life_dashboard_widget_info" />
+        </receiver>
+
+        <!-- Widget Compacto / Mini (2x2 y Pantalla de Bloqueo) -->
+        <receiver
+            android:name=".presentation.widget.LifeDashboardCompactWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/life_dashboard_compact_widget_info" />
         </receiver>
 
         <!-- ─── WorkManager: HiltWorkerFactory ─────────────────── -->

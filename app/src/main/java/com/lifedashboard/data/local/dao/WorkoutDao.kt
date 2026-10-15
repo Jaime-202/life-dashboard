@@ -23,6 +23,19 @@ interface WorkoutDao {
     """)
     fun getSessionsInRange(fromMillis: Long, toMillis: Long): Flow<List<WorkoutSessionEntity>>
 
+    @Query("DELETE FROM workout_sessions WHERE dateMillis = :dateMillis AND sourceFile = 'health_connect'")
+    suspend fun deleteHealthConnectSessionsForDay(dateMillis: Long)
+
+    @Query("""
+        DELETE FROM workout_sessions 
+        WHERE id NOT IN (
+            SELECT MIN(id) 
+            FROM workout_sessions 
+            GROUP BY dateMillis, durationMinutes, type, sourceFile
+        )
+    """)
+    suspend fun deduplicateSessions()
+
     @Query("SELECT * FROM workout_sessions ORDER BY dateMillis DESC LIMIT :limit")
     suspend fun getRecentSessions(limit: Int): List<WorkoutSessionEntity>
 

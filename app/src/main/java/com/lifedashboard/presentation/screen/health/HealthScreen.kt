@@ -218,32 +218,23 @@ private fun HealthHeader(
             }
         }
 
-        FilledTonalButton(
-            onClick = onSyncClick,
-            enabled = !isSyncing,
-            colors  = ButtonDefaults.filledTonalButtonColors(
-                containerColor = Indigo800,
-                contentColor   = Violet300
-            ),
-            border         = BorderStroke(1.dp, Indigo700),
-            shape          = RoundedCornerShape(14.dp),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+        IconButton(
+            onClick  = onSyncClick,
+            enabled  = !isSyncing,
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(if (isSyncing) Violet400.copy(alpha = 0.2f) else Indigo800)
+                .border(1.dp, if (isSyncing) Violet400 else Indigo700, CircleShape)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector        = Icons.Default.Sync,
-                    contentDescription = "Sincronizar Salud",
-                    modifier           = Modifier
-                        .size(16.dp)
-                        .then(if (isSyncing) Modifier.rotate(rotation) else Modifier)
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    text       = if (isSyncing) "Sincronizando..." else "Sincronizar",
-                    fontSize   = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            Icon(
+                imageVector        = Icons.Default.Sync,
+                contentDescription = if (isSyncing) "Sincronizando..." else "Sincronizar Salud",
+                tint               = if (isSyncing) Violet300 else White,
+                modifier           = Modifier
+                    .size(20.dp)
+                    .then(if (isSyncing) Modifier.rotate(rotation) else Modifier)
+            )
         }
     }
 }

@@ -201,61 +201,91 @@ private fun DayHeroSection(
             .background(
                 Brush.radialGradient(
                     colors = listOf(
-                        Violet400.copy(alpha = 0.18f),
+                        Violet400.copy(alpha = 0.20f),
                         Indigo800
                     ),
                     radius = 700f
                 )
             )
             .border(1.dp, Indigo700, RoundedCornerShape(26.dp))
-            .padding(20.dp)
+            .padding(18.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier          = Modifier.fillMaxWidth()
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .clickable { onNavigateToHealth("PASOS") }
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // Header del Hero Card
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
             ) {
-                DayProgressRings(
-                    stepsProgress    = state.stepsProgress,
-                    caloriesProgress = state.caloriesProgress,
-                    sleepProgress    = state.sleepProgress,
-                    size             = 114.dp,
-                    strokeWidth      = 10.dp,
-                    gap              = 5.dp
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(Cyan400)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text          = "PULSO BIOMÉTRICO",
+                        fontSize      = 11.sp,
+                        fontWeight    = FontWeight.Bold,
+                        color         = Gray300,
+                        letterSpacing = 1.sp
+                    )
+                }
+                Text(
+                    text     = "✦ Health Connect",
+                    fontSize = 11.sp,
+                    color    = Gray500
                 )
             }
 
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier            = Modifier
-                    .weight(1f)
-                    .padding(start = 16.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier          = Modifier.fillMaxWidth()
             ) {
-                FillableStatItem(
-                    value    = "${state.todaySteps} / ${if (state.stepsTarget >= 1000) "${state.stepsTarget / 1000}K" else state.stepsTarget}",
-                    label    = "pasos",
-                    progress = state.stepsProgress,
-                    color    = RingSteps,
-                    onClick  = { onNavigateToHealth("PASOS") }
-                )
-                FillableStatItem(
-                    value    = "${(state.todaySleepHours * 10).toInt() / 10f}h / ${state.sleepTargetHours}h",
-                    label    = "sueño",
-                    progress = state.sleepProgress,
-                    color    = RingSleep,
-                    onClick  = { onNavigateToHealth("SUENO") }
-                )
-                FillableStatItem(
-                    value    = "${state.todayCalories.toInt()} / ${state.caloriesTarget.toInt()} kcal",
-                    label    = "calorías",
-                    progress = state.caloriesProgress,
-                    color    = Amber400,
-                    onClick  = { onNavigateToHealth("CALORIAS") }
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onNavigateToHealth("PASOS") }
+                ) {
+                    DayProgressRings(
+                        stepsProgress    = state.stepsProgress,
+                        caloriesProgress = state.caloriesProgress,
+                        sleepProgress    = state.sleepProgress,
+                        size             = 116.dp,
+                        strokeWidth      = 9.dp
+                    )
+                }
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier            = Modifier
+                        .weight(1f)
+                        .padding(start = 16.dp)
+                ) {
+                    FillableStatItem(
+                        value    = "${state.todaySteps} / ${if (state.stepsTarget >= 1000) "${state.stepsTarget / 1000}K" else state.stepsTarget}",
+                        label    = "pasos",
+                        progress = state.stepsProgress,
+                        color    = RingSteps,
+                        onClick  = { onNavigateToHealth("PASOS") }
+                    )
+                    FillableStatItem(
+                        value    = "${(state.todaySleepHours * 10).toInt() / 10f}h / ${state.sleepTargetHours}h",
+                        label    = "sueño",
+                        progress = state.sleepProgress,
+                        color    = RingSleep,
+                        onClick  = { onNavigateToHealth("SUENO") }
+                    )
+                    FillableStatItem(
+                        value    = "${state.todayCalories.toInt()} / ${state.caloriesTarget.toInt()} kcal",
+                        label    = "calorías",
+                        progress = state.caloriesProgress,
+                        color    = Amber400,
+                        onClick  = { onNavigateToHealth("CALORIAS") }
+                    )
+                }
             }
         }
     }

@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
@@ -18,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,12 +38,14 @@ enum class CalendarViewMode { WEEK, MONTH, YEAR }
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
- * CalendarView
+ * CalendarView (Rediseño Estético Obsidian)
  *
- * Componente principal de calendario con 3 vistas:
- * - WEEK:  7 días con tarjeta y anillos
- * - MONTH: Grid mensual con código de colores según actividad (azul / azul oscuro)
- * - YEAR:  Heatmap anual por meses sin scroll anidado para evitar cierres
+ * Componente de calendario con estética moderna obsidian/glassmorphic:
+ * - Contenedor con borde sutil y fondo translúcido
+ * - Selector segmentado de vista estilo cápsula
+ * - Vista semanal con micro-barras biométricas
+ * - Grid mensual limpio con indicadores de hábitos brillantes
+ * - Heatmap anual sin anidamiento problemático
  * ─────────────────────────────────────────────────────────────────────────────
  */
 @Composable
@@ -53,79 +58,92 @@ fun CalendarView(
     var viewMode by remember { mutableStateOf(CalendarViewMode.MONTH) }
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
 
-    Column(modifier = modifier) {
-        // ─── Selector de vista ────────────────────────────────────────────
-        ViewModeSelector(
-            selected = viewMode,
-            onSelect = { viewMode = it }
-        )
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(Indigo800.copy(alpha = 0.65f))
+            .border(1.dp, Indigo700, RoundedCornerShape(24.dp))
+            .padding(16.dp)
+    ) {
+        Column {
+            // ─── Selector de vista segmentado moderno ─────────────────────────
+            ModernViewModeSelector(
+                selected = viewMode,
+                onSelect = { viewMode = it }
+            )
 
-        Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
 
-        // ─── Header de navegación ─────────────────────────────────────────
-        MonthNavigationHeader(
-            currentMonth = currentMonth,
-            selectedDate = selectedDate,
-            viewMode     = viewMode,
-            onPrev       = { 
-                if (viewMode == CalendarViewMode.WEEK) {
-                    onDateSelected(selectedDate.minusWeeks(1))
-                } else {
-                    currentMonth = currentMonth.minusMonths(1) 
+            // ─── Header de navegación con controles sutiles ───────────────────
+            MonthNavigationHeader(
+                currentMonth = currentMonth,
+                selectedDate = selectedDate,
+                viewMode     = viewMode,
+                onPrev       = {
+                    if (viewMode == CalendarViewMode.WEEK) {
+                        onDateSelected(selectedDate.minusWeeks(1))
+                    } else {
+                        currentMonth = currentMonth.minusMonths(1)
+                    }
+                },
+                onNext       = {
+                    if (viewMode == CalendarViewMode.WEEK) {
+                        onDateSelected(selectedDate.plusWeeks(1))
+                    } else {
+                        currentMonth = currentMonth.plusMonths(1)
+                    }
                 }
-            },
-            onNext       = { 
-                if (viewMode == CalendarViewMode.WEEK) {
-                    onDateSelected(selectedDate.plusWeeks(1))
-                } else {
-                    currentMonth = currentMonth.plusMonths(1) 
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            // ─── Contenido animado según la vista seleccionada ────────────────
+            AnimatedContent(
+                targetState = viewMode,
+                transitionSpec = {
+                    fadeIn(tween(200)) togetherWith fadeOut(tween(150))
+                },
+                label = "calendar_view"
+            ) { mode ->
+                when (mode) {
+                    CalendarViewMode.WEEK  -> WeekView(
+                        selectedDate    = selectedDate,
+                        progressByDate  = progressByDate,
+                        onDateSelected  = onDateSelected
+                    )
+                    CalendarViewMode.MONTH -> MonthView(
+                        currentMonth    = currentMonth,
+                        selectedDate    = selectedDate,
+                        progressByDate  = progressByDate,
+                        onDateSelected  = onDateSelected
+                    )
+                    CalendarViewMode.YEAR  -> YearView(
+                        year           = currentMonth.year,
+                        progressByDate = progressByDate,
+                        onDateSelected = onDateSelected
+                    )
                 }
-            }
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        // ─── Contenido según vista ────────────────────────────────────────
-        AnimatedContent(
-            targetState = viewMode,
-            transitionSpec = {
-                fadeIn(tween(200)) togetherWith fadeOut(tween(150))
-            },
-            label = "calendar_view"
-        ) { mode ->
-            when (mode) {
-                CalendarViewMode.WEEK  -> WeekView(
-                    currentMonth    = currentMonth,
-                    selectedDate    = selectedDate,
-                    progressByDate  = progressByDate,
-                    onDateSelected  = onDateSelected
-                )
-                CalendarViewMode.MONTH -> MonthView(
-                    currentMonth    = currentMonth,
-                    selectedDate    = selectedDate,
-                    progressByDate  = progressByDate,
-                    onDateSelected  = onDateSelected
-                )
-                CalendarViewMode.YEAR  -> YearView(
-                    year           = currentMonth.year,
-                    progressByDate = progressByDate,
-                    onDateSelected = onDateSelected
-                )
             }
         }
     }
 }
 
-// ─── Selector de vista (chips) ────────────────────────────────────────────────
+// ─── Selector de vista estilo cápsula ─────────────────────────────────────────
 
 @Composable
-private fun ViewModeSelector(
+private fun ModernViewModeSelector(
     selected: CalendarViewMode,
     onSelect: (CalendarViewMode) -> Unit
 ) {
     Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Indigo900.copy(alpha = 0.8f))
+            .border(1.dp, Indigo700.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         CalendarViewMode.entries.forEach { mode ->
             val isSelected = mode == selected
@@ -134,23 +152,22 @@ private fun ViewModeSelector(
                 CalendarViewMode.MONTH -> "Mes"
                 CalendarViewMode.YEAR  -> "Año"
             }
-            FilterChip(
-                selected = isSelected,
-                onClick  = { onSelect(mode) },
-                label    = { Text(label, fontSize = 12.sp) },
-                colors   = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Violet400,
-                    selectedLabelColor     = Indigo900,
-                    containerColor         = Indigo700,
-                    labelColor             = Gray300
-                ),
-                border = FilterChipDefaults.filterChipBorder(
-                    enabled             = true,
-                    selected            = isSelected,
-                    borderColor         = Color.Transparent,
-                    selectedBorderColor = Color.Transparent
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(if (isSelected) Violet400 else Color.Transparent)
+                    .clickable { onSelect(mode) }
+                    .padding(vertical = 7.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text       = label,
+                    fontSize   = 12.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                    color      = if (isSelected) Indigo900 else Gray400
                 )
-            )
+            }
         }
     }
 }
@@ -180,16 +197,41 @@ private fun MonthNavigationHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier              = Modifier.fillMaxWidth()
     ) {
-        IconButton(onClick = onPrev) {
-            Icon(Icons.Default.ChevronLeft, contentDescription = "Anterior", tint = Gray300)
+        IconButton(
+            onClick  = onPrev,
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(Indigo700.copy(alpha = 0.5f))
+        ) {
+            Icon(
+                imageVector        = Icons.Default.ChevronLeft,
+                contentDescription = "Anterior",
+                tint               = Gray300,
+                modifier           = Modifier.size(18.dp)
+            )
         }
+
         Text(
-            text  = displayDate,
-            style = MaterialTheme.typography.titleMedium,
-            color = White
+            text       = displayDate,
+            style      = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color      = White
         )
-        IconButton(onClick = onNext) {
-            Icon(Icons.Default.ChevronRight, contentDescription = "Siguiente", tint = Gray300)
+
+        IconButton(
+            onClick  = onNext,
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(Indigo700.copy(alpha = 0.5f))
+        ) {
+            Icon(
+                imageVector        = Icons.Default.ChevronRight,
+                contentDescription = "Siguiente",
+                tint               = Gray300,
+                modifier           = Modifier.size(18.dp)
+            )
         }
     }
 }
@@ -198,25 +240,26 @@ private fun MonthNavigationHeader(
 
 @Composable
 private fun WeekView(
-    currentMonth: YearMonth,
     selectedDate: LocalDate,
     progressByDate: Map<LocalDate, DailyProgress>,
     onDateSelected: (LocalDate) -> Unit
 ) {
     val weekStart = selectedDate.with(java.time.DayOfWeek.MONDAY)
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(horizontal = 4.dp)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        items((0..6).toList()) { dayOffset ->
+        (0..6).forEach { dayOffset ->
             val date = weekStart.plusDays(dayOffset.toLong())
             val progress = progressByDate[date]
-            WeekDayCell(
-                date       = date,
-                progress   = progress,
-                isSelected = date == selectedDate,
-                onClick    = { onDateSelected(date) }
-            )
+            Box(modifier = Modifier.weight(1f)) {
+                WeekDayCell(
+                    date       = date,
+                    progress   = progress,
+                    isSelected = date == selectedDate,
+                    onClick    = { onDateSelected(date) }
+                )
+            }
         }
     }
 }
@@ -229,71 +272,66 @@ private fun WeekDayCell(
     onClick: () -> Unit
 ) {
     val dayName = date.dayOfWeek.getDisplayName(JavaTextStyle.SHORT, Locale("es"))
-        .replaceFirstChar { it.uppercase() }
+        .replaceFirstChar { it.uppercase() }.take(1)
     val isToday = date == LocalDate.now()
 
     val workoutDone = progress?.workoutCompleted == true
     val stepsDone   = (progress?.stepsProgress ?: 0f) >= 0.7f
 
     val bg = when {
-        isSelected               -> Indigo600
-        workoutDone && stepsDone -> Color(0xFF1E3A8A)
-        stepsDone                -> Color(0xFF1D4ED8)
-        workoutDone              -> Color(0xFF3B82F6)
-        else                     -> Indigo800
+        isSelected  -> Indigo600
+        workoutDone -> Indigo700
+        else        -> Indigo900.copy(alpha = 0.5f)
     }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .width(62.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
             .background(bg)
             .border(
-                width = if (isToday) 1.5.dp else 0.dp,
-                color = if (isToday) Violet300 else Color.Transparent,
-                shape = RoundedCornerShape(16.dp)
+                width = if (isToday) 1.5.dp else if (isSelected) 1.dp else 0.dp,
+                color = if (isToday) Violet300 else if (isSelected) Violet400 else Color.Transparent,
+                shape = RoundedCornerShape(14.dp)
             )
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp, horizontal = 8.dp)
+            .padding(vertical = 10.dp, horizontal = 2.dp)
     ) {
         Text(
-            text  = dayName,
-            style = MaterialTheme.typography.labelSmall,
-            color = if (isSelected) Violet300 else Gray400
+            text       = dayName,
+            style      = MaterialTheme.typography.labelSmall,
+            color      = if (isSelected) Violet300 else Gray400,
+            fontWeight = FontWeight.Medium
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
 
-        Box(contentAlignment = Alignment.Center) {
-            if (isToday) {
-                Box(
-                    Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(Violet400.copy(alpha = 0.25f))
-                )
-            }
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(26.dp)
+                .clip(CircleShape)
+                .background(if (isToday) Violet400.copy(alpha = 0.25f) else Color.Transparent)
+        ) {
             Text(
                 text       = date.dayOfMonth.toString(),
-                style      = MaterialTheme.typography.labelLarge,
-                fontWeight = if (isToday || workoutDone || stepsDone) FontWeight.Bold else FontWeight.Normal,
+                style      = MaterialTheme.typography.labelMedium,
+                fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Normal,
                 color      = White
             )
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
 
         if (progress != null) {
-            DayProgressRings(
+            CalendarDayRings(
+                workoutProgress = if (progress.workoutCompleted) 1f else 0f,
                 stepsProgress    = progress.stepsProgress,
-                caloriesProgress = if (progress.workoutCompleted) 1f else 0f,
                 sleepProgress    = progress.sleepProgress,
-                size             = 40.dp,
-                strokeWidth      = 4.dp,
-                gap              = 2.5.dp
+                modifier         = Modifier.padding(horizontal = 2.dp)
             )
         } else {
-            Box(Modifier.size(40.dp))
+            Spacer(Modifier.height(14.dp))
         }
     }
 }
@@ -315,11 +353,12 @@ private fun MonthView(
         Row(Modifier.fillMaxWidth()) {
             daysOfWeek.forEach { day ->
                 Text(
-                    text      = day,
-                    modifier  = Modifier.weight(1f),
-                    textAlign = TextAlign.Center,
-                    style     = MaterialTheme.typography.labelSmall,
-                    color     = Gray400
+                    text       = day,
+                    modifier   = Modifier.weight(1f),
+                    textAlign  = TextAlign.Center,
+                    style      = MaterialTheme.typography.labelSmall,
+                    color      = Gray400,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
@@ -348,6 +387,8 @@ private fun MonthView(
                                 isSelected = date == selectedDate,
                                 onClick    = { onDateSelected(date) }
                             )
+                        } else {
+                            Spacer(Modifier.aspectRatio(1f))
                         }
                     }
                 }
@@ -369,13 +410,14 @@ private fun MonthDayCell(
 
     val workoutDone = progress?.workoutCompleted == true
     val stepsDone   = (progress?.stepsProgress ?: 0f) >= 0.7f
+    val sleepDone   = (progress?.sleepProgress ?: 0f) >= 0.8f
 
     val backgroundColor = when {
         isSelected               -> Indigo600
-        workoutDone && stepsDone -> Color(0xFF1E3A8A) // Azul muy oscuro/intenso (Ambos)
-        stepsDone                -> Color(0xFF1D4ED8) // Azul oscuro (Pasos)
-        workoutDone              -> Color(0xFF3B82F6) // Azul claro (Entreno)
-        else                     -> Indigo800
+        workoutDone && stepsDone -> Indigo700
+        workoutDone              -> Indigo700.copy(alpha = 0.85f)
+        stepsDone                -> Color(0xFF1E2652)
+        else                     -> Indigo900.copy(alpha = 0.5f)
     }
 
     val contentColor = when {
@@ -388,42 +430,57 @@ private fun MonthDayCell(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(0.95f)
+            .aspectRatio(1f)
             .clip(RoundedCornerShape(10.dp))
             .background(backgroundColor)
             .border(
                 width = if (isToday) 1.5.dp else if (isSelected) 1.dp else 0.dp,
-                color = if (isToday) Violet300 else if (isSelected) Color(0xFF93C5FD) else Color.Transparent,
+                color = if (isToday) Violet300 else if (isSelected) Violet400 else Color.Transparent,
                 shape = RoundedCornerShape(10.dp)
             )
             .clickable(onClick = onClick)
             .padding(2.dp)
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
             Text(
                 text       = date.dayOfMonth.toString(),
                 style      = MaterialTheme.typography.labelSmall,
                 color      = contentColor,
-                fontWeight = if (workoutDone || stepsDone || isToday) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (workoutDone || stepsDone || isToday || isSelected) FontWeight.Bold else FontWeight.Normal,
                 fontSize   = 11.sp
             )
+
             if (progress != null && !isFuture) {
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(3.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    if (workoutDone) {
-                        Box(
-                            Modifier
-                                .size(4.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF60A5FA))
-                        )
-                    }
+                    // Dot Pasos
                     if (stepsDone) {
                         Box(
                             Modifier
                                 .size(4.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF93C5FD))
+                                .background(Cyan400)
+                        )
+                    }
+                    // Dot Sueño
+                    if (sleepDone) {
+                        Box(
+                            Modifier
+                                .size(4.dp)
+                                .clip(CircleShape)
+                                .background(Teal400)
+                        )
+                    }
+                    // Dot Entreno
+                    if (workoutDone) {
+                        Box(
+                            Modifier
+                                .size(4.dp)
+                                .clip(CircleShape)
+                                .background(Violet400)
                         )
                     }
                 }
@@ -432,7 +489,7 @@ private fun MonthDayCell(
     }
 }
 
-// ─── Vista Anual (Sin LazyGrid para evitar crash) ─────────────────────────────
+// ─── Vista Anual (Heatmap Seguro sin Crash) ───────────────────────────────────
 
 @Composable
 private fun YearView(
@@ -443,7 +500,7 @@ private fun YearView(
     val monthNames = listOf("Ene","Feb","Mar","Abr","May","Jun",
                             "Jul","Ago","Sep","Oct","Nov","Dic")
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         repeat(6) { row ->
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -475,9 +532,10 @@ private fun MiniMonthHeatmap(
 ) {
     Column {
         Text(
-            text  = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = Gray400
+            text       = label,
+            style      = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color      = Gray300
         )
         Spacer(Modifier.height(4.dp))
 
@@ -496,11 +554,11 @@ private fun MiniMonthHeatmap(
                         val date = month.atDay(dayNum)
                         val progress = progressByDate[date]
                         val activityColor = when {
-                            date.isAfter(LocalDate.now()) -> RingTrack.copy(alpha = 0.3f)
-                            progress == null              -> RingTrack.copy(alpha = 0.3f)
-                            progress.workoutCompleted && progress.stepsProgress >= 0.7f -> Color(0xFF1E3A8A) // Azul muy oscuro
-                            progress.stepsProgress >= 0.7f                              -> Color(0xFF1D4ED8) // Azul oscuro
-                            progress.workoutCompleted                                   -> Color(0xFF3B82F6) // Azul claro
+                            date.isAfter(LocalDate.now()) -> RingTrack.copy(alpha = 0.25f)
+                            progress == null              -> RingTrack.copy(alpha = 0.25f)
+                            progress.workoutCompleted && progress.stepsProgress >= 0.7f -> Violet400
+                            progress.stepsProgress >= 0.7f                              -> Cyan400
+                            progress.workoutCompleted                                   -> Violet300
                             else                                                         -> RingTrack.copy(alpha = 0.5f)
                         }
                         Box(

@@ -69,6 +69,9 @@ class WorkoutViewModel @Inject constructor(
     val state: StateFlow<WorkoutUiState> = _state.asStateFlow()
 
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            workoutDao.deduplicateSessions()
+        }
         loadData()
     }
 

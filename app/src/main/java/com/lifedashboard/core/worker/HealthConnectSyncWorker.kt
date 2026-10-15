@@ -60,7 +60,9 @@ class HealthConnectSyncWorker @AssistedInject constructor(
             }
 
             val client = HealthConnectClient.getOrCreate(context)
+            workoutDao.deduplicateSessions()
             syncLast7Days(client)
+            workoutDao.deduplicateSessions()
             updateWidget()
             Result.success()
         } catch (e: SecurityException) {
@@ -140,18 +142,26 @@ class HealthConnectSyncWorker @AssistedInject constructor(
             }
         }
 
-        // Sesiones de ejercicio (Symmetry / Entrenamientos registrados)
+        // Sesiones de ejercicio (Health Connect / Entrenamientos registrados)
         try {
             val exResp = client.readRecords(
                 ReadRecordsRequest(ExerciseSessionRecord::class, timeRange)
             )
+            workoutDao.deleteHealthConnectSessionsForDay(date.toStartOfDayMillis())
             exResp.records.forEach { exSession ->
                 val durationMin = Duration.between(exSession.startTime, exSession.endTime).toMinutes().toInt()
+                val typeStr = when (exSession.exerciseType) {
+                    ExerciseSessionRecord.EXERCISE_TYPE_RUNNING,
+                    ExerciseSessionRecord.EXERCISE_TYPE_BIKING,
+                    ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> "CARDIO"
+                    else -> "STRENGTH"
+                }
                 workoutDao.upsertSession(
                     WorkoutSessionEntity(
                         dateMillis      = date.toStartOfDayMillis(),
-                        type            = "STRENGTH",
+                        type            = typeStr,
                         durationMinutes = if (durationMin > 0) durationMin else 45,
+                        notes           = exSession.title ?: exSession.notes,
                         sourceFile      = "health_connect"
                     )
                 )
@@ -172,10 +182,15 @@ class HealthConnectSyncWorker @AssistedInject constructor(
     }
 
     private fun updateWidget() {
-        val intent = android.content.Intent(context, LifeDashboardWidgetReceiver::class.java).apply {
+        val intentExpanded = android.content.Intent(context, LifeDashboardWidgetReceiver::class.java).apply {
             action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
         }
-        context.sendBroadcast(intent)
+        context.sendBroadcast(intentExpanded)
+
+        val intentCompact = android.content.Intent(context, com.lifedashboard.presentation.widget.LifeDashboardCompactWidgetReceiver::class.java).apply {
+            action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
+        }
+        context.sendBroadcast(intentCompact)
     }
 
     companion object {
