@@ -4,8 +4,10 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.lifedashboard.presentation.screen.dashboard.DashboardScreen
 import com.lifedashboard.presentation.screen.health.HealthScreen
 import com.lifedashboard.presentation.screen.settings.SettingsScreen
@@ -23,9 +25,37 @@ fun NavGraph(navController: NavHostController) {
             fadeOut(tween(150))
         }
     ) {
-        composable(Screen.Dashboard.route) { DashboardScreen() }
-        composable(Screen.Workout.route)   { WorkoutScreen() }
-        composable(Screen.Health.route)    { HealthScreen() }
-        composable(Screen.Settings.route)  { SettingsScreen() }
+        composable(Screen.Dashboard.route) {
+            DashboardScreen(
+                onNavigateToHealth = { tab ->
+                    navController.navigate(Screen.Health.createRoute(tab)) {
+                        launchSingleTop = true
+                    }
+                },
+                onNavigateToWorkout = {
+                    navController.navigate(Screen.Workout.route) {
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+        composable(Screen.Workout.route) {
+            WorkoutScreen()
+        }
+        composable(
+            route = Screen.Health.route,
+            arguments = listOf(
+                navArgument("tab") {
+                    type = NavType.StringType
+                    defaultValue = "PASOS"
+                }
+            )
+        ) { backStackEntry ->
+            val tab = backStackEntry.arguments?.getString("tab") ?: "PASOS"
+            HealthScreen(initialTabName = tab)
+        }
+        composable(Screen.Settings.route) {
+            SettingsScreen()
+        }
     }
 }

@@ -25,6 +25,13 @@ interface HealthDao {
     """)
     suspend fun getLastNDays(days: Int): List<HealthDataEntity>
 
+    @Query("""
+        SELECT * FROM health_data
+        ORDER BY dateMillis DESC
+        LIMIT :days
+    """)
+    fun observeLastNDays(days: Int): Flow<List<HealthDataEntity>>
+
     @Upsert
     suspend fun upsert(entity: HealthDataEntity)
 

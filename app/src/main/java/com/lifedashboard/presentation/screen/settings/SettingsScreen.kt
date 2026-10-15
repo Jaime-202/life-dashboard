@@ -64,7 +64,6 @@ data class SettingsState(
     val showUpcomingEvents: Boolean = true,
     val dailyReminders: Boolean = true,
     val geminiApiKey: String = "",
-    val symmetryFolderUri: String? = null,
     val healthConnectGranted: Boolean = false,
     val calendarGranted: Boolean = false
 )
@@ -157,21 +156,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun onSymmetryFolderSelected(uri: Uri, context: Context) {
-        try {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-            val uriString = uri.toString()
-            _state.value = _state.value.copy(symmetryFolderUri = uriString)
-            scheduler.scheduleSymmetrySync(uriString)
-            Toast.makeText(context, "Carpeta de Symmetry configurada", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(context, "Error al acceder a la carpeta", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     fun onHealthConnectConnect(context: Context) {
         _state.value = _state.value.copy(healthConnectGranted = true)
         scheduler.runHealthSyncNow()
@@ -208,7 +192,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         HealthPermission.getReadPermission(StepsRecord::class),
         HealthPermission.getReadPermission(DistanceRecord::class),
         HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
-        HealthPermission.getReadPermission(SleepSessionRecord::class)
+        HealthPermission.getReadPermission(SleepSessionRecord::class),
+        HealthPermission.getReadPermission(androidx.health.connect.client.records.ExerciseSessionRecord::class)
     )
 
     val healthPermissionLauncher = rememberLauncherForActivityResult(
@@ -229,12 +214,6 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         } else {
             Toast.makeText(context, "Permiso de calendario denegado", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    val folderPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        uri?.let { viewModel.onSymmetryFolderSelected(it, context) }
     }
 
     Column(
@@ -346,7 +325,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 icon      = Icons.Default.Favorite,
                 iconColor = Rose400,
                 title     = "Health Connect / Samsung Health",
-                subtitle  = if (state.healthConnectGranted) "Sincronizado — pasos, sueño, calorías"
+                subtitle  = if (state.healthConnectGranted) "Sincronizado — pasos, sueño, calorías y entrenamientos"
                             else "Toca para conectar o abrir ajustes de Salud",
                 trailing  = {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -386,28 +365,6 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
                             border  = BorderStroke(1.dp, Violet400)
                         ) { Text("Permitir", style = MaterialTheme.typography.labelMedium) }
-                    }
-                }
-            )
-
-            HorizontalDivider(color = Indigo700)
-
-            SettingsItem(
-                icon      = Icons.Default.FitnessCenter,
-                iconColor = Violet400,
-                title     = "Symmetry (Entrenamiento)",
-                subtitle  = state.symmetryFolderUri?.let { "Carpeta configurada ✓" }
-                            ?: "Selecciona carpeta de CSVs",
-                trailing  = {
-                    OutlinedButton(
-                        onClick = { folderPickerLauncher.launch(null) },
-                        colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
-                        border  = BorderStroke(1.dp, Violet400)
-                    ) {
-                        Text(
-                            if (state.symmetryFolderUri != null) "Cambiar" else "Seleccionar",
-                            style = MaterialTheme.typography.labelMedium
-                        )
                     }
                 }
             )

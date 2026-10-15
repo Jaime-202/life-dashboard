@@ -32,13 +32,17 @@ import java.util.Locale
 
 @Composable
 fun DashboardScreen(
-    viewModel: DashboardViewModel = hiltViewModel()
+    viewModel: DashboardViewModel = hiltViewModel(),
+    onNavigateToHealth: (String) -> Unit = {},
+    onNavigateToWorkout: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     DashboardContent(
-        state        = state,
-        onSelectDate = { viewModel.selectDate(it) },
-        onRefreshAi  = { viewModel.requestAiInsight() }
+        state               = state,
+        onSelectDate        = { viewModel.selectDate(it) },
+        onRefreshAi         = { viewModel.requestAiInsight() },
+        onNavigateToHealth  = onNavigateToHealth,
+        onNavigateToWorkout = onNavigateToWorkout
     )
 }
 
@@ -46,7 +50,9 @@ fun DashboardScreen(
 fun DashboardContent(
     state: DashboardUiState,
     onSelectDate: (LocalDate) -> Unit = {},
-    onRefreshAi: () -> Unit = {}
+    onRefreshAi: () -> Unit = {},
+    onNavigateToHealth: (String) -> Unit = {},
+    onNavigateToWorkout: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     val greeting = remember(state.userName) {
@@ -83,11 +89,18 @@ fun DashboardContent(
 
             // 1. Resumen Hero (Anillos de progreso) - controlado por preferencia
             if (state.showHeroRings) {
-                DayHeroSection(state = state)
+                DayHeroSection(
+                    state = state,
+                    onNavigateToHealth = onNavigateToHealth
+                )
             }
 
-            // 2. Pilares de Salud y Rendimiento (Pasos, Sueño, Entreno)
-            PillarGrid(state = state)
+            // 2. Pilares de Salud y Rendimiento (Pasos, Sueño, Calorías, Entreno)
+            PillarGrid(
+                state = state,
+                onNavigateToHealth = onNavigateToHealth,
+                onNavigateToWorkout = onNavigateToWorkout
+            )
 
             // 3. Calendario de Actividad y consistencia
             SectionTitle("Calendario de Hábitos")
@@ -99,8 +112,10 @@ fun DashboardContent(
 
             // 4. Detalle del día seleccionado
             SelectedDayDetailCard(
-                selectedDate = state.selectedDate,
-                progress     = state.progressByDate[state.selectedDate]
+                selectedDate        = state.selectedDate,
+                progress            = state.progressByDate[state.selectedDate],
+                onNavigateToHealth  = onNavigateToHealth,
+                onNavigateToWorkout = onNavigateToWorkout
             )
 
             // 5. Próximos Eventos - controlado por preferencia
@@ -175,7 +190,10 @@ private fun DashboardHeader(greeting: String, state: DashboardUiState) {
 }
 
 @Composable
-private fun DayHeroSection(state: DashboardUiState) {
+private fun DayHeroSection(
+    state: DashboardUiState,
+    onNavigateToHealth: (String) -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -196,14 +214,20 @@ private fun DayHeroSection(state: DashboardUiState) {
             verticalAlignment = Alignment.CenterVertically,
             modifier          = Modifier.fillMaxWidth()
         ) {
-            DayProgressRings(
-                stepsProgress    = state.stepsProgress,
-                caloriesProgress = state.caloriesProgress,
-                sleepProgress    = state.sleepProgress,
-                size             = 114.dp,
-                strokeWidth      = 10.dp,
-                gap              = 5.dp
-            )
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable { onNavigateToHealth("PASOS") }
+            ) {
+                DayProgressRings(
+                    stepsProgress    = state.stepsProgress,
+                    caloriesProgress = state.caloriesProgress,
+                    sleepProgress    = state.sleepProgress,
+                    size             = 114.dp,
+                    strokeWidth      = 10.dp,
+                    gap              = 5.dp
+                )
+            }
 
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -215,19 +239,22 @@ private fun DayHeroSection(state: DashboardUiState) {
                     value    = "${state.todaySteps} / ${if (state.stepsTarget >= 1000) "${state.stepsTarget / 1000}K" else state.stepsTarget}",
                     label    = "pasos",
                     progress = state.stepsProgress,
-                    color    = RingSteps
+                    color    = RingSteps,
+                    onClick  = { onNavigateToHealth("PASOS") }
                 )
                 FillableStatItem(
                     value    = "${(state.todaySleepHours * 10).toInt() / 10f}h / ${state.sleepTargetHours}h",
                     label    = "sueño",
                     progress = state.sleepProgress,
-                    color    = RingSleep
+                    color    = RingSleep,
+                    onClick  = { onNavigateToHealth("SUENO") }
                 )
                 FillableStatItem(
                     value    = "${state.todayCalories.toInt()} / ${state.caloriesTarget.toInt()} kcal",
                     label    = "calorías",
                     progress = state.caloriesProgress,
-                    color    = Amber400
+                    color    = Amber400,
+                    onClick  = { onNavigateToHealth("CALORIAS") }
                 )
             }
         }
@@ -239,7 +266,8 @@ private fun FillableStatItem(
     value: String,
     label: String,
     progress: Float,
-    color: Color
+    color: Color,
+    onClick: (() -> Unit)? = null
 ) {
     val animatedProgress by animateFloatAsState(
         targetValue   = progress.coerceIn(0f, 1f),
@@ -247,7 +275,9 @@ private fun FillableStatItem(
         label         = "stat_fill"
     )
 
-    Column {
+    val clickMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+
+    Column(modifier = clickMod) {
         Row(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment     = Alignment.Bottom,
@@ -263,14 +293,25 @@ private fun FillableStatItem(
                 overflow   = TextOverflow.Ellipsis
             )
             Spacer(Modifier.width(4.dp))
-            Text(
-                text     = label,
-                style    = MaterialTheme.typography.labelSmall,
-                color    = color,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text     = label,
+                    style    = MaterialTheme.typography.labelSmall,
+                    color    = color,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (onClick != null) {
+                    Spacer(Modifier.width(2.dp))
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = color.copy(alpha = 0.7f),
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
         }
         Spacer(Modifier.height(5.dp))
         LinearProgressIndicator(
@@ -286,7 +327,11 @@ private fun FillableStatItem(
 }
 
 @Composable
-private fun PillarGrid(state: DashboardUiState) {
+private fun PillarGrid(
+    state: DashboardUiState,
+    onNavigateToHealth: (String) -> Unit,
+    onNavigateToWorkout: () -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PillarCard(
@@ -295,13 +340,14 @@ private fun PillarGrid(state: DashboardUiState) {
                 unit     = "/ ${state.stepsTarget}",
                 subtitle = when {
                     state.todaySteps >= state.stepsTarget -> "¡Meta superada!"
-                    state.todaySteps >= 7_000             -> "Meta saludable cumplida"
+                    state.todaySteps >= 7_000             -> "Meta cumplida"
                     else                                  -> "${state.stepsTarget - state.todaySteps} para la meta"
                 },
                 progress  = state.stepsProgress,
                 ringColor = RingSteps,
                 icon      = Icons.Default.DirectionsWalk,
-                modifier  = Modifier.weight(1f)
+                modifier  = Modifier.weight(1f),
+                onClick   = { onNavigateToHealth("PASOS") }
             )
             PillarCard(
                 title    = "Sueño",
@@ -315,32 +361,51 @@ private fun PillarGrid(state: DashboardUiState) {
                 progress  = state.sleepProgress,
                 ringColor = RingSleep,
                 icon      = Icons.Default.Bedtime,
-                modifier  = Modifier.weight(1f)
+                modifier  = Modifier.weight(1f),
+                onClick   = { onNavigateToHealth("SUENO") }
             )
         }
 
-        PillarCard(
-            title    = "Entrenamiento",
-            value    = if (state.workoutDoneToday) "Completado" else "Pendiente",
-            unit     = if (state.workoutDoneToday) "✓" else "",
-            subtitle = when (state.workoutTypeToday) {
-                WorkoutType.STRENGTH -> "Sesión de fuerza registrada"
-                WorkoutType.CARDIO   -> "Sesión de cardio completada"
-                WorkoutType.REST     -> "Día de descanso programado"
-                null                 -> "Sin registro para hoy"
-            },
-            progress  = if (state.workoutDoneToday) 1f else 0f,
-            ringColor = RingWorkout,
-            icon      = Icons.Default.FitnessCenter,
-            modifier  = Modifier.fillMaxWidth()
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            PillarCard(
+                title     = "Calorías",
+                value     = state.todayCalories.toInt().toString(),
+                unit      = "/ ${state.caloriesTarget.toInt()} kcal",
+                subtitle  = if (state.todayCalories >= state.caloriesTarget) "Objetivo alcanzado"
+                            else "${(state.caloriesTarget - state.todayCalories).toInt()} kcal restantes",
+                progress  = state.caloriesProgress,
+                ringColor = Amber400,
+                icon      = Icons.Default.LocalFireDepartment,
+                modifier  = Modifier.weight(1f),
+                onClick   = { onNavigateToHealth("CALORIAS") }
+            )
+
+            PillarCard(
+                title    = "Entreno",
+                value    = if (state.workoutDoneToday) "Hecho" else "Pendiente",
+                unit     = if (state.workoutDoneToday) "✓" else "",
+                subtitle = when (state.workoutTypeToday) {
+                    WorkoutType.STRENGTH -> "Fuerza registrada"
+                    WorkoutType.CARDIO   -> "Cardio registrado"
+                    WorkoutType.REST     -> "Descanso programado"
+                    null                 -> "Sin entreno hoy"
+                },
+                progress  = if (state.workoutDoneToday) 1f else 0f,
+                ringColor = RingWorkout,
+                icon      = Icons.Default.FitnessCenter,
+                modifier  = Modifier.weight(1f),
+                onClick   = onNavigateToWorkout
+            )
+        }
     }
 }
 
 @Composable
 private fun SelectedDayDetailCard(
     selectedDate: LocalDate,
-    progress: com.lifedashboard.domain.model.DailyProgress?
+    progress: com.lifedashboard.domain.model.DailyProgress?,
+    onNavigateToHealth: (String) -> Unit = {},
+    onNavigateToWorkout: () -> Unit = {}
 ) {
     val isToday = selectedDate == LocalDate.now()
     val dateStr = selectedDate.format(
@@ -396,19 +461,22 @@ private fun SelectedDayDetailCard(
                     modifier              = Modifier.fillMaxWidth()
                 ) {
                     DayStatChip(
-                        label = "Entreno",
-                        value = if (progress.workoutCompleted) "Hecho ✓" else "Pendiente",
-                        color = Color(0xFF60A5FA)
+                        label   = "Entreno",
+                        value   = if (progress.workoutCompleted) "Hecho ✓" else "Pendiente",
+                        color   = Color(0xFF60A5FA),
+                        onClick = onNavigateToWorkout
                     )
                     DayStatChip(
-                        label = "Pasos",
-                        value = "${progress.actualSteps}",
-                        color = Cyan400
+                        label   = "Pasos",
+                        value   = "${progress.actualSteps}",
+                        color   = Cyan400,
+                        onClick = { onNavigateToHealth("PASOS") }
                     )
                     DayStatChip(
-                        label = "Sueño",
-                        value = "${String.format(Locale.US, "%.1f", progress.sleepProgress * 8f)}h",
-                        color = Teal400
+                        label   = "Sueño",
+                        value   = "${String.format(Locale.US, "%.1f", progress.sleepProgress * 8f)}h",
+                        color   = Teal400,
+                        onClick = { onNavigateToHealth("SUENO") }
                     )
                 }
             } else {
@@ -423,8 +491,17 @@ private fun SelectedDayDetailCard(
 }
 
 @Composable
-private fun DayStatChip(label: String, value: String, color: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun DayStatChip(
+    label: String,
+    value: String,
+    color: Color,
+    onClick: (() -> Unit)? = null
+) {
+    val clickMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = clickMod.padding(4.dp)
+    ) {
         Text(text = value, style = MaterialTheme.typography.titleSmall, color = White, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(2.dp))
         Text(text = label, style = MaterialTheme.typography.labelSmall, color = color)

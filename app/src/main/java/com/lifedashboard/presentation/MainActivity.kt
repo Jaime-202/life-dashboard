@@ -77,7 +77,8 @@ private fun LifeDashboardApp() {
             LifeDashboardBottomNav(
                 currentRoute = currentRoute,
                 onNavigate   = { screen ->
-                    navController.navigate(screen.route) {
+                    val targetRoute = if (screen is Screen.Health) Screen.Health.createRoute("PASOS") else screen.route
+                    navController.navigate(targetRoute) {
                         popUpTo(Screen.Dashboard.route) { saveState = true }
                         launchSingleTop = true
                         restoreState = true
@@ -110,7 +111,7 @@ private fun LifeDashboardBottomNav(
                 .clip(RoundedCornerShape(24.dp))
         ) {
             bottomNavItems.forEach { item ->
-                val isSelected = currentRoute == item.screen.route
+                val isSelected = currentRoute?.substringBefore("?") == item.screen.route.substringBefore("?")
                 NavigationBarItem(
                     selected = isSelected,
                     onClick  = { onNavigate(item.screen) },
