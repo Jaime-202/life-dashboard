@@ -1,41 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    Icono foreground del launcher — un anillo con una chispa en el centro.
-    Representa los "anillos de vida" del dashboard.
-    Se usa en ic_launcher_foreground para el adaptive icon.
--->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Anillo exterior — violet -->
+    <!-- Halo circular exterior sutil -->
     <path
-        android:pathData="M54,10 A44,44 0 1,1 53.999,10 Z"
-        android:strokeWidth="5"
-        android:strokeColor="#9B6DFF"
-        android:fillColor="@android:color/transparent"
-        android:strokeLineCap="round" />
+        android:pathData="M54,20 A34,34 0 1,1 53.99,20 Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#339B6DFF"
+        android:fillColor="@android:color/transparent" />
 
-    <!-- Anillo medio — cyan -->
+    <!-- Glifo "V" Biométrico con Onda de Pulso Vital -->
     <path
-        android:pathData="M54,20 A34,34 0 1,1 53.999,20 Z"
-        android:strokeWidth="4"
-        android:strokeColor="#22D3EE"
-        android:fillColor="@android:color/transparent"
-        android:strokeLineCap="round" />
+        android:pathData="M34,36 L46,68 L54,44 L60,58 L64,48 L74,48"
+        android:strokeWidth="5.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="34"
+                android:startY="36"
+                android:endX="74"
+                android:endY="58"
+                android:startColor="#22D3EE"
+                android:endColor="#B894FF" />
+        </aapt:attr>
+    </path>
 
-    <!-- Anillo interior — teal -->
+    <!-- Destello / Partícula de energía viva -->
     <path
-        android:pathData="M54,30 A24,24 0 1,1 53.999,30 Z"
-        android:strokeWidth="3.5"
-        android:strokeColor="#2DD4BF"
-        android:fillColor="@android:color/transparent"
-        android:strokeLineCap="round" />
+        android:pathData="M74,48 L77,44 L80,48 L84,48 L81,51 L82,55 L78,52 L74,55 L75,51 Z"
+        android:fillColor="#34D399" />
 
-    <!-- Centro: chispa/estrella -->
+    <!-- Punto luminoso central en el ápice -->
     <path
-        android:pathData="M54,42 L56.5,50 L64,50 L58,55 L60,63 L54,58 L48,63 L50,55 L44,50 L51.5,50 Z"
-        android:fillColor="#9B6DFF" />
+        android:pathData="M54,44 A2.5,2.5 0 1,1 53.99,44 Z"
+        android:fillColor="#FFFFFF" />
 </vector>

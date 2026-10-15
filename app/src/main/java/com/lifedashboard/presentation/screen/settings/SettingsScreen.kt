@@ -42,6 +42,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lifedashboard.core.worker.WorkManagerScheduler
+import com.lifedashboard.data.local.dao.WeightDao
+import com.lifedashboard.data.local.entity.WeightEntryEntity
 import com.lifedashboard.data.repository.UserPreferencesRepository
 import com.lifedashboard.domain.repository.CalendarRepository
 import com.lifedashboard.presentation.theme.*
@@ -54,6 +56,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
 
@@ -84,14 +88,16 @@ data class SettingsState(
     val workoutDaysTarget: Int = 4,
     val workoutMinutesTarget: Int = 180,
     val healthConnectGranted: Boolean = false,
-    val calendarGranted: Boolean = false
+    val calendarGranted: Boolean = false,
+    val weightHistory: List<WeightEntryEntity> = emptyList()
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val scheduler: WorkManagerScheduler,
     private val calendarRepository: CalendarRepository,
-    private val userPreferences: UserPreferencesRepository
+    private val userPreferences: UserPreferencesRepository,
+    private val weightDao: WeightDao
 ) : ViewModel() {
     private val _state = MutableStateFlow(SettingsState())
     val state: StateFlow<SettingsState> = _state.asStateFlow()
@@ -129,6 +135,36 @@ class SettingsViewModel @Inject constructor(
                 )
             }
             .launchIn(viewModelScope)
+
+        weightDao.observeAllWeights()
+            .onEach { weights ->
+                _state.value = _state.value.copy(weightHistory = weights)
+            }
+            .launchIn(viewModelScope)
+    }
+
+    fun logWeight(weight: Float, note: String?) {
+        if (weight <= 0f) return
+        viewModelScope.launch {
+            val entry = WeightEntryEntity(
+                dateMillis = System.currentTimeMillis(),
+                weightKg = weight,
+                note = note?.takeIf { it.isNotBlank() }
+            )
+            weightDao.upsert(entry)
+            userPreferences.updateFitnessProfile(
+                level = _state.value.fitnessLevel,
+                goal = _state.value.primaryGoal,
+                weight = weight,
+                height = _state.value.heightCm
+            )
+        }
+    }
+
+    fun deleteWeightEntry(id: Long) {
+        viewModelScope.launch {
+            weightDao.deleteById(id)
+        }
     }
 
     fun updateProfile(name: String, level: String, goal: String, weight: Float, height: Int) {
@@ -287,6 +323,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     var showSleepModal by remember { mutableStateOf(false) }
     var showCaloriesModal by remember { mutableStateOf(false) }
     var showWorkoutModal by remember { mutableStateOf(false) }
+    var showAddWeightModal by remember { mutableStateOf(false) }
+    var showWeightHistoryModal by remember { mutableStateOf(false) }
 
     val healthPermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
@@ -341,10 +379,19 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             userName      = state.userName,
             fitnessLevel  = state.fitnessLevel,
             primaryGoal   = state.primaryGoal,
-            weightKg      = state.weightKg,
+            weightKg      = state.weightHistory.firstOrNull()?.weightKg ?: state.weightKg,
             heightCm      = state.heightCm,
             onOpenProfile = { showProfileModal = true },
             onSyncAll     = { viewModel.forceSyncAll(context) }
+        )
+
+        // ─── Seguimiento de Peso & Composición ─────────────────────────────
+        WeightTrackerCard(
+            latestWeight  = state.weightHistory.firstOrNull()?.weightKg ?: state.weightKg,
+            heightCm      = state.heightCm,
+            weightHistory = state.weightHistory,
+            onAddWeight   = { showAddWeightModal = true },
+            onViewHistory = { showWeightHistoryModal = true }
         )
 
         // ─── Metas & Objetivos Personales (Centralizado) ───────────────────
@@ -729,6 +776,29 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             }
         )
     }
+
+    if (showAddWeightModal) {
+        AddWeightEntryModal(
+            currentWeight = state.weightHistory.firstOrNull()?.weightKg ?: state.weightKg,
+            onDismiss     = { showAddWeightModal = false },
+            onSave        = { weight, note ->
+                viewModel.logWeight(weight, note)
+                showAddWeightModal = false
+                Toast.makeText(context, "Pesaje registrado con éxito", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showWeightHistoryModal) {
+        WeightHistoryModal(
+            history   = state.weightHistory,
+            onDismiss = { showWeightHistoryModal = false },
+            onDelete  = { id ->
+                viewModel.deleteWeightEntry(id)
+                Toast.makeText(context, "Registro eliminado", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
 }
 
 // ─── Componente: Tarjeta de Perfil Avanzada ───────────────────────────────────
@@ -882,6 +952,501 @@ private fun MetricChip(label: String, value: String, modifier: Modifier) {
             Text(text = value, style = MaterialTheme.typography.labelMedium, color = White, fontWeight = FontWeight.Bold)
         }
     }
+}
+
+// ─── Componente: Seguimiento de Peso & Composición ───────────────────────────
+
+@Composable
+private fun WeightTrackerCard(
+    latestWeight: Float,
+    heightCm: Int,
+    weightHistory: List<WeightEntryEntity>,
+    onAddWeight: () -> Unit,
+    onViewHistory: () -> Unit
+) {
+    val imc = if (heightCm > 0) {
+        val hM = heightCm / 100f
+        latestWeight / (hM * hM)
+    } else 24.0f
+
+    val imcCategory = when {
+        imc < 18.5f -> "Bajo peso" to Cyan400
+        imc < 25.0f -> "Peso saludable" to Emerald400
+        imc < 30.0f -> "Sobrepeso" to Amber400
+        else        -> "Obesidad" to Rose400
+    }
+
+    val deltaTextAndColor: Triple<String, Color, ImageVector?> = if (weightHistory.size >= 2) {
+        val diff = latestWeight - weightHistory[1].weightKg
+        when {
+            diff < -0.05f -> Triple(String.format(Locale.US, "-%.1f kg", Math.abs(diff)), Emerald400, Icons.AutoMirrored.Filled.TrendingDown)
+            diff > 0.05f  -> Triple(String.format(Locale.US, "+%.1f kg", diff), Amber400, Icons.AutoMirrored.Filled.TrendingUp)
+            else          -> Triple("0.0 kg", Gray400, Icons.AutoMirrored.Filled.TrendingFlat)
+        }
+    } else if (weightHistory.size == 1) {
+        Triple("Primer registro", Violet300, null)
+    } else {
+        Triple("Sin historial", Gray400, null)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Indigo800,
+                        Indigo900.copy(alpha = 0.9f)
+                    )
+                )
+            )
+            .border(1.dp, Indigo700, RoundedCornerShape(24.dp))
+            .padding(18.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // Cabecera con título y botón de registro
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Violet400.copy(alpha = 0.15f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FitnessCenter,
+                            contentDescription = null,
+                            tint = Violet300,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Seguimiento de Peso",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Progreso de composición física",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray400
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onAddWeight,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Violet400,
+                        contentColor = Indigo900
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "Pesar",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Fila central: Peso Actual + Variación + IMC
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Indigo700.copy(alpha = 0.35f))
+                    .border(1.dp, Indigo700.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Column {
+                    Text(
+                        text = "ÚLTIMO REGISTRO",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gray400,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            text = String.format(Locale.US, "%.1f", latestWeight),
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = White,
+                            fontWeight = FontWeight.Black
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "kg",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Violet300,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                    }
+                }
+
+                // Variación respecto al pesaje anterior
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "VARIACIÓN",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gray400,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        deltaTextAndColor.third?.let { icon ->
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = deltaTextAndColor.second,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(2.dp))
+                        }
+                        Text(
+                            text = deltaTextAndColor.first,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = deltaTextAndColor.second,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        text = "IMC ${String.format(Locale.US, "%.1f", imc)} · ${imcCategory.first}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = imcCategory.second,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            // Historial reciente (mini chips de los últimos 4 pesajes si existen)
+            if (weightHistory.isNotEmpty()) {
+                val recent = weightHistory.take(4)
+                val dateFormat = remember { SimpleDateFormat("d MMM", Locale("es")) }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    recent.forEach { entry ->
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Indigo900.copy(alpha = 0.5f))
+                                .border(1.dp, Indigo700.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = dateFormat.format(Date(entry.dateMillis)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Gray400,
+                                    fontSize = 10.sp
+                                )
+                                Text(
+                                    text = "${String.format(Locale.US, "%.1f", entry.weightKg)} kg",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Enlace al historial completo
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onViewHistory)
+                        .padding(vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Ver historial completo (${weightHistory.size} registros)",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Violet300,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = Violet300,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            } else {
+                Text(
+                    text = "Aún no has registrado ningún pesaje. Pulsa en 'Pesar' para comenzar tu seguimiento.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray500
+                )
+            }
+        }
+    }
+}
+
+// ─── Modales de Pesaje ────────────────────────────────────────────────────────
+
+@Composable
+private fun AddWeightEntryModal(
+    currentWeight: Float,
+    onDismiss: () -> Unit,
+    onSave: (Float, String?) -> Unit
+) {
+    var weightInput by remember { mutableStateOf(String.format(Locale.US, "%.1f", currentWeight)) }
+    var noteInput by remember { mutableStateOf("") }
+
+    val adjustWeight = { delta: Float ->
+        val current = weightInput.toFloatOrNull() ?: currentWeight
+        val updated = (current + delta).coerceAtLeast(30.0f)
+        weightInput = String.format(Locale.US, "%.1f", updated)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = Indigo800,
+        shape            = RoundedCornerShape(24.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Violet400.copy(alpha = 0.2f))
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FitnessCenter,
+                        contentDescription = null,
+                        tint = Violet300,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Text("Registrar Pesaje", color = White, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                OutlinedTextField(
+                    value = weightInput,
+                    onValueChange = { weightInput = it.replace(',', '.') },
+                    label = { Text("Peso corporal (kg)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Botones rápidos de ajuste
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    listOf(-0.5f, -0.1f, +0.1f, +0.5f).forEach { delta ->
+                        val sign = if (delta > 0) "+$delta" else "$delta"
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Indigo700)
+                                .clickable { adjustWeight(delta) }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "$sign kg",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = noteInput,
+                    onValueChange = { noteInput = it },
+                    label = { Text("Nota (opcional)") },
+                    placeholder = { Text("Ej. En ayunas, tras entrenar...", color = Gray500) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val w = weightInput.toFloatOrNull() ?: currentWeight
+                    onSave(w, noteInput.takeIf { it.isNotBlank() })
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Violet400,
+                    contentColor = Indigo900
+                )
+            ) {
+                Text("Guardar Pesaje", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = Gray400)
+            }
+        }
+    )
+}
+
+@Composable
+private fun WeightHistoryModal(
+    history: List<WeightEntryEntity>,
+    onDismiss: () -> Unit,
+    onDelete: (Long) -> Unit
+) {
+    val dateFormat = remember { SimpleDateFormat("d MMM yyyy, HH:mm", Locale("es")) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = Indigo800,
+        shape            = RoundedCornerShape(24.dp),
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.History,
+                        contentDescription = null,
+                        tint = Violet300,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Historial de Pesajes", color = White, fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    text = "${history.size}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Gray400
+                )
+            }
+        },
+        text = {
+            if (history.isEmpty()) {
+                Text(
+                    text = "No hay registros guardados en tu historial.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Gray400,
+                    modifier = Modifier.padding(vertical = 16.dp)
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 380.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    history.forEach { entry ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Indigo900.copy(alpha = 0.6f))
+                                .border(1.dp, Indigo700.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "${String.format(Locale.US, "%.1f", entry.weightKg)} kg",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = dateFormat.format(Date(entry.dateMillis)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Gray400,
+                                    fontSize = 11.sp
+                                )
+                                if (!entry.note.isNullOrBlank()) {
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = entry.note,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Violet300,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = { onDelete(entry.id) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteOutline,
+                                    contentDescription = "Eliminar pesaje",
+                                    tint = Rose400,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors  = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)
+            ) {
+                Text("Cerrar", fontWeight = FontWeight.Bold)
+            }
+        }
+    )
 }
 
 // ─── Modal: Editar Perfil Completo ────────────────────────────────────────────

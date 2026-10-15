@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Life Dashboard</string>
-    <string name="widget_description">Panel de vida con pasos, sueño y próximos eventos</string>
+    <string name="app_name">Vital</string>
+    <string name="widget_description">Dashboard de vitalidad con pasos, calorías y sueño</string>
 
     <!-- Widgets -->
-    <string name="widget_1x1_name">Life Dashboard - Badge (1x1)</string>
-    <string name="widget_1x1_description">Mini badge biométrico de pasos y vitalidad para pantalla de bloqueo o inicio</string>
+    <string name="widget_1x1_name">Vital - Pulso (1x1)</string>
+    <string name="widget_1x1_description">Mini badge translúcido de pasos, calorías y sueño</string>
 
-    <string name="widget_1x2_name">Life Dashboard - Cápsula (2x1)</string>
-    <string name="widget_1x2_description">Cápsula de pulso con pasos, sueño y entreno en barra compacta</string>
+    <string name="widget_1x2_name">Vital - Cápsula (2x1)</string>
+    <string name="widget_1x2_description">Cápsula translúcida de pulso con pasos, calorías y sueño</string>
 
-    <string name="widget_2x2_name">Life Dashboard - Cuadrante (2x2)</string>
-    <string name="widget_2x2_description">Resumen biométrico con barras de progreso de pasos, sueño y entreno</string>
+    <string name="widget_2x2_name">Vital - Métricas (2x2)</string>
+    <string name="widget_2x2_description">Cuadrante glassmorphic con pasos, calorías activas y descanso</string>
 
-    <string name="widget_expanded_name">Life Dashboard - Completo (4x2)</string>
-    <string name="widget_expanded_description">Pasos, sueño, entrenamiento y agenda en vista amplia</string>
+    <string name="widget_expanded_name">Vital - Completo (4x2)</string>
+    <string name="widget_expanded_description">Panel translúcido completo con biometría y agenda</string>
 </resources>

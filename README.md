@@ -1,6 +1,6 @@
-# ⚡ Life Dashboard
+# ⚡ Vital
 
-> **Dashboard Integral de Salud, Rendimiento Físico y Hábitos con IA Local y Health Connect.**
+> **Dashboard Integral de Salud, Rendimiento Físico, Hábitos y Peso con IA Local y Health Connect.**
 
 [![Android](https://img.shields.io/badge/Platform-Android-3DDC84.svg?style=flat&logo=android)](https://www.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org)
@@ -9,7 +9,7 @@
 [![AI Engine](https://img.shields.io/badge/AI-Gemini%202.0%20Flash%20%7C%20Local%20Heuristic-8E24AA.svg?style=flat)](https://aistudio.google.com)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Life Dashboard** es una aplicación moderna para Android diseñada bajo la filosofía de privacidad total y diseño biométrico de vanguardia. Centraliza tus métricas de salud (pasos, sueño, calorías), entrenamientos de fuerza/cardio, agenda y hábitos en una interfaz fluida e intuitiva con soporte para pantalla de bloqueo y widgets en múltiples dimensiones.
+**Vital** es una aplicación moderna para Android diseñada bajo la filosofía de privacidad total y diseño biométrico de vanguardia. Centraliza tus métricas de salud (pasos, sueño, calorías), historial y evolución de peso corporal, entrenamientos de fuerza/cardio, agenda y hábitos en una interfaz fluida e intuitiva con widgets semitransparentes en múltiples dimensiones tanto para tu pantalla de inicio como de bloqueo.
 
 ---
 
@@ -20,28 +20,33 @@
 * **Cápsulas Interactivas:** Acceso directo e instantáneo a tus métricas de pasos, sueño y calorías activas.
 
 ### 🏃 2. Sincronización Biométrica con Health Connect
-* **Idempotencia y Sin Duplicados:** Sincronización periódica automática (WorkManager) y manual con Health Connect (Google / Samsung Health).
+* **Idempotencia y Cero Duplicados:** Sincronización periódica automática (WorkManager) y manual con Health Connect (Google / Samsung Health).
 * **Entrenamientos Automáticos:** Detecta sesiones de fuerza y cardio registradas en tu ecosistema de salud y calcula el volumen semanal.
 * **Métricas de Sueño Avanzadas:** Desglose de horas totales, fases de sueño profundo y sueño REM.
 
-### 📅 3. Calendario Obsidian de Hábitos y Consistencia
+### ⚖️ 3. Control y Seguimiento de Peso Corporal
+* **Registro Intuitivo:** Registro rápido de pesaje con botones de ajuste fino (±0.1 kg, ±0.5 kg) y notas personalizadas (en ayunas, post-entreno).
+* **Análisis de Evolución:** Cálculo automático de variación respecto al pesaje anterior, evolución histórica e índice de masa corporal (IMC) contextualizado.
+* **Historial Completo:** Registro detallado con fecha, hora, notas y posibilidad de eliminación o corrección.
+
+### 🧩 4. Widgets Biométricos Semitransparentes (1x1, 1x2, 2x2, 4x2)
+Diseño moderno *glassmorphic* con fondo translúcido que muestra con claridad tus 3 pilares clave: **Pasos** (Cyan 🏃), **Calorías** (Ámbar 🔥) y **Sueño** (Turquesa 🌙):
+* **1x1 (Tile / Badge):** Porcentaje de vitalidad, pasos acumulados y micro-cápsulas de calorías y horas de descanso.
+* **1x2 / 2x1 (Cápsula de Pulso):** Tres columnas dedicadas para pasos, calorías y sueño con iconos y valores de alto contraste.
+* **2x2 (Cuadrante Glassmorphic):** Tarjeta con barras de progreso individuales para cada métrica respecto a sus objetivos.
+* **4x2 (Suite Completa):** Vista completa con agenda de eventos del calendario y monitor biométrico.
+
+### 📅 5. Calendario Obsidian de Hábitos y Consistencia
 * **Vistas Semanal, Mensual y Anual:** Tarjetas con diseño obsidian glassmorphic.
 * **Indicadores Luminosos de Hábitos:** Puntos de estado discretos para pasos (Cyan), sueño óptimo (Teal) y entrenamiento realizado (Violeta).
 * **Navegación Fluida:** Selección de días y vista de progreso histórico sin bloqueos.
 
-### 🧩 4. Widgets Biométricos en Múltiples Dimensiones
-Compatibles con **Pantalla de Inicio** y **Pantalla de Bloqueo** (`keyguard`):
-* **1x1 (Tile / Badge):** Pasos acumulados y micro-indicador de pulso para espacios mínimos.
-* **2x1 / 1x2 (Cápsula de Pulso):** Barra horizontal de pulso diario con pasos, horas de sueño y estado de entreno.
-* **2x2 (Cuadrante Biométrico):** Cuadrante con barras lineales de progreso y estado detallado.
-* **4x2 (Resumen Amplio):** Vista completa con agenda del calendario del día y métricas principales.
-
-### 🤖 5. Motor de IA Híbrido (100% Gratis y Privado)
+### 🤖 6. Motor de IA Híbrido (100% Gratis y Privado)
 * **Privacidad Absoluta:** Tus datos biométricos **nunca** salen de tu dispositivo sin tu autorización.
-* **Gemini 2.0 Flash:** Integración opcional con la API gratuita de Google AI Studio para análisis de patrones de correlación entre fatiga, descanso y rendimiento.
+* **Gemini 2.0 Flash:** Integración opcional con la clave gratuita de Google AI Studio para análisis de patrones de correlación entre fatiga, descanso y rendimiento.
 * **Motor Heurístico Offline:** Si no dispones de conexión a internet o de clave API, la app ejecuta un motor local que analiza tus métricas y te brinda recomendaciones fisiológicas inmediatas.
 
-### ⚙️ 6. Perfil Biométrico y Personalización Total
+### ⚙️ 7. Perfil Biométrico y Personalización Total
 * Configuración centralizada de metas (Pasos, Sueño, Calorías, Días y Minutos de entrenamiento).
 * Perfil antropométrico (Nivel de entrenamiento, Objetivo primario, Peso, Altura y cálculo automático de IMC).
 * Notificaciones inteligentes: Recordatorios matutinos, alerta de hidratación y pausas activas, y resumen nocturno de recuperación.
