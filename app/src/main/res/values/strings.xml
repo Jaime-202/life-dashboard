@@ -2,8 +2,17 @@
 <resources>
     <string name="app_name">Life Dashboard</string>
     <string name="widget_description">Panel de vida con pasos, sueño y próximos eventos</string>
+
+    <!-- Widgets -->
+    <string name="widget_1x1_name">Life Dashboard - Badge (1x1)</string>
+    <string name="widget_1x1_description">Mini badge biométrico de pasos y vitalidad para pantalla de bloqueo o inicio</string>
+
+    <string name="widget_1x2_name">Life Dashboard - Cápsula (2x1)</string>
+    <string name="widget_1x2_description">Cápsula de pulso con pasos, sueño y entreno en barra compacta</string>
+
+    <string name="widget_2x2_name">Life Dashboard - Cuadrante (2x2)</string>
+    <string name="widget_2x2_description">Resumen biométrico con barras de progreso de pasos, sueño y entreno</string>
+
     <string name="widget_expanded_name">Life Dashboard - Completo (4x2)</string>
     <string name="widget_expanded_description">Pasos, sueño, entrenamiento y agenda en vista amplia</string>
-    <string name="widget_compact_name">Life Dashboard - Mini (2x2)</string>
-    <string name="widget_compact_description">Mini resumen biométrico para pantalla de bloqueo o inicio</string>
 </resources>

@@ -182,15 +182,18 @@ class HealthConnectSyncWorker @AssistedInject constructor(
     }
 
     private fun updateWidget() {
-        val intentExpanded = android.content.Intent(context, LifeDashboardWidgetReceiver::class.java).apply {
-            action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
+        val receivers = listOf(
+            LifeDashboardWidgetReceiver::class.java,
+            com.lifedashboard.presentation.widget.LifeDashboard1x1WidgetReceiver::class.java,
+            com.lifedashboard.presentation.widget.LifeDashboard1x2WidgetReceiver::class.java,
+            com.lifedashboard.presentation.widget.LifeDashboard2x2WidgetReceiver::class.java
+        )
+        receivers.forEach { receiverClass ->
+            val intent = android.content.Intent(context, receiverClass).apply {
+                action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
+            }
+            context.sendBroadcast(intent)
         }
-        context.sendBroadcast(intentExpanded)
-
-        val intentCompact = android.content.Intent(context, com.lifedashboard.presentation.widget.LifeDashboardCompactWidgetReceiver::class.java).apply {
-            action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
-        }
-        context.sendBroadcast(intentCompact)
     }
 
     companion object {

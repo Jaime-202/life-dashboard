@@ -62,7 +62,43 @@
         </activity-alias>
 
         <!-- ─── Glance Widgets ──────────────────────────────────── -->
-        <!-- Widget Completo / Amplio (4x2 / Responsive) -->
+        <!-- Widget 1x1: Badge Biométrico -->
+        <receiver
+            android:name=".presentation.widget.LifeDashboard1x1WidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/life_dashboard_widget_1x1" />
+        </receiver>
+
+        <!-- Widget 1x2: Cápsula de Pulso Horizontal -->
+        <receiver
+            android:name=".presentation.widget.LifeDashboard1x2WidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/life_dashboard_widget_1x2" />
+        </receiver>
+
+        <!-- Widget 2x2: Cuadrante Biométrico -->
+        <receiver
+            android:name=".presentation.widget.LifeDashboard2x2WidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/life_dashboard_widget_2x2" />
+        </receiver>
+
+        <!-- Widget 4x2: Resumen Amplio Completo -->
         <receiver
             android:name=".presentation.widget.LifeDashboardWidgetReceiver"
             android:exported="true">
@@ -72,18 +108,6 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/life_dashboard_widget_info" />
-        </receiver>
-
-        <!-- Widget Compacto / Mini (2x2 y Pantalla de Bloqueo) -->
-        <receiver
-            android:name=".presentation.widget.LifeDashboardCompactWidgetReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/life_dashboard_compact_widget_info" />
         </receiver>
 
         <!-- ─── WorkManager: HiltWorkerFactory ─────────────────── -->

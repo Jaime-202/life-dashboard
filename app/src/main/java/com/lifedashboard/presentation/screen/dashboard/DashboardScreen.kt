@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -177,7 +179,7 @@ private fun DashboardHeader(greeting: String, state: DashboardUiState) {
             Icon(
                 imageVector = when (state.workoutTypeToday) {
                     WorkoutType.STRENGTH -> Icons.Default.FitnessCenter
-                    WorkoutType.CARDIO   -> Icons.Default.DirectionsRun
+                    WorkoutType.CARDIO   -> Icons.AutoMirrored.Filled.DirectionsRun
                     WorkoutType.REST     -> Icons.Default.Bedtime
                     null                 -> Icons.Default.Person
                 },
@@ -375,7 +377,7 @@ private fun PillarGrid(
                 },
                 progress  = state.stepsProgress,
                 ringColor = RingSteps,
-                icon      = Icons.Default.DirectionsWalk,
+                icon      = Icons.AutoMirrored.Filled.DirectionsWalk,
                 modifier  = Modifier.weight(1f),
                 onClick   = { onNavigateToHealth("PASOS") }
             )

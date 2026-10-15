@@ -1,13 +1,50 @@
-*.iml
-.gradle
-/local.properties
-.idea/
-.vscode/
-.DS_Store
-/build
-/app/build
-/captures
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+build/
+app/build/
 .externalNativeBuild
 .cxx
+
+# Gradle files
+.gradle/
+buildOutput/
+
+# Local configuration file (contains private keys and local SDK paths)
 local.properties
+/local.properties
+
+# Log files
+*.log
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+.vscode/
+
+# Keystores and signing certificates
+*.jks
+*.keystore
+*.key
+google-services.json
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Temporary text / exports
 all_kotlin_files.txt
+captures/

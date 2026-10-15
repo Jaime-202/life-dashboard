@@ -20,10 +20,19 @@ data class UserGoals(
     val workoutDaysTarget: Int = 4,
     val workoutMinutesTarget: Int = 180,
     val userName: String = "Jaime",
+    val fitnessLevel: String = "INTERMEDIO",       // "PRINCIPIANTE" | "INTERMEDIO" | "AVANZADO" | "ATLETA"
+    val primaryGoal: String = "SALUD_GENERAL",     // "GRASA" | "MUSCULO" | "CARDIO" | "SALUD_GENERAL"
+    val weightKg: Float = 75.0f,
+    val heightCm: Int = 175,
     val showHeroRings: Boolean = true,
     val showAiInsight: Boolean = true,
     val showUpcomingEvents: Boolean = true,
     val dailyReminders: Boolean = true,
+    val hydrationReminder: Boolean = true,
+    val inactivityAlerts: Boolean = false,
+    val eveningReview: Boolean = true,
+    val aiStyle: String = "CIENTIFICO",            // "CIENTIFICO" | "MOTIVADOR" | "DIRECTO"
+    val syncFrequency: String = "30_MIN",          // "15_MIN" | "30_MIN" | "60_MIN" | "MANUAL"
     val themeMode: String = "OSCURO",
     val geminiApiKey: String = ""
 )
@@ -39,10 +48,19 @@ class UserPreferencesRepository @Inject constructor(
         val WORKOUT_DAYS_TARGET    = intPreferencesKey("workout_days_target")
         val WORKOUT_MINUTES_TARGET = intPreferencesKey("workout_minutes_target")
         val USER_NAME              = stringPreferencesKey("user_name")
+        val FITNESS_LEVEL          = stringPreferencesKey("fitness_level")
+        val PRIMARY_GOAL           = stringPreferencesKey("primary_goal")
+        val WEIGHT_KG              = floatPreferencesKey("weight_kg")
+        val HEIGHT_CM              = intPreferencesKey("height_cm")
         val SHOW_HERO_RINGS        = booleanPreferencesKey("show_hero_rings")
         val SHOW_AI_INSIGHT        = booleanPreferencesKey("show_ai_insight")
         val SHOW_UPCOMING_EVENTS   = booleanPreferencesKey("show_upcoming_events")
         val DAILY_REMINDERS        = booleanPreferencesKey("daily_reminders")
+        val HYDRATION_REMINDER     = booleanPreferencesKey("hydration_reminder")
+        val INACTIVITY_ALERTS      = booleanPreferencesKey("inactivity_alerts")
+        val EVENING_REVIEW         = booleanPreferencesKey("evening_review")
+        val AI_STYLE               = stringPreferencesKey("ai_style")
+        val SYNC_FREQUENCY         = stringPreferencesKey("sync_frequency")
         val THEME_MODE             = stringPreferencesKey("theme_mode")
         val GEMINI_API_KEY         = stringPreferencesKey("gemini_api_key")
     }
@@ -63,10 +81,19 @@ class UserPreferencesRepository @Inject constructor(
                 workoutDaysTarget    = prefs[Keys.WORKOUT_DAYS_TARGET] ?: 4,
                 workoutMinutesTarget = prefs[Keys.WORKOUT_MINUTES_TARGET] ?: 180,
                 userName             = prefs[Keys.USER_NAME] ?: "Jaime",
+                fitnessLevel         = prefs[Keys.FITNESS_LEVEL] ?: "INTERMEDIO",
+                primaryGoal          = prefs[Keys.PRIMARY_GOAL] ?: "SALUD_GENERAL",
+                weightKg             = prefs[Keys.WEIGHT_KG] ?: 75.0f,
+                heightCm             = prefs[Keys.HEIGHT_CM] ?: 175,
                 showHeroRings        = prefs[Keys.SHOW_HERO_RINGS] ?: true,
                 showAiInsight        = prefs[Keys.SHOW_AI_INSIGHT] ?: true,
                 showUpcomingEvents   = prefs[Keys.SHOW_UPCOMING_EVENTS] ?: true,
                 dailyReminders       = prefs[Keys.DAILY_REMINDERS] ?: true,
+                hydrationReminder    = prefs[Keys.HYDRATION_REMINDER] ?: true,
+                inactivityAlerts     = prefs[Keys.INACTIVITY_ALERTS] ?: false,
+                eveningReview        = prefs[Keys.EVENING_REVIEW] ?: true,
+                aiStyle              = prefs[Keys.AI_STYLE] ?: "CIENTIFICO",
+                syncFrequency        = prefs[Keys.SYNC_FREQUENCY] ?: "30_MIN",
                 themeMode            = prefs[Keys.THEME_MODE] ?: "OSCURO",
                 geminiApiKey         = prefs[Keys.GEMINI_API_KEY] ?: ""
             )
@@ -96,6 +123,15 @@ class UserPreferencesRepository @Inject constructor(
         context.dataStore.edit { prefs -> prefs[Keys.USER_NAME] = name }
     }
 
+    suspend fun updateFitnessProfile(level: String, goal: String, weight: Float, height: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.FITNESS_LEVEL] = level
+            prefs[Keys.PRIMARY_GOAL] = goal
+            prefs[Keys.WEIGHT_KG] = weight
+            prefs[Keys.HEIGHT_CM] = height
+        }
+    }
+
     suspend fun updateShowHeroRings(enabled: Boolean) {
         context.dataStore.edit { prefs -> prefs[Keys.SHOW_HERO_RINGS] = enabled }
     }
@@ -110,6 +146,26 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun updateDailyReminders(enabled: Boolean) {
         context.dataStore.edit { prefs -> prefs[Keys.DAILY_REMINDERS] = enabled }
+    }
+
+    suspend fun updateHydrationReminder(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.HYDRATION_REMINDER] = enabled }
+    }
+
+    suspend fun updateInactivityAlerts(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.INACTIVITY_ALERTS] = enabled }
+    }
+
+    suspend fun updateEveningReview(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.EVENING_REVIEW] = enabled }
+    }
+
+    suspend fun updateAiStyle(style: String) {
+        context.dataStore.edit { prefs -> prefs[Keys.AI_STYLE] = style }
+    }
+
+    suspend fun updateSyncFrequency(freq: String) {
+        context.dataStore.edit { prefs -> prefs[Keys.SYNC_FREQUENCY] = freq }
     }
 
     suspend fun updateThemeMode(mode: String) {

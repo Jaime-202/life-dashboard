@@ -1,0 +1,12 @@
+## Life Dashboard - Configuración local de ejemplo
+## Renombra este archivo a 'local.properties' en tu máquina local.
+## NUNCA subas 'local.properties' con tus credenciales a GitHub (está en .gitignore).
+
+# Ruta local del Android SDK (Windows / macOS / Linux)
+# sdk.dir=C\:\\Users\\tu_usuario\\AppData\\Local\\Android\\Sdk
+# sdk.dir=/Users/tu_usuario/Library/Android/sdk
+
+# Clave de API de Google Gemini (Opcional - para análisis avanzado con Gemini 2.0 Flash)
+# Puedes obtener una clave 100% gratuita en: https://aistudio.google.com
+# Si no introduces ninguna clave, la app utilizará automáticamente su motor heurístico local offline.
+GEMINI_API_KEY=
