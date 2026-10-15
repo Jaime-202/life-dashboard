@@ -979,9 +979,9 @@ private fun WeightTrackerCard(
     val deltaTextAndColor: Triple<String, Color, ImageVector?> = if (weightHistory.size >= 2) {
         val diff = latestWeight - weightHistory[1].weightKg
         when {
-            diff < -0.05f -> Triple(String.format(Locale.US, "-%.1f kg", Math.abs(diff)), Emerald400, Icons.AutoMirrored.Filled.TrendingDown)
-            diff > 0.05f  -> Triple(String.format(Locale.US, "+%.1f kg", diff), Amber400, Icons.AutoMirrored.Filled.TrendingUp)
-            else          -> Triple("0.0 kg", Gray400, Icons.AutoMirrored.Filled.TrendingFlat)
+            diff < -0.05f -> Triple(String.format(Locale.US, "-%.1f kg", Math.abs(diff)), Emerald400, Icons.Default.ArrowDownward)
+            diff > 0.05f  -> Triple(String.format(Locale.US, "+%.1f kg", diff), Amber400, Icons.Default.ArrowUpward)
+            else          -> Triple("0.0 kg", Gray400, Icons.Default.Remove)
         }
     } else if (weightHistory.size == 1) {
         Triple("Primer registro", Violet300, null)
