@@ -89,7 +89,11 @@ data class SettingsState(
     val workoutMinutesTarget: Int = 180,
     val healthConnectGranted: Boolean = false,
     val calendarGranted: Boolean = false,
-    val weightHistory: List<WeightEntryEntity> = emptyList()
+    val weightHistory: List<WeightEntryEntity> = emptyList(),
+    val bedtimeReminderEnabled: Boolean = true,
+    val wakeUpHour: Int = 8,
+    val wakeUpMinute: Int = 30,
+    val bedtimeReminderMinutesBefore: Int = 30
 )
 
 @HiltViewModel
@@ -131,7 +135,11 @@ class SettingsViewModel @Inject constructor(
                     sleepTargetHours     = goals.sleepTargetHours,
                     caloriesTarget       = goals.caloriesTarget,
                     workoutDaysTarget    = goals.workoutDaysTarget,
-                    workoutMinutesTarget = goals.workoutMinutesTarget
+                    workoutMinutesTarget = goals.workoutMinutesTarget,
+                    bedtimeReminderEnabled = goals.bedtimeReminderEnabled,
+                    wakeUpHour           = goals.wakeUpHour,
+                    wakeUpMinute         = goals.wakeUpMinute,
+                    bedtimeReminderMinutesBefore = goals.bedtimeReminderMinutesBefore
                 )
             }
             .launchIn(viewModelScope)
@@ -141,6 +149,36 @@ class SettingsViewModel @Inject constructor(
                 _state.value = _state.value.copy(weightHistory = weights)
             }
             .launchIn(viewModelScope)
+    }
+
+    fun toggleBedtimeReminder(enabled: Boolean) {
+        viewModelScope.launch {
+            userPreferences.updateBedtimeReminder(enabled)
+            if (enabled) {
+                scheduler.scheduleBedtimeReminder(
+                    wakeUpHour = _state.value.wakeUpHour,
+                    wakeUpMinute = _state.value.wakeUpMinute,
+                    sleepTargetHours = _state.value.sleepTargetHours,
+                    minutesBefore = _state.value.bedtimeReminderMinutesBefore
+                )
+            } else {
+                scheduler.cancelBedtimeReminder()
+            }
+        }
+    }
+
+    fun updateWakeUpTime(hour: Int, minute: Int) {
+        viewModelScope.launch {
+            userPreferences.updateWakeUpTime(hour, minute)
+            if (_state.value.bedtimeReminderEnabled) {
+                scheduler.scheduleBedtimeReminder(
+                    wakeUpHour = hour,
+                    wakeUpMinute = minute,
+                    sleepTargetHours = _state.value.sleepTargetHours,
+                    minutesBefore = _state.value.bedtimeReminderMinutesBefore
+                )
+            }
+        }
     }
 
     fun logWeight(weight: Float, note: String?) {
@@ -325,6 +363,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     var showWorkoutModal by remember { mutableStateOf(false) }
     var showAddWeightModal by remember { mutableStateOf(false) }
     var showWeightHistoryModal by remember { mutableStateOf(false) }
+    var showWakeUpTimeModal by remember { mutableStateOf(false) }
 
     val healthPermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
@@ -491,6 +530,103 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 checked         = state.eveningReview,
                 onCheckedChange = { viewModel.toggleEveningReview(it) }
             )
+            HorizontalDivider(color = Indigo700)
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Aviso para Ir a Dormir", style = MaterialTheme.typography.labelLarge, color = White, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Notificación inteligente 30 min antes de la hora recomendada para dormir",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray400
+                        )
+                    }
+                    Switch(
+                        checked = state.bedtimeReminderEnabled,
+                        onCheckedChange = { viewModel.toggleBedtimeReminder(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor   = Indigo900,
+                            checkedTrackColor   = Violet400,
+                            uncheckedThumbColor = Gray400,
+                            uncheckedTrackColor = Indigo700
+                        )
+                    )
+                }
+
+                if (state.bedtimeReminderEnabled) {
+                    val wakeMinutes = state.wakeUpHour * 60 + state.wakeUpMinute
+                    val sleepMinutes = (state.sleepTargetHours * 60).toInt()
+                    var bedtimeMin = (wakeMinutes - sleepMinutes) % 1440
+                    if (bedtimeMin < 0) bedtimeMin += 1440
+                    val bedtimeHour = bedtimeMin / 60
+                    val bedtimeM = bedtimeMin % 60
+
+                    var reminderMin = (bedtimeMin - state.bedtimeReminderMinutesBefore) % 1440
+                    if (reminderMin < 0) reminderMin += 1440
+                    val reminderHour = reminderMin / 60
+                    val reminderM = reminderMin % 60
+
+                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Indigo900.copy(alpha = 0.5f))
+                            .border(1.dp, Indigo700.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                            .padding(12.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Alarm, contentDescription = null, tint = RingSleep, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = "Hora de levantarse: ${String.format(Locale.US, "%02d:%02d", state.wakeUpHour, state.wakeUpMinute)}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = White,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = { showWakeUpTimeModal = true },
+                                    colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                                    border  = BorderStroke(1.dp, Violet400),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text("Cambiar", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "Dormir a las: ${String.format(Locale.US, "%02d:%02d", bedtimeHour, bedtimeM)} (${String.format(Locale.US, "%.1fh", state.sleepTargetHours)})",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Gray300
+                                )
+                                Text(
+                                    text = "Aviso: ${String.format(Locale.US, "%02d:%02d", reminderHour, reminderM)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Amber400,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // ─── Inteligencia Artificial & Coach ──────────────────────────────
@@ -799,6 +935,19 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             }
         )
     }
+
+    if (showWakeUpTimeModal) {
+        EditWakeUpTimeModal(
+            currentHour   = state.wakeUpHour,
+            currentMinute = state.wakeUpMinute,
+            onDismiss     = { showWakeUpTimeModal = false },
+            onSave        = { h, m ->
+                viewModel.updateWakeUpTime(h, m)
+                showWakeUpTimeModal = false
+                Toast.makeText(context, "Hora para levantarse actualizada", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
 }
 
 // ─── Componente: Tarjeta de Perfil Avanzada ───────────────────────────────────
@@ -1042,25 +1191,18 @@ private fun WeightTrackerCard(
                     }
                 }
 
-                Button(
-                    onClick = onAddWeight,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Violet400,
-                        contentColor = Indigo900
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                IconButton(
+                    onClick  = onAddWeight,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(Violet400)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = "Pesar",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
+                        contentDescription = "Registrar pesaje",
+                        tint = Indigo900,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -1922,4 +2064,137 @@ private fun openHealthConnectSettings(context: Context) {
             Toast.makeText(context, "Health Connect no disponible en este dispositivo", Toast.LENGTH_SHORT).show()
         }
     }
+}
+
+// ─── Modal: Configuración de Hora para Levantarse ─────────────────────────────
+
+@Composable
+private fun EditWakeUpTimeModal(
+    currentHour: Int,
+    currentMinute: Int,
+    onDismiss: () -> Unit,
+    onSave: (Int, Int) -> Unit
+) {
+    var selectedHour by remember { mutableIntStateOf(currentHour) }
+    var selectedMinute by remember { mutableIntStateOf(currentMinute) }
+
+    val presetTimes = listOf(
+        6 to 0,
+        6 to 30,
+        7 to 0,
+        7 to 30,
+        8 to 0,
+        8 to 30,
+        9 to 0,
+        9 to 30
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = Indigo800,
+        shape            = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Alarm, contentDescription = null, tint = RingSleep, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Hora para Levantarse", color = White, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Selecciona tu hora habitual de despertar para que Vital calcule cuándo avisarte (30 min antes de dormir):",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray300
+                )
+
+                // Presets en cuadrícula
+                presetTimes.chunked(4).forEach { rowPresets ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        rowPresets.forEach { (h, m) ->
+                            val isSelected = h == selectedHour && m == selectedMinute
+                            val formatted = String.format(Locale.US, "%02d:%02d", h, m)
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) RingSleep else Indigo700)
+                                    .clickable {
+                                        selectedHour = h
+                                        selectedMinute = m
+                                    }
+                                    .padding(vertical = 10.dp)
+                            ) {
+                                Text(
+                                    text = formatted,
+                                    color = if (isSelected) Indigo900 else White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                // Selector con botones +/- de 15 minutos para ajuste fino
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Indigo900.copy(alpha = 0.6f))
+                        .border(1.dp, Indigo700.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        IconButton(
+                            onClick = {
+                                val totalMin = (selectedHour * 60 + selectedMinute - 15 + 1440) % 1440
+                                selectedHour = totalMin / 60
+                                selectedMinute = totalMin % 60
+                            },
+                            modifier = Modifier.size(32.dp).clip(CircleShape).background(Indigo700)
+                        ) {
+                            Text("-15", color = White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Text(
+                            text = String.format(Locale.US, "%02d:%02d", selectedHour, selectedMinute),
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = White,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        IconButton(
+                            onClick = {
+                                val totalMin = (selectedHour * 60 + selectedMinute + 15) % 1440
+                                selectedHour = totalMin / 60
+                                selectedMinute = totalMin % 60
+                            },
+                            modifier = Modifier.size(32.dp).clip(CircleShape).background(Indigo700)
+                        ) {
+                            Text("+15", color = White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(selectedHour, selectedMinute) },
+                colors  = ButtonDefaults.buttonColors(containerColor = RingSleep, contentColor = Indigo900)
+            ) {
+                Text("Guardar", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = Gray400) }
+        }
+    )
 }

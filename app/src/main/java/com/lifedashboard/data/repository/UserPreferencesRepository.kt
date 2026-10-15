@@ -34,7 +34,11 @@ data class UserGoals(
     val aiStyle: String = "CIENTIFICO",            // "CIENTIFICO" | "MOTIVADOR" | "DIRECTO"
     val syncFrequency: String = "30_MIN",          // "15_MIN" | "30_MIN" | "60_MIN" | "MANUAL"
     val themeMode: String = "OSCURO",
-    val geminiApiKey: String = ""
+    val geminiApiKey: String = "",
+    val bedtimeReminderEnabled: Boolean = true,
+    val wakeUpHour: Int = 8,
+    val wakeUpMinute: Int = 30,
+    val bedtimeReminderMinutesBefore: Int = 30
 )
 
 @Singleton
@@ -63,6 +67,10 @@ class UserPreferencesRepository @Inject constructor(
         val SYNC_FREQUENCY         = stringPreferencesKey("sync_frequency")
         val THEME_MODE             = stringPreferencesKey("theme_mode")
         val GEMINI_API_KEY         = stringPreferencesKey("gemini_api_key")
+        val BEDTIME_REMINDER       = booleanPreferencesKey("bedtime_reminder_enabled")
+        val WAKE_UP_HOUR           = intPreferencesKey("wake_up_hour")
+        val WAKE_UP_MINUTE         = intPreferencesKey("wake_up_minute")
+        val BEDTIME_MINUTES_BEFORE = intPreferencesKey("bedtime_minutes_before")
     }
 
     val userGoals: Flow<UserGoals> = context.dataStore.data
@@ -95,7 +103,11 @@ class UserPreferencesRepository @Inject constructor(
                 aiStyle              = prefs[Keys.AI_STYLE] ?: "CIENTIFICO",
                 syncFrequency        = prefs[Keys.SYNC_FREQUENCY] ?: "30_MIN",
                 themeMode            = prefs[Keys.THEME_MODE] ?: "OSCURO",
-                geminiApiKey         = prefs[Keys.GEMINI_API_KEY] ?: ""
+                geminiApiKey         = prefs[Keys.GEMINI_API_KEY] ?: "",
+                bedtimeReminderEnabled = prefs[Keys.BEDTIME_REMINDER] ?: true,
+                wakeUpHour           = prefs[Keys.WAKE_UP_HOUR] ?: 8,
+                wakeUpMinute         = prefs[Keys.WAKE_UP_MINUTE] ?: 30,
+                bedtimeReminderMinutesBefore = prefs[Keys.BEDTIME_MINUTES_BEFORE] ?: 30
             )
         }
 
@@ -174,5 +186,20 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun updateGeminiApiKey(apiKey: String) {
         context.dataStore.edit { prefs -> prefs[Keys.GEMINI_API_KEY] = apiKey.trim() }
+    }
+
+    suspend fun updateBedtimeReminder(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.BEDTIME_REMINDER] = enabled }
+    }
+
+    suspend fun updateWakeUpTime(hour: Int, minute: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.WAKE_UP_HOUR] = hour
+            prefs[Keys.WAKE_UP_MINUTE] = minute
+        }
+    }
+
+    suspend fun updateBedtimeMinutesBefore(minutes: Int) {
+        context.dataStore.edit { prefs -> prefs[Keys.BEDTIME_MINUTES_BEFORE] = minutes }
     }
 }

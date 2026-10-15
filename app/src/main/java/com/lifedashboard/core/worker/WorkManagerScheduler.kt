@@ -19,6 +19,55 @@ class WorkManagerScheduler @Inject constructor(
     fun scheduleAll(symmetryFolderUri: String? = null) {
         scheduleHealthConnectSync()
         symmetryFolderUri?.let { scheduleSymmetrySync(it) }
+        scheduleBedtimeReminder()
+    }
+
+    fun scheduleBedtimeReminder(
+        wakeUpHour: Int = 8,
+        wakeUpMinute: Int = 30,
+        sleepTargetHours: Float = 8.0f,
+        minutesBefore: Int = 30
+    ) {
+        val calendar = java.util.Calendar.getInstance()
+        val nowMillis = calendar.timeInMillis
+
+        val wakeUpMinutes = wakeUpHour * 60 + wakeUpMinute
+        val sleepMinutes = (sleepTargetHours * 60).toInt()
+        var bedtimeMinutes = (wakeUpMinutes - sleepMinutes) % 1440
+        if (bedtimeMinutes < 0) bedtimeMinutes += 1440
+
+        var reminderMinutes = (bedtimeMinutes - minutesBefore) % 1440
+        if (reminderMinutes < 0) reminderMinutes += 1440
+
+        val reminderHour = reminderMinutes / 60
+        val reminderMinute = reminderMinutes % 60
+
+        val targetCalendar = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, reminderHour)
+            set(java.util.Calendar.MINUTE, reminderMinute)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+
+        if (targetCalendar.timeInMillis <= nowMillis) {
+            targetCalendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+
+        val initialDelayMillis = targetCalendar.timeInMillis - nowMillis
+
+        val request = OneTimeWorkRequestBuilder<BedtimeReminderWorker>()
+            .setInitialDelay(initialDelayMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
+            .build()
+
+        workManager.enqueueUniqueWork(
+            BedtimeReminderWorker.WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
+    }
+
+    fun cancelBedtimeReminder() {
+        workManager.cancelUniqueWork(BedtimeReminderWorker.WORK_NAME)
     }
 
     fun scheduleHealthConnectSync() {

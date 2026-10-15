@@ -28,22 +28,21 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 // ─── Paleta Glassmorphic Translúcida ─────────────────────────────────────────
-// Permite que el fondo de pantalla del usuario se perciba sutilmente a través del widget
-private val GlassBackground     = Color(0xD90D0722) // ~85% opacidad obsidian profundo
-private val GlassCard           = Color(0x401A1040) // ~25% translúcido interno
-private val GlassCardElevated   = Color(0x66251654) // ~40% translúcido destacado
-private val NeonCyan            = Color(0xFF22D3EE)
-private val NeonAmber           = Color(0xFFFBBF24)
-private val NeonTeal            = Color(0xFF2DD4BF)
-private val NeonViolet          = Color(0xFFB894FF)
-private val TrackColor          = Color(0x552A1E5C)
+// Alta transparencia (~20-25%) para que el fondo de pantalla del launcher sea claramente visible
+private val GlassBackground       = Color(0x380D0722) // ~22% opacidad obsidian glass
+private val GlassColumnBackground = Color(0x24FFFFFF) // ~14% glass tint sutil
+private val NeonCyan              = Color(0xFF22D3EE)
+private val NeonAmber             = Color(0xFFFBBF24)
+private val NeonTeal              = Color(0xFF2DD4BF)
+private val NeonViolet            = Color(0xFFB894FF)
+private val TrackColor            = Color(0x33FFFFFF)
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  * 1. LifeDashboard1x1Widget — Badge Biométrico Glassmorphic (1x1)
  *
  * Muestra pasos en grande y micro-cápsulas para calorías y descanso.
- * Fondo translúcido con esquinas curvadas.
+ * Fondo ultra translúcido sin emojis y con alineación central precisa.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 class LifeDashboard1x1Widget : GlanceAppWidget() {
@@ -54,6 +53,7 @@ class LifeDashboard1x1Widget : GlanceAppWidget() {
                 modifier = GlanceModifier
                     .fillMaxSize()
                     .background(ColorProvider(GlassBackground))
+                    .cornerRadius(18.dp)
                     .padding(8.dp),
                 verticalAlignment   = Alignment.Vertical.CenterVertically,
                 horizontalAlignment = Alignment.Horizontal.CenterHorizontally
@@ -65,21 +65,21 @@ class LifeDashboard1x1Widget : GlanceAppWidget() {
                     verticalAlignment   = Alignment.CenterVertically
                 ) {
                     Text(
-                        text  = "✦ ${data.vitalityScore}%",
-                        style = TextStyle(color = ColorProvider(NeonViolet), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        text  = "VITAL · ${data.vitalityScore}%",
+                        style = TextStyle(color = ColorProvider(NeonViolet), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     )
                 }
 
-                Spacer(GlanceModifier.height(2.dp))
+                Spacer(GlanceModifier.height(3.dp))
 
                 // Métrica principal: Pasos
                 Text(
                     text  = data.steps.formatK(),
-                    style = TextStyle(color = ColorProvider(NeonCyan), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    style = TextStyle(color = ColorProvider(White), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 )
                 Text(
-                    text  = "pasos",
-                    style = TextStyle(color = ColorProvider(Gray400), fontSize = 8.sp)
+                    text  = "PASOS",
+                    style = TextStyle(color = ColorProvider(NeonCyan), fontSize = 8.sp, fontWeight = FontWeight.Bold)
                 )
 
                 Spacer(GlanceModifier.height(4.dp))
@@ -91,13 +91,13 @@ class LifeDashboard1x1Widget : GlanceAppWidget() {
                     verticalAlignment   = Alignment.CenterVertically
                 ) {
                     Text(
-                        text  = "${data.calories}cal",
+                        text  = "${data.calories} kcal",
                         style = TextStyle(color = ColorProvider(NeonAmber), fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     )
                     Spacer(GlanceModifier.width(4.dp))
                     Text(
                         text  = "·",
-                        style = TextStyle(color = ColorProvider(Gray500), fontSize = 8.sp)
+                        style = TextStyle(color = ColorProvider(Gray400), fontSize = 8.sp)
                     )
                     Spacer(GlanceModifier.width(4.dp))
                     Text(
@@ -106,7 +106,7 @@ class LifeDashboard1x1Widget : GlanceAppWidget() {
                     )
                 }
 
-                Spacer(GlanceModifier.height(3.dp))
+                Spacer(GlanceModifier.height(4.dp))
 
                 // Micro barra de pasos
                 LinearProgressIndicator(
@@ -124,8 +124,8 @@ class LifeDashboard1x1Widget : GlanceAppWidget() {
  * ─────────────────────────────────────────────────────────────────────────────
  * 2. LifeDashboard1x2Widget — Cápsula Translúcida Tri-Métrica (2x1 o 1x2)
  *
- * Muestra Pasos (Cyan), Calorías (Ámbar) y Sueño (Teal) en 3 micro-tarjetas.
- * Estilo cápsula moderna ideal para estantes de pantalla de inicio o bloqueo.
+ * Muestra Pasos (Cyan), Calorías (Ámbar) y Sueño (Teal) en 3 columnas perfectamente
+ * alineadas y simétricas, con fondo semi-transparente y sin emojis.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 class LifeDashboard1x2Widget : GlanceAppWidget() {
@@ -136,80 +136,114 @@ class LifeDashboard1x2Widget : GlanceAppWidget() {
                 modifier = GlanceModifier
                     .fillMaxSize()
                     .background(ColorProvider(GlassBackground))
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .cornerRadius(18.dp)
+                    .padding(6.dp),
                 verticalAlignment   = Alignment.Vertical.CenterVertically,
                 horizontalAlignment = Alignment.Horizontal.CenterHorizontally
             ) {
-                // 1. Pasos (Cyan)
+                // 1. Columna de Pasos (Cyan)
                 Column(
-                    modifier            = GlanceModifier.defaultWeight(),
+                    modifier            = GlanceModifier
+                        .defaultWeight()
+                        .fillMaxHeight()
+                        .background(ColorProvider(GlassColumnBackground))
+                        .cornerRadius(12.dp)
+                        .padding(horizontal = 4.dp, vertical = 6.dp),
                     horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
-                    verticalAlignment   = Alignment.CenterVertically
+                    verticalAlignment   = Alignment.Vertical.CenterVertically
                 ) {
                     Text(
-                        text  = "🏃 ${data.steps.formatK()}",
-                        style = TextStyle(color = ColorProvider(NeonCyan), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text  = "pasos",
-                        style = TextStyle(color = ColorProvider(Gray400), fontSize = 8.sp)
+                        text  = "PASOS",
+                        style = TextStyle(color = ColorProvider(NeonCyan), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     )
                     Spacer(GlanceModifier.height(2.dp))
+                    Text(
+                        text  = data.steps.formatK(),
+                        style = TextStyle(color = ColorProvider(White), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(GlanceModifier.height(3.dp))
                     LinearProgressIndicator(
                         progress        = (data.steps.toFloat() / data.stepsTarget).coerceIn(0f, 1f),
-                        modifier        = GlanceModifier.fillMaxWidth().height(2.dp),
+                        modifier        = GlanceModifier.fillMaxWidth().height(3.dp).padding(horizontal = 4.dp),
                         color           = ColorProvider(NeonCyan),
                         backgroundColor = ColorProvider(TrackColor)
                     )
+                    Spacer(GlanceModifier.height(2.dp))
+                    Text(
+                        text  = "/${data.stepsTarget.formatK()}",
+                        style = TextStyle(color = ColorProvider(Gray300), fontSize = 8.sp)
+                    )
                 }
 
-                Spacer(GlanceModifier.width(8.dp))
+                Spacer(GlanceModifier.width(6.dp))
 
-                // 2. Calorías Activas (Ámbar)
+                // 2. Columna de Calorías Activas (Ámbar)
                 Column(
-                    modifier            = GlanceModifier.defaultWeight(),
+                    modifier            = GlanceModifier
+                        .defaultWeight()
+                        .fillMaxHeight()
+                        .background(ColorProvider(GlassColumnBackground))
+                        .cornerRadius(12.dp)
+                        .padding(horizontal = 4.dp, vertical = 6.dp),
                     horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
-                    verticalAlignment   = Alignment.CenterVertically
+                    verticalAlignment   = Alignment.Vertical.CenterVertically
                 ) {
                     Text(
-                        text  = "🔥 ${data.calories}",
-                        style = TextStyle(color = ColorProvider(NeonAmber), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text  = "kcal",
-                        style = TextStyle(color = ColorProvider(Gray400), fontSize = 8.sp)
+                        text  = "KCAL",
+                        style = TextStyle(color = ColorProvider(NeonAmber), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     )
                     Spacer(GlanceModifier.height(2.dp))
+                    Text(
+                        text  = "${data.calories}",
+                        style = TextStyle(color = ColorProvider(White), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(GlanceModifier.height(3.dp))
                     LinearProgressIndicator(
                         progress        = (data.calories.toFloat() / data.caloriesTarget).coerceIn(0f, 1f),
-                        modifier        = GlanceModifier.fillMaxWidth().height(2.dp),
+                        modifier        = GlanceModifier.fillMaxWidth().height(3.dp).padding(horizontal = 4.dp),
                         color           = ColorProvider(NeonAmber),
                         backgroundColor = ColorProvider(TrackColor)
                     )
+                    Spacer(GlanceModifier.height(2.dp))
+                    Text(
+                        text  = "/${data.caloriesTarget.toInt()}",
+                        style = TextStyle(color = ColorProvider(Gray300), fontSize = 8.sp)
+                    )
                 }
 
-                Spacer(GlanceModifier.width(8.dp))
+                Spacer(GlanceModifier.width(6.dp))
 
-                // 3. Sueño (Teal)
+                // 3. Columna de Sueño (Teal)
                 Column(
-                    modifier            = GlanceModifier.defaultWeight(),
+                    modifier            = GlanceModifier
+                        .defaultWeight()
+                        .fillMaxHeight()
+                        .background(ColorProvider(GlassColumnBackground))
+                        .cornerRadius(12.dp)
+                        .padding(horizontal = 4.dp, vertical = 6.dp),
                     horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
-                    verticalAlignment   = Alignment.CenterVertically
+                    verticalAlignment   = Alignment.Vertical.CenterVertically
                 ) {
                     Text(
-                        text  = "🌙 ${data.sleepHours}h",
-                        style = TextStyle(color = ColorProvider(NeonTeal), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text  = "sueño",
-                        style = TextStyle(color = ColorProvider(Gray400), fontSize = 8.sp)
+                        text  = "SUEÑO",
+                        style = TextStyle(color = ColorProvider(NeonTeal), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     )
                     Spacer(GlanceModifier.height(2.dp))
+                    Text(
+                        text  = "${data.sleepHours}h",
+                        style = TextStyle(color = ColorProvider(White), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(GlanceModifier.height(3.dp))
                     LinearProgressIndicator(
                         progress        = (data.sleepHours / data.sleepTarget).coerceIn(0f, 1f),
-                        modifier        = GlanceModifier.fillMaxWidth().height(2.dp),
+                        modifier        = GlanceModifier.fillMaxWidth().height(3.dp).padding(horizontal = 4.dp),
                         color           = ColorProvider(NeonTeal),
                         backgroundColor = ColorProvider(TrackColor)
+                    )
+                    Spacer(GlanceModifier.height(2.dp))
+                    Text(
+                        text  = "/${data.sleepTarget.toInt()}h",
+                        style = TextStyle(color = ColorProvider(Gray300), fontSize = 8.sp)
                     )
                 }
             }
@@ -232,6 +266,7 @@ class LifeDashboard2x2Widget : GlanceAppWidget() {
                 modifier = GlanceModifier
                     .fillMaxSize()
                     .background(ColorProvider(GlassBackground))
+                    .cornerRadius(20.dp)
                     .padding(12.dp),
                 verticalAlignment = Alignment.Vertical.CenterVertically
             ) {
@@ -242,7 +277,7 @@ class LifeDashboard2x2Widget : GlanceAppWidget() {
                     verticalAlignment   = Alignment.CenterVertically
                 ) {
                     Text(
-                        text  = "⚡ VITAL",
+                        text  = "VITAL",
                         style = TextStyle(color = ColorProvider(White), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     )
                     Spacer(GlanceModifier.defaultWeight())
@@ -256,8 +291,7 @@ class LifeDashboard2x2Widget : GlanceAppWidget() {
 
                 // 1. Pasos
                 GlassMetricRow(
-                    icon     = "🏃",
-                    label    = "Pasos",
+                    tag      = "PASOS",
                     value    = "${data.steps.formatK()} / ${data.stepsTarget.formatK()}",
                     progress = (data.steps.toFloat() / data.stepsTarget).coerceIn(0f, 1f),
                     color    = ColorProvider(NeonCyan)
@@ -267,9 +301,8 @@ class LifeDashboard2x2Widget : GlanceAppWidget() {
 
                 // 2. Calorías
                 GlassMetricRow(
-                    icon     = "🔥",
-                    label    = "Calorías",
-                    value    = "${data.calories} / ${data.caloriesTarget} kcal",
+                    tag      = "CALORÍAS",
+                    value    = "${data.calories} / ${data.caloriesTarget.toInt()} kcal",
                     progress = (data.calories.toFloat() / data.caloriesTarget).coerceIn(0f, 1f),
                     color    = ColorProvider(NeonAmber)
                 )
@@ -278,8 +311,7 @@ class LifeDashboard2x2Widget : GlanceAppWidget() {
 
                 // 3. Sueño
                 GlassMetricRow(
-                    icon     = "🌙",
-                    label    = "Sueño",
+                    tag      = "SUEÑO",
                     value    = "${data.sleepHours}h / ${data.sleepTarget.toInt()}h",
                     progress = (data.sleepHours / data.sleepTarget).coerceIn(0f, 1f),
                     color    = ColorProvider(NeonTeal)
@@ -325,6 +357,7 @@ fun ExpandedWidgetContent(data: WidgetData) {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(GlassBackground))
+            .cornerRadius(22.dp)
             .padding(14.dp)
     ) {
         // Cabecera
@@ -334,7 +367,7 @@ fun ExpandedWidgetContent(data: WidgetData) {
             verticalAlignment     = Alignment.CenterVertically
         ) {
             Text(
-                text  = "⚡ VITAL SUITE",
+                text  = "VITAL SUITE",
                 style = TextStyle(color = ColorProvider(White), fontSize = 13.sp, fontWeight = FontWeight.Bold)
             )
             Spacer(GlanceModifier.defaultWeight())
@@ -344,34 +377,31 @@ fun ExpandedWidgetContent(data: WidgetData) {
             )
         }
 
-        Spacer(GlanceModifier.height(10.dp))
+        Spacer(GlanceModifier.height(8.dp))
 
         // Fila 1: Pasos
         GlassMetricRow(
-            icon     = "🏃",
-            label    = "Pasos",
+            tag      = "PASOS",
             value    = "${data.steps.formatK()} / ${data.stepsTarget.formatK()}",
             progress = (data.steps.toFloat() / data.stepsTarget).coerceIn(0f, 1f),
             color    = ColorProvider(NeonCyan)
         )
 
-        Spacer(GlanceModifier.height(6.dp))
+        Spacer(GlanceModifier.height(5.dp))
 
         // Fila 2: Calorías Activas
         GlassMetricRow(
-            icon     = "🔥",
-            label    = "Calorías Activas",
-            value    = "${data.calories} / ${data.caloriesTarget} kcal",
+            tag      = "CALORÍAS",
+            value    = "${data.calories} / ${data.caloriesTarget.toInt()} kcal",
             progress = (data.calories.toFloat() / data.caloriesTarget).coerceIn(0f, 1f),
             color    = ColorProvider(NeonAmber)
         )
 
-        Spacer(GlanceModifier.height(6.dp))
+        Spacer(GlanceModifier.height(5.dp))
 
         // Fila 3: Sueño
         GlassMetricRow(
-            icon     = "🌙",
-            label    = "Sueño",
+            tag      = "SUEÑO",
             value    = "${data.sleepHours}h / ${data.sleepTarget.toInt()}h",
             progress = (data.sleepHours / data.sleepTarget).coerceIn(0f, 1f),
             color    = ColorProvider(NeonTeal)
@@ -379,11 +409,18 @@ fun ExpandedWidgetContent(data: WidgetData) {
 
         // Próximo evento de agenda
         if (data.nextEvent != null) {
-            Spacer(GlanceModifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(GlanceModifier.height(6.dp))
+            Row(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .background(ColorProvider(GlassColumnBackground))
+                    .cornerRadius(8.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text     = "📅 ${data.nextEvent}",
-                    style    = TextStyle(color = ColorProvider(Gray300), fontSize = 10.sp),
+                    text     = "AGENDA: ${data.nextEvent}",
+                    style    = TextStyle(color = ColorProvider(Gray300), fontSize = 9.sp),
                     maxLines = 1
                 )
             }
@@ -397,6 +434,7 @@ fun CompactWidgetContent(data: WidgetData) {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(GlassBackground))
+            .cornerRadius(18.dp)
             .padding(10.dp),
         verticalAlignment   = Alignment.Vertical.CenterVertically,
         horizontalAlignment = Alignment.Horizontal.CenterHorizontally
@@ -419,50 +457,60 @@ fun CompactWidgetContent(data: WidgetData) {
             verticalAlignment   = Alignment.CenterVertically
         ) {
             Column(modifier = GlanceModifier.defaultWeight(), horizontalAlignment = Alignment.Horizontal.CenterHorizontally) {
-                Text(text = "🏃 ${data.steps.formatK()}", style = TextStyle(color = ColorProvider(NeonCyan), fontSize = 12.sp, fontWeight = FontWeight.Bold))
-                Text(text = "pasos", style = TextStyle(color = ColorProvider(Gray400), fontSize = 8.sp))
+                Text(text = "PASOS", style = TextStyle(color = ColorProvider(NeonCyan), fontSize = 8.sp, fontWeight = FontWeight.Bold))
+                Text(text = data.steps.formatK(), style = TextStyle(color = ColorProvider(White), fontSize = 12.sp, fontWeight = FontWeight.Bold))
             }
             Column(modifier = GlanceModifier.defaultWeight(), horizontalAlignment = Alignment.Horizontal.CenterHorizontally) {
-                Text(text = "🔥 ${data.calories}", style = TextStyle(color = ColorProvider(NeonAmber), fontSize = 12.sp, fontWeight = FontWeight.Bold))
-                Text(text = "kcal", style = TextStyle(color = ColorProvider(Gray400), fontSize = 8.sp))
+                Text(text = "KCAL", style = TextStyle(color = ColorProvider(NeonAmber), fontSize = 8.sp, fontWeight = FontWeight.Bold))
+                Text(text = "${data.calories}", style = TextStyle(color = ColorProvider(White), fontSize = 12.sp, fontWeight = FontWeight.Bold))
             }
             Column(modifier = GlanceModifier.defaultWeight(), horizontalAlignment = Alignment.Horizontal.CenterHorizontally) {
-                Text(text = "🌙 ${data.sleepHours}h", style = TextStyle(color = ColorProvider(NeonTeal), fontSize = 12.sp, fontWeight = FontWeight.Bold))
-                Text(text = "sueño", style = TextStyle(color = ColorProvider(Gray400), fontSize = 8.sp))
+                Text(text = "SUEÑO", style = TextStyle(color = ColorProvider(NeonTeal), fontSize = 8.sp, fontWeight = FontWeight.Bold))
+                Text(text = "${data.sleepHours}h", style = TextStyle(color = ColorProvider(White), fontSize = 12.sp, fontWeight = FontWeight.Bold))
             }
         }
 
         Spacer(GlanceModifier.height(4.dp))
 
         Text(
-            text  = if (data.workoutDone) "✓ Entrenado" else "○ Entreno hoy",
-            style = TextStyle(color = ColorProvider(if (data.workoutDone) NeonViolet else Gray400), fontSize = 9.sp)
+            text  = if (data.workoutDone) "ENTRENAMIENTO COMPLETADO" else "PENDIENTE DE ENTRENO",
+            style = TextStyle(color = ColorProvider(if (data.workoutDone) NeonViolet else Gray400), fontSize = 8.sp, fontWeight = FontWeight.Bold)
         )
     }
 }
 
 @Composable
 private fun GlassMetricRow(
-    icon: String,
-    label: String,
+    tag: String,
     value: String,
     progress: Float,
     color: ColorProvider
 ) {
-    Column {
+    Column(
+        modifier = GlanceModifier
+            .fillMaxWidth()
+            .background(ColorProvider(GlassColumnBackground))
+            .cornerRadius(10.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
         Row(
-            modifier            = GlanceModifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.Horizontal.Start,
-            verticalAlignment   = Alignment.CenterVertically
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "$icon $label", style = TextStyle(color = ColorProvider(Gray300), fontSize = 10.sp))
+            Text(
+                text  = tag,
+                style = TextStyle(color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            )
             Spacer(GlanceModifier.defaultWeight())
-            Text(text = value, style = TextStyle(color = ColorProvider(White), fontSize = 10.sp, fontWeight = FontWeight.Bold))
+            Text(
+                text  = value,
+                style = TextStyle(color = ColorProvider(White), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            )
         }
-        Spacer(GlanceModifier.height(3.dp))
+        Spacer(GlanceModifier.height(4.dp))
         LinearProgressIndicator(
             progress        = progress,
-            modifier        = GlanceModifier.fillMaxWidth().height(4.dp),
+            modifier        = GlanceModifier.fillMaxWidth().height(3.dp),
             color           = color,
             backgroundColor = ColorProvider(TrackColor)
         )
