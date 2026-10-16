@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -102,6 +103,14 @@ fun DashboardContent(
                 state = state,
                 onNavigateToHealth = onNavigateToHealth,
                 onNavigateToWorkout = onNavigateToWorkout
+            )
+
+            // Tarjeta de Pulso & Ritmo Cardíaco en Tiempo Real
+            HeartRateCard(
+                heartRate = state.todayHeartRate,
+                minHeartRate = state.todayMinHeartRate,
+                maxHeartRate = state.todayMaxHeartRate,
+                onClick = { onNavigateToHealth("CORAZON") }
             )
 
             // 3. Calendario de Actividad y consistencia
@@ -433,6 +442,134 @@ private fun PillarGrid(
 }
 
 @Composable
+private fun HeartRateCard(
+    heartRate: Int,
+    minHeartRate: Int,
+    maxHeartRate: Int,
+    onClick: () -> Unit
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "heartbeat")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue  = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(650, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "heart_scale"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Indigo800,
+                        Color(0xFF261238)
+                    )
+                )
+            )
+            .border(1.dp, Indigo700, RoundedCornerShape(22.dp))
+            .clickable(onClick = onClick)
+            .padding(16.dp)
+    ) {
+        Row(
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier              = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier          = Modifier.weight(1f)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Rose400.copy(alpha = 0.15f))
+                ) {
+                    Icon(
+                        imageVector        = Icons.Default.Favorite,
+                        contentDescription = "Ritmo cardíaco",
+                        tint               = Rose400,
+                        modifier           = Modifier
+                            .size(20.dp)
+                            .then(if (heartRate > 0) Modifier.scale(scale) else Modifier)
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f, fill = false)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text       = "Ritmo Cardíaco",
+                            style      = MaterialTheme.typography.titleSmall,
+                            color      = White,
+                            fontWeight = FontWeight.Bold,
+                            maxLines   = 1,
+                            overflow   = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector        = Icons.Default.ChevronRight,
+                            contentDescription = "Ver análisis",
+                            tint               = Gray400,
+                            modifier           = Modifier.size(14.dp)
+                        )
+                    }
+                    Text(
+                        text  = when {
+                            heartRate == 0  -> "Health Connect activo"
+                            heartRate < 60  -> "Reposo atlético / excelente"
+                            heartRate <= 80 -> "Ritmo óptimo en reposo"
+                            heartRate <= 100 -> "Frecuencia normal"
+                            else            -> "Actividad cardíaca moderada"
+                        },
+                        style    = MaterialTheme.typography.bodySmall,
+                        color    = Gray400,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(10.dp))
+
+            Column(horizontalAlignment = Alignment.End) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text       = if (heartRate > 0) "$heartRate" else "--",
+                        style      = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color      = if (heartRate > 0) Rose400 else Gray400
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text(
+                        text       = "BPM",
+                        style      = MaterialTheme.typography.labelSmall,
+                        color      = Rose400,
+                        fontWeight = FontWeight.Bold,
+                        fontSize   = 10.sp,
+                        modifier   = Modifier.padding(bottom = 2.dp)
+                    )
+                }
+                if (minHeartRate > 0 || maxHeartRate > 0) {
+                    Text(
+                        text     = "Mín $minHeartRate · Máx $maxHeartRate",
+                        style    = MaterialTheme.typography.labelSmall,
+                        color    = Gray500,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SelectedDayDetailCard(
     selectedDate: LocalDate,
     progress: com.lifedashboard.domain.model.DailyProgress?,
@@ -489,7 +626,7 @@ private fun SelectedDayDetailCard(
 
             if (progress != null) {
                 Row(
-                    horizontalArrangement = Arrangement.SpaceAround,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     modifier              = Modifier.fillMaxWidth()
                 ) {
                     DayStatChip(
@@ -510,6 +647,14 @@ private fun SelectedDayDetailCard(
                         color   = Teal400,
                         onClick = { onNavigateToHealth("SUENO") }
                     )
+                    if (progress.avgHeartRate > 0) {
+                        DayStatChip(
+                            label   = "Pulso",
+                            value   = "${progress.avgHeartRate} bpm",
+                            color   = Rose400,
+                            onClick = { onNavigateToHealth("CORAZON") }
+                        )
+                    }
                 }
             } else {
                 Text(
