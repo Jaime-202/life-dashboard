@@ -138,6 +138,12 @@ dependencies {
     // ─── DocumentFile (SAF / Symmetry Sync) ─────────────────────────
     implementation("androidx.documentfile:documentfile:1.0.1")
 
+    // ─── Coil (Carga y renderizado de fotos de alimentos) ─────────────
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // ─── Google Code Scanner (Escáner de código de barras nativo) ────
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+
     // ─── Testing ────────────────────────────────────────────────────
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

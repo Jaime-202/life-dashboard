@@ -219,4 +219,13 @@ class UserPreferencesRepository @Inject constructor(
             prefs[Keys.FAT_TARGET] = fat
         }
     }
+
+    suspend fun updateCalorieAndMacroTargets(calories: Float, protein: Float, carbs: Float, fat: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.CALORIES_TARGET] = calories
+            prefs[Keys.PROTEIN_TARGET] = protein
+            prefs[Keys.CARBS_TARGET] = carbs
+            prefs[Keys.FAT_TARGET] = fat
+        }
+    }
 }

@@ -3,6 +3,8 @@ package com.lifedashboard.presentation.screen.nutrition
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lifedashboard.data.local.dao.HealthDao
+import com.lifedashboard.data.local.dao.WeightDao
 import com.lifedashboard.data.local.entity.MealEntryEntity
 import com.lifedashboard.data.remote.food.DetectedFoodItem
 import com.lifedashboard.data.remote.food.FoodAiResult
@@ -28,6 +30,15 @@ enum class MealSectionType(val key: String, val title: String, val iconEmoji: St
     SNACK("SNACK", "Snacks / Otros", "🍎")
 }
 
+data class CalculatedIntake(
+    val calories: Float,
+    val protein: Float,
+    val carbs: Float,
+    val fat: Float,
+    val bmr: Float = 0f,
+    val tdee: Float = 0f
+)
+
 data class NutritionUiState(
     val selectedDate: LocalDate = LocalDate.now(),
     val meals: List<MealEntryEntity> = emptyList(),
@@ -35,6 +46,13 @@ data class NutritionUiState(
     val targetProtein: Float = 140f,
     val targetCarbs: Float = 250f,
     val targetFat: Float = 70f,
+    val activeBurnedCalories: Float = 0f,
+
+    // Perfil y cálculo de ingesta
+    val userWeightKg: Float = 75f,
+    val userHeightCm: Int = 175,
+    val userGoal: String = "PERDIDA_PESO", // "PERDIDA_PESO", "MANTENIMIENTO", "VOLUMEN"
+    val showCalculatorDialog: Boolean = false,
 
     // Búsqueda de alimentos y supermercados
     val searchQuery: String = "",
@@ -61,13 +79,17 @@ data class NutritionUiState(
     val carbsProgress: Float get() = if (targetCarbs > 0) (totalCarbs / targetCarbs).coerceIn(0f, 1f) else 0f
     val fatProgress: Float get() = if (targetFat > 0) (totalFat / targetFat).coerceIn(0f, 1f) else 0f
 
+    val remainingCalories: Float get() = targetCalories - totalCalories
+
     fun mealsForType(type: String): List<MealEntryEntity> = meals.filter { it.mealType == type }
 }
 
 @HiltViewModel
 class NutritionViewModel @Inject constructor(
     private val repository: NutritionRepository,
-    private val userPreferences: UserPreferencesRepository
+    private val userPreferences: UserPreferencesRepository,
+    private val weightDao: WeightDao,
+    private val healthDao: HealthDao
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(NutritionUiState())
@@ -77,7 +99,7 @@ class NutritionViewModel @Inject constructor(
     private var searchJob: Job? = null
 
     init {
-        // Observar objetivos del usuario
+        // Observar objetivos del usuario y perfil antropométrico
         userPreferences.userGoals
             .onEach { goals ->
                 _uiState.update {
@@ -85,16 +107,27 @@ class NutritionViewModel @Inject constructor(
                         targetCalories = goals.caloriesTarget,
                         targetProtein  = goals.proteinTargetGrams,
                         targetCarbs    = goals.carbsTargetGrams,
-                        targetFat      = goals.fatTargetGrams
+                        targetFat      = goals.fatTargetGrams,
+                        userWeightKg   = goals.weightKg,
+                        userHeightCm   = goals.heightCm
                     )
                 }
             }
             .launchIn(viewModelScope)
 
-        // Cargar comidas de hoy
-        observeMealsForDate(LocalDate.now())
+        // Cargar peso más reciente registrado si existe
+        viewModelScope.launch(Dispatchers.IO) {
+            val latest = weightDao.getLatestWeight()
+            if (latest != null && latest.weightKg > 0) {
+                _uiState.update { it.copy(userWeightKg = latest.weightKg) }
+            }
+        }
 
-        // Cargar catálogo inicial de básicos
+        // Cargar comidas y gasto calórico de hoy
+        observeMealsForDate(LocalDate.now())
+        loadHealthDataForDate(LocalDate.now())
+
+        // Cargar catálogo inicial
         viewModelScope.launch {
             executeSearch("", FoodSourceCategory.TODOS)
         }
@@ -103,6 +136,7 @@ class NutritionViewModel @Inject constructor(
     fun selectDate(date: LocalDate) {
         _uiState.update { it.copy(selectedDate = date) }
         observeMealsForDate(date)
+        loadHealthDataForDate(date)
     }
 
     private fun observeMealsForDate(date: LocalDate) {
@@ -115,13 +149,23 @@ class NutritionViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
+    private fun loadHealthDataForDate(date: LocalDate) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val zone = ZoneId.systemDefault()
+            val millis = date.atStartOfDay(zone).toInstant().toEpochMilli()
+            val health = healthDao.getHealthForDay(millis)
+            val burned = health?.activeCalories ?: 0f
+            _uiState.update { it.copy(activeBurnedCalories = burned) }
+        }
+    }
+
     // ─── Búsqueda de Alimentos y Supermercados ────────────────────────────────
 
     fun onSearchQueryChange(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            delay(300) // debounce
+            delay(250) // debounce
             executeSearch(query, _uiState.value.selectedCategory)
         }
     }
@@ -148,20 +192,21 @@ class NutritionViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val factor = grams / 100f
             val date = _uiState.value.selectedDate
-            val dateMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val zone = ZoneId.systemDefault()
+            val dateMillis = date.atStartOfDay(zone).toInstant().toEpochMilli()
 
-            val entity = MealEntryEntity(
+            val entry = MealEntryEntity(
                 dateMillis = dateMillis,
-                mealType   = mealType,
-                name       = item.name,
-                brand      = item.brand,
-                grams      = grams,
-                calories   = item.caloriesPer100g * factor,
-                protein    = item.proteinPer100g * factor,
-                carbs      = item.carbsPer100g * factor,
-                fat        = item.fatPer100g * factor
+                mealType = mealType,
+                name = item.name,
+                brand = item.brand,
+                grams = grams,
+                calories = item.caloriesPer100g * factor,
+                protein = item.proteinPer100g * factor,
+                carbs = item.carbsPer100g * factor,
+                fat = item.fatPer100g * factor
             )
-            repository.insertMeal(entity)
+            repository.insertMeal(entry)
         }
     }
 
@@ -171,14 +216,80 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
-    // ─── Foto con IA y Descripción ────────────────────────────────────────────
+    // ─── Cálculo y Ajuste de Ingesta Calórica Basada en Peso y Altura ─────────
 
-    fun setStagedPhoto(bitmap: Bitmap?, mealType: String) {
+    fun setCalculatorDialogVisible(visible: Boolean) {
+        _uiState.update { it.copy(showCalculatorDialog = visible) }
+    }
+
+    fun calculateIntake(weightKg: Float, heightCm: Int, goal: String): CalculatedIntake {
+        // Fórmula de Mifflin-St Jeor
+        val bmr = (10f * weightKg) + (6.25f * heightCm) - (5f * 25f) + 5f
+        val tdee = bmr * 1.35f // Factor de actividad moderada habitual
+
+        val targetCalories = when (goal) {
+            "PERDIDA_PESO", "GRASA" -> (tdee - 500f).coerceAtLeast(1400f)
+            "VOLUMEN", "MUSCULO" -> tdee + 300f
+            else -> tdee
+        }
+
+        // Distribución óptima de macronutrientes:
+        // Proteínas: 2.0 g/kg (protege masa muscular en déficit)
+        // Grasas: 0.85 g/kg (salud hormonal)
+        // Carbohidratos: el resto calórico
+        val protein = (weightKg * 2.0f).coerceIn(90f, 240f)
+        val fat = (weightKg * 0.85f).coerceIn(40f, 110f)
+        val remainingKcal = targetCalories - (protein * 4f + fat * 9f)
+        val carbs = (remainingKcal / 4f).coerceAtLeast(50f)
+
+        return CalculatedIntake(
+            calories = targetCalories,
+            protein = protein,
+            carbs = carbs,
+            fat = fat,
+            bmr = bmr,
+            tdee = tdee
+        )
+    }
+
+    fun applyCalculatedIntake(intake: CalculatedIntake, weightKg: Float, heightCm: Int, goal: String) {
+        viewModelScope.launch {
+            userPreferences.updateCalorieAndMacroTargets(
+                calories = intake.calories,
+                protein = intake.protein,
+                carbs = intake.carbs,
+                fat = intake.fat
+            )
+            val currentFitnessLevel = userPreferences.userGoals.first().fitnessLevel
+            userPreferences.updateFitnessProfile(
+                level = currentFitnessLevel,
+                goal = goal,
+                weight = weightKg,
+                height = heightCm
+            )
+            _uiState.update {
+                it.copy(
+                    targetCalories = intake.calories,
+                    targetProtein = intake.protein,
+                    targetCarbs = intake.carbs,
+                    targetFat = intake.fat,
+                    userWeightKg = weightKg,
+                    userHeightCm = heightCm,
+                    userGoal = goal,
+                    showCalculatorDialog = false
+                )
+            }
+        }
+    }
+
+    // ─── Análisis de Foto con Gemini AI ───────────────────────────────────────
+
+    fun setStagedPhoto(bitmap: Bitmap, mealType: String) {
         _uiState.update {
             it.copy(
                 stagedBitmap = bitmap,
-                activeMealType = mealType,
                 stagedDescription = "",
+                activeMealType = mealType,
                 aiResultItems = null,
                 aiErrorMessage = null,
                 aiExplanation = null
@@ -190,27 +301,27 @@ class NutritionViewModel @Inject constructor(
         _uiState.update { it.copy(stagedDescription = desc) }
     }
 
-    fun dismissPhotoDialog() {
+    fun clearStagedPhoto() {
         _uiState.update {
             it.copy(
                 stagedBitmap = null,
                 stagedDescription = "",
-                isAiAnalyzing = false,
                 aiResultItems = null,
                 aiErrorMessage = null,
-                aiExplanation = null
+                aiExplanation = null,
+                isAiAnalyzing = false
             )
         }
     }
 
     fun analyzeStagedPhoto() {
         val bitmap = _uiState.value.stagedBitmap ?: return
-        val description = _uiState.value.stagedDescription
+        val desc = _uiState.value.stagedDescription
+
+        _uiState.update { it.copy(isAiAnalyzing = true, aiErrorMessage = null) }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isAiAnalyzing = true, aiErrorMessage = null) }
-
-            when (val result = repository.analyzeFoodPhoto(bitmap, description)) {
+            when (val result = repository.analyzeFoodPhoto(bitmap, desc)) {
                 is FoodAiResult.Success -> {
                     _uiState.update {
                         it.copy(
@@ -232,10 +343,10 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
-    fun updateAiResultItem(index: Int, updatedItem: DetectedFoodItem) {
+    fun updateAiResultItem(index: Int, item: DetectedFoodItem) {
         val current = _uiState.value.aiResultItems?.toMutableList() ?: return
         if (index in current.indices) {
-            current[index] = updatedItem
+            current[index] = item
             _uiState.update { it.copy(aiResultItems = current) }
         }
     }
@@ -251,24 +362,24 @@ class NutritionViewModel @Inject constructor(
     fun confirmAiItems(items: List<DetectedFoodItem>, mealType: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val date = _uiState.value.selectedDate
-            val dateMillis = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val zone = ZoneId.systemDefault()
+            val dateMillis = date.atStartOfDay(zone).toInstant().toEpochMilli()
 
             val entities = items.map { item ->
                 MealEntryEntity(
                     dateMillis = dateMillis,
-                    mealType   = mealType,
-                    name       = item.name,
-                    brand      = "IA Reconocimiento",
-                    grams      = item.grams,
-                    calories   = item.calories,
-                    protein    = item.protein,
-                    carbs      = item.carbs,
-                    fat        = item.fat,
-                    notes      = _uiState.value.stagedDescription
+                    mealType = mealType,
+                    name = item.name,
+                    brand = "Casero",
+                    grams = item.grams,
+                    calories = item.calories,
+                    protein = item.protein,
+                    carbs = item.carbs,
+                    fat = item.fat
                 )
             }
             repository.insertMeals(entities)
-            dismissPhotoDialog()
+            clearStagedPhoto()
         }
     }
 }

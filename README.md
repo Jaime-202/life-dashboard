@@ -17,12 +17,13 @@
 
 ## 🌟 Funcionalidades Principales
 
-### 🥗 1. Comida y Nutrición Inteligente con IA (Gemini 2.0 Flash)
+### 🥗 1. Comida y Nutrición Inteligente con IA (Gemini 2.0 Flash) & Supermercados con Fotos
 * **Reconocimiento Visual de Platos por Foto:** Captura o sube una fotografía de tu comida y la IA multimodal (`gemini-2.0-flash`) analiza instantáneamente los ingredientes y porciones, estimando con alta fidelidad calorías totales, proteínas, carbohidratos y grasas.
 * **Descripción de Contexto Pre-Envío:** Permite añadir una descripción textual opcional antes de enviar la foto (por ejemplo: *"lleva 2 cucharadas de aceite de oliva y salsa de soja baja en sal"*) para maximizar la exactitud de la inferencia nutricional.
-* **Buscador de Supermercados Españoles:** Motor integrado conectado al catálogo abierto de *Open Food Facts* con soporte especializado para cadenas como **Mercadona (Hacendado)**, **Día**, **Carrefour**, **Alcampo**, **Supercor / El Corte Inglés** y alimentos genéricos.
-* **Cálculo Dinámico de Cantidades:** Ajuste en tiempo real de calorías y macronutrientes introduciendo los gramos o raciones exactas del alimento.
-* **Control de Objetivos de Macronutrientes:** Tarjetas de balance diario con desglose de Proteínas (Azul), Carbohidratos (Ámbar) y Grasas (Rosa) respecto a tus metas personalizadas.
+* **Buscador de Supermercados con Fotos Reales:** Catálogo visual con imágenes de productos de **Mercadona (Hacendado)**, **Día**, **Carrefour**, **Alcampo**, **Supercor / El Corte Inglés** y alimentos básicos.
+* **Escáner de Códigos de Barras Nativo:** Integración con Google Code Scanner para escanear al instante el código de barras de cualquier producto con la cámara del teléfono y obtener sus fotos y valores nutricionales de Open Food Facts en milisegundos.
+* **Calculador Científico de Ingesta Calórica:** Modal interactivo basado en la ecuación de Mifflin-St Jeor que toma tu peso actual, altura y objetivo (Pérdida de grasa -500 kcal, Mantenimiento o Ganancia muscular) y calcula de forma inmediata tu ingesta diaria y desglose de macronutrientes (Proteínas, Carbohidratos, Grasas), aplicándolo con un solo toque.
+* **Balance Calórico Integral:** Visualización clara de Calorías Consumidas, Calorías Quemadas en actividad y Calorías Restantes respecto a tu objetivo diario.
 
 ### 🧩 2. Widgets Glassmorphic Auto-Actualizables (1x1, 1x2, 2x2, 4x2)
 Diseñados con acabado translúcido de alta estética para integrarse elegantemente con cualquier fondo de pantalla:

@@ -3,6 +3,7 @@ package com.lifedashboard.presentation.screen.nutrition
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -27,6 +28,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -36,6 +38,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.lifedashboard.data.local.entity.MealEntryEntity
 import com.lifedashboard.data.remote.food.DetectedFoodItem
 import com.lifedashboard.data.remote.food.FoodCatalogItem
@@ -98,11 +103,11 @@ fun NutritionScreen(
             onItemChange = { idx, item -> viewModel.updateAiResultItem(idx, item) },
             onItemDelete = { idx -> viewModel.removeAiResultItem(idx) },
             onConfirm = { items, type -> viewModel.confirmAiItems(items, type) },
-            onDismiss = { viewModel.dismissPhotoDialog() }
+            onDismiss = { viewModel.clearStagedPhoto() }
         )
     }
 
-    // Diálogo de búsqueda de alimentos y supermercados
+    // Diálogo de búsqueda y escaneo de alimentos
     if (showSearchDialog) {
         SearchFoodDialog(
             mealType = selectedMealTypeForAdd,
@@ -112,11 +117,40 @@ fun NutritionScreen(
             isSearching = state.isSearching,
             onQueryChange = { viewModel.onSearchQueryChange(it) },
             onCategorySelect = { viewModel.onCategorySelect(it) },
+            onScanBarcode = {
+                val scanner = GmsBarcodeScanning.getClient(context)
+                scanner.startScan()
+                    .addOnSuccessListener { barcode ->
+                        val code = barcode.rawValue
+                        if (!code.isNullOrBlank()) {
+                            viewModel.onSearchQueryChange(code)
+                            Toast.makeText(context, "Código escaneado: $code", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        Toast.makeText(context, "No se pudo escanear: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+            },
             onAddFood = { item, grams ->
                 viewModel.addFoodFromCatalog(item, grams, selectedMealTypeForAdd)
                 showSearchDialog = false
             },
             onDismiss = { showSearchDialog = false }
+        )
+    }
+
+    // Diálogo de cálculo de ingesta calórica según peso y objetivo
+    if (state.showCalculatorDialog) {
+        CaloricCalculatorDialog(
+            currentWeight = state.userWeightKg,
+            currentHeight = state.userHeightCm,
+            currentGoal = state.userGoal,
+            onCalculate = { w, h, g -> viewModel.calculateIntake(w, h, g) },
+            onApply = { intake, w, h, g ->
+                viewModel.applyCalculatedIntake(intake, w, h, g)
+                Toast.makeText(context, "Meta calórica actualizada: ${intake.calories.toInt()} kcal", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = { viewModel.setCalculatorDialogVisible(false) }
         )
     }
 
@@ -140,9 +174,12 @@ fun NutritionScreen(
                 )
             }
 
-            // ─── Resumen Hero de Macros y Calorías ─────────────────────────
+            // ─── Resumen Hero de Macros y Balance Calórico ────────────────
             item {
-                NutritionHeroCard(state = state)
+                NutritionHeroCard(
+                    state = state,
+                    onOpenCalculator = { viewModel.setCalculatorDialogVisible(true) }
+                )
             }
 
             // ─── Secciones de Comida ──────────────────────────────────────
@@ -184,8 +221,17 @@ private fun NutritionHeader(
     onNextDay: () -> Unit,
     onTodayClick: () -> Unit
 ) {
-    val isToday = selectedDate == LocalDate.now()
-    val dateStr = selectedDate.format(
+    val today = LocalDate.now()
+    val isToday = selectedDate == today
+
+    val dayPillText = when {
+        selectedDate == today -> "Hoy"
+        selectedDate == today.minusDays(1) -> "Ayer"
+        selectedDate == today.plusDays(1) -> "Mañana"
+        else -> selectedDate.format(DateTimeFormatter.ofPattern("d MMM", Locale("es"))).replaceFirstChar { it.uppercase() }
+    }
+
+    val fullDateStr = selectedDate.format(
         DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es"))
     ).replaceFirstChar { it.uppercase() }
 
@@ -196,16 +242,16 @@ private fun NutritionHeader(
             .fillMaxWidth()
             .padding(top = 36.dp)
     ) {
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text       = "Comida & Macros",
+                text       = "Comida & Nutrición",
                 style      = MaterialTheme.typography.headlineSmall,
                 color      = White,
                 fontWeight = FontWeight.Bold
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text  = dateStr,
+                text  = fullDateStr,
                 style = MaterialTheme.typography.bodyMedium,
                 color = Gray400
             )
@@ -213,34 +259,50 @@ private fun NutritionHeader(
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            IconButton(
-                onClick  = onPreviousDay,
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Indigo800)
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Día anterior", tint = White, modifier = Modifier.size(16.dp))
-            }
-
             if (!isToday) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
                         .background(Violet400.copy(alpha = 0.2f))
                         .clickable(onClick = onTodayClick)
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
-                    Text("HOY", style = MaterialTheme.typography.labelSmall, color = Violet300, fontWeight = FontWeight.Bold)
+                    Text("↻ Hoy", style = MaterialTheme.typography.labelSmall, color = Violet300, fontWeight = FontWeight.Bold)
                 }
+                Spacer(Modifier.width(2.dp))
+            }
+
+            IconButton(
+                onClick  = onPreviousDay,
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(Indigo800)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Día anterior", tint = White, modifier = Modifier.size(16.dp))
+            }
+
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Indigo800)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = dayPillText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isToday) Cyan400 else White,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
             IconButton(
                 onClick  = onNextDay,
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(34.dp)
                     .clip(CircleShape)
                     .background(Indigo800)
             ) {
@@ -250,11 +312,14 @@ private fun NutritionHeader(
     }
 }
 
-// ─── Hero Card de Macros y Calorías ───────────────────────────────────────────
+// ─── Hero Card de Macros y Balance Calórico ───────────────────────────────────
 
 @Composable
-private fun NutritionHeroCard(state: NutritionUiState) {
-    val remainingCalories = (state.targetCalories - state.totalCalories).toInt()
+private fun NutritionHeroCard(
+    state: NutritionUiState,
+    onOpenCalculator: () -> Unit
+) {
+    val remaining = state.remainingCalories.toInt()
     val animatedCaloriesProgress by animateFloatAsState(
         targetValue = state.caloriesProgress,
         animationSpec = tween(900, easing = FastOutSlowInEasing),
@@ -267,66 +332,108 @@ private fun NutritionHeroCard(state: NutritionUiState) {
             .clip(RoundedCornerShape(24.dp))
             .background(Indigo800)
             .border(1.dp, Indigo700, RoundedCornerShape(24.dp))
-            .padding(20.dp)
+            .padding(18.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // Cabecera con título y botón de cálculo automático
             Row(
                 verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier              = Modifier.fillMaxWidth()
             ) {
-                Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Amber400, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(6.dp))
                     Text(
                         text  = "Balance Calórico",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Gray400
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = White
                     )
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            text       = "${state.totalCalories.toInt()}",
-                            style      = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color      = White
-                        )
-                        Text(
-                            text       = " / ${state.targetCalories.toInt()} kcal",
-                            style      = MaterialTheme.typography.bodyMedium,
-                            color      = Gray400,
-                            modifier   = Modifier.padding(bottom = 3.dp, start = 4.dp)
-                        )
-                    }
                 }
 
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .background(if (remainingCalories >= 0) Emerald400.copy(alpha = 0.15f) else Rose400.copy(alpha = 0.15f))
+                        .background(Violet400.copy(alpha = 0.2f))
+                        .clickable(onClick = onOpenCalculator)
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    Text(
-                        text = if (remainingCalories >= 0) "Restan $remainingCalories kcal" else "Superado por ${-remainingCalories} kcal",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (remainingCalories >= 0) Emerald400 else Rose400,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Calculate, contentDescription = null, tint = Violet300, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "Calcular Meta",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Violet300,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
-            // Barra de calorías animada
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(10.dp)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(Indigo700)
+            // 3 Columnas claras: Consumidas, Quemadas y Restantes
+            Row(
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
             ) {
+                CalorieMetricBox(
+                    label = "Consumidas",
+                    value = "${state.totalCalories.toInt()} kcal",
+                    color = White,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                CalorieMetricBox(
+                    label = "Quemadas",
+                    value = "${state.activeBurnedCalories.toInt()} kcal",
+                    color = Cyan400,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                CalorieMetricBox(
+                    label = if (remaining >= 0) "Restantes" else "Superado",
+                    value = "${if (remaining >= 0) remaining else -remaining} kcal",
+                    color = if (remaining >= 0) Emerald400 else Rose400,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Barra de progreso hacia la meta diaria
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Objetivo de ingesta:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gray400
+                    )
+                    Text(
+                        text = "${state.totalCalories.toInt()} / ${state.targetCalories.toInt()} kcal (${(state.caloriesProgress * 100).toInt()}%)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(animatedCaloriesProgress)
-                        .fillMaxHeight()
+                        .fillMaxWidth()
+                        .height(10.dp)
                         .clip(RoundedCornerShape(5.dp))
-                        .background(Brush.horizontalGradient(listOf(Violet400, Cyan400)))
-                )
+                        .background(Indigo700)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(animatedCaloriesProgress)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(Brush.horizontalGradient(listOf(Violet400, Cyan400)))
+                    )
+                }
             }
 
             HorizontalDivider(color = Indigo700, thickness = 1.dp)
@@ -366,6 +473,27 @@ private fun NutritionHeroCard(state: NutritionUiState) {
 }
 
 @Composable
+private fun CalorieMetricBox(
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(Indigo900.copy(alpha = 0.7f))
+            .padding(vertical = 10.dp, horizontal = 8.dp)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Text(text = label, style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 10.sp)
+            Spacer(Modifier.height(2.dp))
+            Text(text = value, style = MaterialTheme.typography.bodyMedium, color = color, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
 private fun MacroColumnItem(
     label: String,
     currentVal: Float,
@@ -375,35 +503,35 @@ private fun MacroColumnItem(
     modifier: Modifier = Modifier
 ) {
     val animatedProgress by animateFloatAsState(
-        targetValue   = progress,
-        animationSpec = tween(800, easing = FastOutSlowInEasing),
-        label         = "${label}_prog"
+        targetValue = progress,
+        animationSpec = tween(900, easing = FastOutSlowInEasing),
+        label = "macro_progress"
     )
 
     Column(
-        modifier = modifier.padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = modifier.padding(horizontal = 4.dp)
     ) {
         Text(text = label, style = MaterialTheme.typography.labelSmall, color = Gray400)
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
-                text = "${currentVal.toInt()}",
-                style = MaterialTheme.typography.titleMedium,
+                text       = "${currentVal.toInt()}",
+                style      = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                color = White
+                color      = White
             )
             Text(
-                text = " / ${targetVal.toInt()}g",
-                style = MaterialTheme.typography.labelSmall,
-                color = Gray500,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(bottom = 1.dp)
+                text     = "/${targetVal.toInt()}g",
+                style    = MaterialTheme.typography.labelSmall,
+                color    = Gray500,
+                fontSize = 10.sp
             )
         }
+
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxWidth(0.85f)
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp))
                 .background(Indigo700)
@@ -419,7 +547,7 @@ private fun MacroColumnItem(
     }
 }
 
-// ─── Tarjeta de Sección de Comida (Desayuno, Comida, etc.) ───────────────────
+// ─── Tarjeta de Sección de Comida ─────────────────────────────────────────────
 
 @Composable
 private fun MealSectionCard(
@@ -431,16 +559,13 @@ private fun MealSectionCard(
     onDeleteMeal: (Long) -> Unit
 ) {
     val sectionKcal = meals.sumOf { it.calories.toDouble() }.toInt()
-    val sectionProtein = meals.sumOf { it.protein.toDouble() }.toInt()
-    val sectionCarbs = meals.sumOf { it.carbs.toDouble() }.toInt()
-    val sectionFat = meals.sumOf { it.fat.toDouble() }.toInt()
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(Indigo800)
-            .border(1.dp, Indigo700, RoundedCornerShape(22.dp))
+            .border(1.dp, Indigo700, RoundedCornerShape(20.dp))
             .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -461,36 +586,25 @@ private fun MealSectionCard(
                     )
                 }
 
-                if (meals.isNotEmpty()) {
-                    Text(
-                        text       = "$sectionKcal kcal",
-                        style      = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color      = Amber400
-                    )
+                if (sectionKcal > 0) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Indigo700)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text  = "$sectionKcal kcal",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Amber400,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
+            // Lista de alimentos registrados en esta comida
             if (meals.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("P: ${sectionProtein}g", style = MaterialTheme.typography.labelSmall, color = Violet300, fontSize = 11.sp)
-                    Text("·", color = Gray500)
-                    Text("C: ${sectionCarbs}g", style = MaterialTheme.typography.labelSmall, color = Cyan400, fontSize = 11.sp)
-                    Text("·", color = Gray500)
-                    Text("G: ${sectionFat}g", style = MaterialTheme.typography.labelSmall, color = Amber400, fontSize = 11.sp)
-                }
-            }
-
-            HorizontalDivider(color = Indigo700, thickness = 1.dp)
-
-            // Lista de alimentos registrados
-            if (meals.isEmpty()) {
-                Text(
-                    text  = "No hay alimentos registrados todavía.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Gray500
-                )
-            } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     meals.forEach { meal ->
                         MealItemRow(meal = meal, onDelete = { onDeleteMeal(meal.id) })
@@ -512,7 +626,7 @@ private fun MealSectionCard(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, tint = White, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Buscar", style = MaterialTheme.typography.labelMedium, color = White)
+                    Text("Buscar / Escanear", style = MaterialTheme.typography.labelMedium, color = White)
                 }
 
                 Button(
@@ -653,126 +767,134 @@ private fun PhotoAiDialog(
                     }
                 }
 
-                // Previsualización de la foto capturada
-                Box(
+                // Vista previa de la foto tomada
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "Foto de comida",
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(180.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Indigo900)
-                ) {
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "Foto del plato",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+
+                // Campo de descripción opcional
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Descripción opcional (para que la IA acierte mejor):",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gray300
+                    )
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = onDescriptionChange,
+                        placeholder = {
+                            Text("Ej: Pollo con arroz y 2 cucharadas de aceite de oliva...", color = Gray500, fontSize = 12.sp)
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Violet400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        maxLines = 2,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
 
-                // ─── CAMPO DE DESCRIPCIÓN SOLICITADO POR EL USUARIO ──────────
-                if (detectedItems == null) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text  = "Descripción del plato (recomendado para mayor precisión):",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Gray300,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        OutlinedTextField(
-                            value = description,
-                            onValueChange = onDescriptionChange,
-                            placeholder = {
-                                Text(
-                                    "Ej: Pechuga a la plancha con arroz blanco y una cucharada de aceite de oliva...",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Gray500
-                                )
-                            },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor   = Violet400,
-                                unfocusedBorderColor = Indigo600,
-                                focusedTextColor     = White,
-                                unfocusedTextColor   = White,
-                                cursorColor          = Violet400
-                            ),
-                            shape = RoundedCornerShape(14.dp),
-                            minLines = 2,
-                            maxLines = 4,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    if (errorMessage != null) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Rose400.copy(alpha = 0.15f))
-                                .padding(12.dp)
-                        ) {
-                            Text(text = errorMessage, style = MaterialTheme.typography.bodySmall, color = Rose400)
-                        }
-                    }
-
+                // Botón de análisis si aún no se ha analizado
+                if (detectedItems == null && !isAnalyzing) {
                     Button(
                         onClick = onAnalyze,
-                        enabled = !isAnalyzing,
-                        colors  = ButtonDefaults.buttonColors(containerColor = Violet400),
-                        shape   = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                        colors = ButtonDefaults.buttonColors(containerColor = Violet400),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        if (isAnalyzing) {
-                            CircularProgressIndicator(color = Indigo900, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(10.dp))
-                            Text("Analizando plato con Gemini Flash...", color = Indigo900, fontWeight = FontWeight.Bold)
-                        } else {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Indigo900, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Analizar Plato Ahora ✨", color = Indigo900, fontWeight = FontWeight.Bold)
-                        }
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Indigo900)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Analizar Plato Ahora", color = Indigo900, fontWeight = FontWeight.Bold)
                     }
-                } else {
-                    // Resultados detectados por la IA
+                }
+
+                // Indicador de carga
+                if (isAnalyzing) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                    ) {
+                        CircularProgressIndicator(color = Violet400, strokeWidth = 3.dp)
+                        Text(
+                            text = "Gemini Vision está identificando los alimentos y macros...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Violet300,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                // Mensaje de error
+                if (errorMessage != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Rose400.copy(alpha = 0.2f))
+                            .padding(12.dp)
+                    ) {
+                        Text(text = errorMessage, color = Rose400, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+
+                // Lista de alimentos detectados
+                if (detectedItems != null) {
                     if (explanation != null) {
-                        Text(text = explanation, style = MaterialTheme.typography.bodySmall, color = Cyan400)
+                        Text(
+                            text = "💡 $explanation",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray300
+                        )
                     }
 
                     Text(
-                        text = "Alimentos detectados (revisa o edita las cantidades):",
+                        text = "Alimentos detectados (ajusta gramos si es necesario):",
                         style = MaterialTheme.typography.labelMedium,
-                        color = Gray300,
+                        color = White,
                         fontWeight = FontWeight.Bold
                     )
 
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        detectedItems.forEachIndexed { index, item ->
+                        detectedItems.forEachIndexed { idx, item ->
                             DetectedItemEditor(
                                 item = item,
-                                onChange = { onItemChange(index, it) },
-                                onDelete = { onItemDelete(index) }
+                                onChange = { updated -> onItemChange(idx, updated) },
+                                onDelete = { onItemDelete(idx) }
                             )
                         }
                     }
 
+                    // Resumen calórico detectado
                     val totalDetectedKcal = detectedItems.sumOf { it.calories.toDouble() }.toInt()
                     Row(
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                     ) {
-                        Text("Total estimado:", style = MaterialTheme.typography.labelMedium, color = Gray400)
+                        Text("Total estimado:", style = MaterialTheme.typography.bodyMedium, color = Gray300)
                         Text("$totalDetectedKcal kcal", style = MaterialTheme.typography.titleMedium, color = Amber400, fontWeight = FontWeight.Bold)
                     }
 
+                    // Botón de confirmación
                     Button(
                         onClick = { onConfirm(detectedItems, mealType) },
                         colors = ButtonDefaults.buttonColors(containerColor = Emerald400),
                         shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = null, tint = Indigo900, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Check, contentDescription = null, tint = Indigo900)
                         Spacer(Modifier.width(8.dp))
-                        Text("Guardar en $mealType", color = Indigo900, fontWeight = FontWeight.Bold)
+                        Text("Añadir a $mealType", color = Indigo900, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -854,7 +976,7 @@ private fun DetectedItemEditor(
     }
 }
 
-// ─── Diálogo de Búsqueda de Alimentos y Supermercados ─────────────────────────
+// ─── Diálogo de Búsqueda de Alimentos, Supermercados y Escáner de Códigos ─────
 
 @Composable
 private fun SearchFoodDialog(
@@ -865,6 +987,7 @@ private fun SearchFoodDialog(
     isSearching: Boolean,
     onQueryChange: (String) -> Unit,
     onCategorySelect: (FoodSourceCategory) -> Unit,
+    onScanBarcode: () -> Unit,
     onAddFood: (FoodCatalogItem, Float) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -875,11 +998,11 @@ private fun SearchFoodDialog(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .fillMaxHeight(0.88f)
                 .clip(RoundedCornerShape(24.dp))
                 .background(Indigo800)
                 .border(1.dp, Indigo700, RoundedCornerShape(24.dp))
-                .padding(20.dp)
+                .padding(18.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 // Header
@@ -899,31 +1022,54 @@ private fun SearchFoodDialog(
                     }
                 }
 
-                // Buscador
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    placeholder = { Text("Buscar en Mercadona, Carrefour, Día...", color = Gray500) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Violet300) },
-                    trailingIcon = {
-                        if (isSearching) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Violet400, strokeWidth = 2.dp)
-                        } else if (query.isNotBlank()) {
-                            IconButton(onClick = { onQueryChange("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = "Borrar", tint = Gray400, modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Violet400,
-                        unfocusedBorderColor = Indigo600,
-                        focusedTextColor = White,
-                        unfocusedTextColor = White
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    singleLine = true,
+                // Buscador con botón de Escáner de Código de Barras
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
-                )
+                ) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        placeholder = { Text("Buscar pan, pechuga, avena...", color = Gray500, fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Violet300, modifier = Modifier.size(20.dp)) },
+                        trailingIcon = {
+                            if (isSearching) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Violet400, strokeWidth = 2.dp)
+                            } else if (query.isNotBlank()) {
+                                IconButton(onClick = { onQueryChange("") }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Borrar", tint = Gray400, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Violet400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    // Botón para escanear código de barras con la cámara
+                    IconButton(
+                        onClick = onScanBarcode,
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Violet400.copy(alpha = 0.2f))
+                            .border(1.dp, Violet400.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                    ) {
+                        Icon(
+                            Icons.Default.CropFree,
+                            contentDescription = "Escanear código de barras",
+                            tint = Violet300,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
 
                 // Chips de filtro de supermercado
                 LazyRow(
@@ -970,8 +1116,28 @@ private fun SearchFoodDialog(
                             .padding(16.dp)
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text(text = item.name, style = MaterialTheme.typography.titleSmall, color = White, fontWeight = FontWeight.Bold)
-                            Text("Marca: ${item.brand}", style = MaterialTheme.typography.labelSmall, color = Violet300)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (!item.imageUrl.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(LocalContext.current)
+                                            .data(item.imageUrl)
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = item.name,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(56.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Indigo700)
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                }
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = item.name, style = MaterialTheme.typography.titleSmall, color = White, fontWeight = FontWeight.Bold)
+                                    Text("Marca: ${item.brand}", style = MaterialTheme.typography.labelSmall, color = Violet300)
+                                }
+                            }
 
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Cantidad:", style = MaterialTheme.typography.bodyMedium, color = Gray300)
@@ -1022,7 +1188,7 @@ private fun SearchFoodDialog(
                         }
                     }
                 } else {
-                    // Lista de resultados
+                    // Lista de resultados con fotos de todos los alimentos
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1034,7 +1200,7 @@ private fun SearchFoodDialog(
                                     modifier = Modifier.fillMaxWidth().padding(top = 40.dp)
                                 ) {
                                     Text(
-                                        text = "No se encontraron alimentos.\nPrueba a buscar pechuga, avena, yogur o productos de Mercadona/Día.",
+                                        text = "No se encontraron alimentos.\nPrueba a buscar pan, avena, pechuga o escanear el código de barras.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = Gray500,
                                         textAlign = TextAlign.Center
@@ -1047,41 +1213,299 @@ private fun SearchFoodDialog(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .background(Indigo900.copy(alpha = 0.7f))
                                     .clickable {
                                         selectedItem = food
                                         inputGrams = food.servingSizeGrams.toInt().toString()
                                     }
-                                    .padding(12.dp)
+                                    .padding(10.dp)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
+                                    // FOTO DEL ALIMENTO / PRODUCTO
+                                    if (!food.imageUrl.isNullOrBlank()) {
+                                        AsyncImage(
+                                            model = ImageRequest.Builder(LocalContext.current)
+                                                .data(food.imageUrl)
+                                                .crossfade(true)
+                                                .build(),
+                                            contentDescription = food.name,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(46.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(Indigo700)
+                                        )
+                                    } else {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier
+                                                .size(46.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(Indigo700)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Restaurant,
+                                                contentDescription = null,
+                                                tint = Violet300,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(Modifier.width(12.dp))
+
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(text = food.name, style = MaterialTheme.typography.bodyMedium, color = White, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            text = food.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = White,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                         Spacer(Modifier.height(2.dp))
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
                                             Box(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(4.dp))
                                                     .background(Indigo700)
-                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    .padding(horizontal = 5.dp, vertical = 2.dp)
                                             ) {
                                                 Text(text = food.brand, style = MaterialTheme.typography.labelSmall, color = Violet300, fontSize = 9.sp)
                                             }
                                             Text("${food.caloriesPer100g.toInt()} kcal/100g", style = MaterialTheme.typography.labelSmall, color = Amber400, fontSize = 11.sp)
+                                            Text("·", color = Gray500)
+                                            Text("P:${food.proteinPer100g.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp)
                                         }
                                     }
-                                    Icon(Icons.Default.AddCircleOutline, contentDescription = "Seleccionar", tint = Violet400, modifier = Modifier.size(20.dp))
+
+                                    Spacer(Modifier.width(8.dp))
+
+                                    Icon(Icons.Default.AddCircleOutline, contentDescription = "Seleccionar", tint = Violet400, modifier = Modifier.size(22.dp))
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+// ─── Modal Calculador de Ingesta Calórica y Macros ────────────────────────────
+
+@Composable
+private fun CaloricCalculatorDialog(
+    currentWeight: Float,
+    currentHeight: Int,
+    currentGoal: String,
+    onCalculate: (Float, Int, String) -> CalculatedIntake,
+    onApply: (CalculatedIntake, Float, Int, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var weightInput by remember { mutableStateOf(if (currentWeight > 0) "%.1f".format(Locale.US, currentWeight) else "75.0") }
+    var heightInput by remember { mutableStateOf(if (currentHeight > 0) "$currentHeight" else "175") }
+    var selectedGoal by remember { mutableStateOf(if (currentGoal.isNotBlank()) currentGoal else "PERDIDA_PESO") }
+
+    val parsedWeight = weightInput.toFloatOrNull() ?: 75f
+    val parsedHeight = heightInput.toIntOrNull() ?: 175
+    val calculated = remember(parsedWeight, parsedHeight, selectedGoal) {
+        onCalculate(parsedWeight, parsedHeight, selectedGoal)
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Indigo800)
+                .border(1.dp, Violet400.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                .padding(20.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                // Header
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier              = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Calculate, contentDescription = null, tint = Violet300, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text       = "Calculador de Ingesta",
+                            style      = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color      = White
+                        )
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Gray400, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Text(
+                    text = "Ajusta tus datos corporales y objetivo para calcular tu ingesta diaria óptima basada en la fórmula científica de Mifflin-St Jeor.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray300
+                )
+
+                // Campos Peso y Altura
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = weightInput,
+                        onValueChange = { weightInput = it },
+                        label = { Text("Peso (kg)", color = Gray400, fontSize = 11.sp) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Violet400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    OutlinedTextField(
+                        value = heightInput,
+                        onValueChange = { heightInput = it },
+                        label = { Text("Altura (cm)", color = Gray400, fontSize = 11.sp) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Violet400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Selector de Objetivo
+                Text("Objetivo primario:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    GoalChip(
+                        title = "📉 Perder Grasa",
+                        subtitle = "-500 kcal",
+                        isSelected = selectedGoal == "PERDIDA_PESO" || selectedGoal == "GRASA",
+                        onClick = { selectedGoal = "PERDIDA_PESO" },
+                        modifier = Modifier.weight(1f)
+                    )
+                    GoalChip(
+                        title = "⚖️ Mantenimiento",
+                        subtitle = "Equilibrio",
+                        isSelected = selectedGoal == "MANTENIMIENTO" || selectedGoal == "SALUD_GENERAL",
+                        onClick = { selectedGoal = "MANTENIMIENTO" },
+                        modifier = Modifier.weight(1f)
+                    )
+                    GoalChip(
+                        title = "📈 Músculo",
+                        subtitle = "+300 kcal",
+                        isSelected = selectedGoal == "VOLUMEN" || selectedGoal == "MUSCULO",
+                        onClick = { selectedGoal = "VOLUMEN" },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Resultado del cálculo
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Indigo900)
+                        .border(1.dp, Indigo700, RoundedCornerShape(16.dp))
+                        .padding(14.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Ingesta diaria recomendada:", style = MaterialTheme.typography.bodySmall, color = Gray300)
+                            Text(
+                                text = "${calculated.calories.toInt()} kcal",
+                                style = MaterialTheme.typography.titleLarge,
+                                color = Amber400,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        HorizontalDivider(color = Indigo700, thickness = 1.dp)
+
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("P: ${calculated.protein.toInt()}g", color = Violet300, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("C: ${calculated.carbs.toInt()}g", color = Cyan400, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Text("G: ${calculated.fat.toInt()}g", color = Amber400, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+
+                        Text(
+                            text = "Metabolismo basal: ${calculated.bmr.toInt()} kcal · Gasto estimado: ${calculated.tdee.toInt()} kcal",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Gray500,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+
+                // Botón aplicar
+                Button(
+                    onClick = {
+                        onApply(calculated, parsedWeight, parsedHeight, selectedGoal)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Violet400),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Aplicar como mi Meta Diaria", color = Indigo900, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GoalChip(
+    title: String,
+    subtitle: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isSelected) Violet400 else Indigo700)
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp, horizontal = 4.dp)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isSelected) Indigo900 else White,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                fontSize = 10.sp
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isSelected) Indigo900.copy(alpha = 0.8f) else Gray400,
+                fontSize = 9.sp
+            )
         }
     }
 }

@@ -2,6 +2,8 @@ package com.lifedashboard.app.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.lifedashboard.data.local.dao.*
 import com.lifedashboard.data.local.database.AppDatabase
 import dagger.Module
@@ -15,6 +17,29 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `meals` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `dateMillis` INTEGER NOT NULL,
+                    `mealType` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `brand` TEXT NOT NULL,
+                    `grams` REAL NOT NULL,
+                    `calories` REAL NOT NULL,
+                    `protein` REAL NOT NULL,
+                    `carbs` REAL NOT NULL,
+                    `fat` REAL NOT NULL,
+                    `notes` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_meals_dateMillis` ON `meals` (`dateMillis`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_meals_mealType` ON `meals` (`mealType`)")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
@@ -23,7 +48,8 @@ object DatabaseModule {
             AppDatabase::class.java,
             "life_dashboard.db"
         )
-            .fallbackToDestructiveMigration()   // En desarrollo; usar migraciones en prod
+            .addMigrations(MIGRATION_5_6)
+            .fallbackToDestructiveMigrationOnDowngrade()
             .build()
 
     @Provides fun provideHealthDao(db: AppDatabase): HealthDao = db.healthDao()
