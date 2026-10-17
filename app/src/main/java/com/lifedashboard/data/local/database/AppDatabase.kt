@@ -13,9 +13,10 @@ import com.lifedashboard.data.local.entity.*
         CalendarEventEntity::class,
         WaterIntakeEntity::class,
         AchievementEntity::class,
-        WeightEntryEntity::class
+        WeightEntryEntity::class,
+        MealEntryEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -25,4 +26,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun waterIntakeDao(): WaterIntakeDao
     abstract fun achievementDao(): AchievementDao
     abstract fun weightDao(): WeightDao
+    abstract fun mealDao(): MealDao
 }

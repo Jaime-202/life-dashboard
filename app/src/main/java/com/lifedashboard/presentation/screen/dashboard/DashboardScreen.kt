@@ -37,15 +37,17 @@ import java.util.Locale
 fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
     onNavigateToHealth: (String) -> Unit = {},
-    onNavigateToWorkout: () -> Unit = {}
+    onNavigateToWorkout: () -> Unit = {},
+    onNavigateToNutrition: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     DashboardContent(
-        state               = state,
-        onSelectDate        = { viewModel.selectDate(it) },
-        onRefreshAi         = { viewModel.requestAiInsight() },
-        onNavigateToHealth  = onNavigateToHealth,
-        onNavigateToWorkout = onNavigateToWorkout
+        state                 = state,
+        onSelectDate          = { viewModel.selectDate(it) },
+        onRefreshAi           = { viewModel.requestAiInsight() },
+        onNavigateToHealth    = onNavigateToHealth,
+        onNavigateToWorkout   = onNavigateToWorkout,
+        onNavigateToNutrition = onNavigateToNutrition
     )
 }
 
@@ -55,7 +57,8 @@ fun DashboardContent(
     onSelectDate: (LocalDate) -> Unit = {},
     onRefreshAi: () -> Unit = {},
     onNavigateToHealth: (String) -> Unit = {},
-    onNavigateToWorkout: () -> Unit = {}
+    onNavigateToWorkout: () -> Unit = {},
+    onNavigateToNutrition: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     val greeting = remember(state.userName) {
@@ -104,6 +107,48 @@ fun DashboardContent(
                 onNavigateToHealth = onNavigateToHealth,
                 onNavigateToWorkout = onNavigateToWorkout
             )
+
+            // Tarjeta de Acceso a Nutrición & Comidas
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                Indigo800,
+                                Color(0xFF1E1442)
+                            )
+                        )
+                    )
+                    .border(1.dp, Indigo700, RoundedCornerShape(22.dp))
+                    .clickable(onClick = onNavigateToNutrition)
+                    .padding(16.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Violet400.copy(alpha = 0.15f))
+                        ) {
+                            Icon(Icons.Default.Restaurant, contentDescription = null, tint = Violet300, modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("Nutrición & Comidas", style = MaterialTheme.typography.titleSmall, color = White, fontWeight = FontWeight.Bold)
+                            Text("Registra platos, macros o foto con IA ✨", style = MaterialTheme.typography.bodySmall, color = Gray400, fontSize = 11.sp)
+                        }
+                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription = "Ir a nutrición", tint = Gray400, modifier = Modifier.size(18.dp))
+                }
+            }
 
             // 3. Calendario de Actividad y consistencia
             SectionTitle("Calendario de Hábitos")

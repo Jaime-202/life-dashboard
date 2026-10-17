@@ -94,7 +94,10 @@ data class SettingsState(
     val bedtimeReminderEnabled: Boolean = true,
     val wakeUpHour: Int = 8,
     val wakeUpMinute: Int = 30,
-    val bedtimeReminderMinutesBefore: Int = 30
+    val bedtimeReminderMinutesBefore: Int = 30,
+    val proteinTargetGrams: Float = 140f,
+    val carbsTargetGrams: Float = 250f,
+    val fatTargetGrams: Float = 70f
 )
 
 @HiltViewModel
@@ -140,7 +143,10 @@ class SettingsViewModel @Inject constructor(
                     bedtimeReminderEnabled = goals.bedtimeReminderEnabled,
                     wakeUpHour           = goals.wakeUpHour,
                     wakeUpMinute         = goals.wakeUpMinute,
-                    bedtimeReminderMinutesBefore = goals.bedtimeReminderMinutesBefore
+                    bedtimeReminderMinutesBefore = goals.bedtimeReminderMinutesBefore,
+                    proteinTargetGrams   = goals.proteinTargetGrams,
+                    carbsTargetGrams     = goals.carbsTargetGrams,
+                    fatTargetGrams       = goals.fatTargetGrams
                 )
             }
             .launchIn(viewModelScope)
@@ -239,6 +245,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             if (days > 0) userPreferences.updateWorkoutDaysTarget(days)
             if (minutes > 0) userPreferences.updateWorkoutMinutesTarget(minutes)
+        }
+    }
+
+    fun updateMacroTargets(protein: Float, carbs: Float, fat: Float) {
+        viewModelScope.launch {
+            userPreferences.updateMacroTargets(protein, carbs, fat)
         }
     }
 
@@ -365,6 +377,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     var showAddWeightModal by remember { mutableStateOf(false) }
     var showWeightHistoryModal by remember { mutableStateOf(false) }
     var showWakeUpTimeModal by remember { mutableStateOf(false) }
+    var showMacrosModal by remember { mutableStateOf(false) }
 
     val healthPermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
@@ -499,6 +512,24 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 trailing  = {
                     OutlinedButton(
                         onClick = { showWorkoutModal = true },
+                        colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                        border  = BorderStroke(1.dp, Violet400)
+                    ) {
+                        Text("Modificar", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            )
+
+            HorizontalDivider(color = Indigo700)
+
+            SettingsItem(
+                icon      = Icons.Default.Restaurant,
+                iconColor = Emerald400,
+                title     = "Objetivo de Macronutrientes",
+                subtitle  = "P: ${state.proteinTargetGrams.toInt()}g · C: ${state.carbsTargetGrams.toInt()}g · G: ${state.fatTargetGrams.toInt()}g",
+                trailing  = {
+                    OutlinedButton(
+                        onClick = { showMacrosModal = true },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
                         border  = BorderStroke(1.dp, Violet400)
                     ) {
@@ -946,6 +977,20 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 viewModel.updateWakeUpTime(h, m)
                 showWakeUpTimeModal = false
                 Toast.makeText(context, "Hora para levantarse actualizada", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showMacrosModal) {
+        EditMacrosGoalModal(
+            currentProtein = state.proteinTargetGrams,
+            currentCarbs   = state.carbsTargetGrams,
+            currentFat     = state.fatTargetGrams,
+            onDismiss      = { showMacrosModal = false },
+            onSave         = { p, c, f ->
+                viewModel.updateMacroTargets(p, c, f)
+                showMacrosModal = false
+                Toast.makeText(context, "Objetivos de macronutrientes actualizados", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -2199,6 +2244,104 @@ private fun EditWakeUpTimeModal(
             Button(
                 onClick = { onSave(selectedHour, selectedMinute) },
                 colors  = ButtonDefaults.buttonColors(containerColor = RingSleep, contentColor = Indigo900)
+            ) {
+                Text("Guardar", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = Gray400) }
+        }
+    )
+}
+
+@Composable
+private fun EditMacrosGoalModal(
+    currentProtein: Float,
+    currentCarbs: Float,
+    currentFat: Float,
+    onDismiss: () -> Unit,
+    onSave: (Float, Float, Float) -> Unit
+) {
+    var proteinText by remember { mutableStateOf("${currentProtein.toInt()}") }
+    var carbsText by remember { mutableStateOf("${currentCarbs.toInt()}") }
+    var fatText by remember { mutableStateOf("${currentFat.toInt()}") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = Indigo800,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Restaurant, contentDescription = null, tint = Emerald400, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Objetivo de Macros", color = White, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Define tus objetivos diarios en gramos para cada macronutriente:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray400
+                )
+
+                // Proteínas
+                OutlinedTextField(
+                    value = proteinText,
+                    onValueChange = { proteinText = it },
+                    label = { Text("Proteínas (g)", color = Violet300) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Carbohidratos
+                OutlinedTextField(
+                    value = carbsText,
+                    onValueChange = { carbsText = it },
+                    label = { Text("Carbohidratos (g)", color = Cyan400) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Cyan400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Grasas
+                OutlinedTextField(
+                    value = fatText,
+                    onValueChange = { fatText = it },
+                    label = { Text("Grasas (g)", color = Amber400) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Amber400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val p = proteinText.toFloatOrNull() ?: currentProtein
+                    val c = carbsText.toFloatOrNull() ?: currentCarbs
+                    val f = fatText.toFloatOrNull() ?: currentFat
+                    onSave(p, c, f)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Emerald400, contentColor = Indigo900)
             ) {
                 Text("Guardar", fontWeight = FontWeight.Bold)
             }

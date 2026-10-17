@@ -36,11 +36,23 @@ fun NavGraph(navController: NavHostController) {
                     navController.navigate(Screen.Workout.route) {
                         launchSingleTop = true
                     }
+                },
+                onNavigateToNutrition = {
+                    navController.navigate(Screen.Nutrition.route) {
+                        launchSingleTop = true
+                    }
                 }
             )
         }
         composable(Screen.Workout.route) {
             WorkoutScreen(
+                onBack = {
+                    navController.popBackStack(Screen.Dashboard.route, inclusive = false)
+                }
+            )
+        }
+        composable(Screen.Nutrition.route) {
+            com.lifedashboard.presentation.screen.nutrition.NutritionScreen(
                 onBack = {
                     navController.popBackStack(Screen.Dashboard.route, inclusive = false)
                 }

@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 sealed class Screen(val route: String) {
     data object Dashboard  : Screen("dashboard")
     data object Workout    : Screen("workout")
+    data object Nutrition  : Screen("nutrition")
     data object Health     : Screen("health?tab={tab}") {
         const val ROUTE_BASE = "health"
         fun createRoute(tab: String = "PASOS") = "health?tab=$tab"
@@ -31,6 +32,11 @@ val bottomNavItems = listOf(
         screen       = Screen.Workout,
         label        = "Entreno",
         icon         = Icons.Default.FitnessCenter,
+    ),
+    BottomNavItem(
+        screen       = Screen.Nutrition,
+        label        = "Comida",
+        icon         = Icons.Default.Restaurant,
     ),
     BottomNavItem(
         screen       = Screen.Health,

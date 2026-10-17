@@ -1,0 +1,51 @@
+package com.lifedashboard.data.repository
+
+import android.graphics.Bitmap
+import com.lifedashboard.data.local.dao.MealDao
+import com.lifedashboard.data.local.entity.MealEntryEntity
+import com.lifedashboard.data.remote.food.DetectedFoodItem
+import com.lifedashboard.data.remote.food.FoodAiResult
+import com.lifedashboard.data.remote.food.FoodAiService
+import com.lifedashboard.data.remote.food.FoodCatalogItem
+import com.lifedashboard.data.remote.food.FoodCatalogService
+import com.lifedashboard.data.remote.food.FoodSourceCategory
+import kotlinx.coroutines.flow.Flow
+import java.time.LocalDate
+import java.time.ZoneId
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class NutritionRepository @Inject constructor(
+    private val mealDao: MealDao,
+    private val catalogService: FoodCatalogService,
+    private val aiService: FoodAiService
+) {
+
+    fun observeMealsForDate(date: LocalDate): Flow<List<MealEntryEntity>> {
+        val zone = ZoneId.systemDefault()
+        val startMillis = date.atStartOfDay(zone).toInstant().toEpochMilli()
+        val endMillis = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+        return mealDao.observeMealsForDay(startMillis, endMillis)
+    }
+
+    suspend fun insertMeal(meal: MealEntryEntity): Long {
+        return mealDao.insertMeal(meal)
+    }
+
+    suspend fun insertMeals(meals: List<MealEntryEntity>) {
+        mealDao.insertMeals(meals)
+    }
+
+    suspend fun deleteMeal(mealId: Long) {
+        mealDao.deleteMealById(mealId)
+    }
+
+    suspend fun searchFoods(query: String, category: FoodSourceCategory): List<FoodCatalogItem> {
+        return catalogService.searchFoods(query, category)
+    }
+
+    suspend fun analyzeFoodPhoto(bitmap: Bitmap, userDescription: String): FoodAiResult {
+        return aiService.analyzeFoodImage(bitmap, userDescription)
+    }
+}

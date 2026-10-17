@@ -38,7 +38,10 @@ data class UserGoals(
     val bedtimeReminderEnabled: Boolean = true,
     val wakeUpHour: Int = 8,
     val wakeUpMinute: Int = 30,
-    val bedtimeReminderMinutesBefore: Int = 30
+    val bedtimeReminderMinutesBefore: Int = 30,
+    val proteinTargetGrams: Float = 140f,
+    val carbsTargetGrams: Float = 250f,
+    val fatTargetGrams: Float = 70f
 )
 
 @Singleton
@@ -71,6 +74,9 @@ class UserPreferencesRepository @Inject constructor(
         val WAKE_UP_HOUR           = intPreferencesKey("wake_up_hour")
         val WAKE_UP_MINUTE         = intPreferencesKey("wake_up_minute")
         val BEDTIME_MINUTES_BEFORE = intPreferencesKey("bedtime_minutes_before")
+        val PROTEIN_TARGET         = floatPreferencesKey("protein_target")
+        val CARBS_TARGET           = floatPreferencesKey("carbs_target")
+        val FAT_TARGET             = floatPreferencesKey("fat_target")
     }
 
     val userGoals: Flow<UserGoals> = context.dataStore.data
@@ -107,7 +113,10 @@ class UserPreferencesRepository @Inject constructor(
                 bedtimeReminderEnabled = prefs[Keys.BEDTIME_REMINDER] ?: true,
                 wakeUpHour           = prefs[Keys.WAKE_UP_HOUR] ?: 8,
                 wakeUpMinute         = prefs[Keys.WAKE_UP_MINUTE] ?: 30,
-                bedtimeReminderMinutesBefore = prefs[Keys.BEDTIME_MINUTES_BEFORE] ?: 30
+                bedtimeReminderMinutesBefore = prefs[Keys.BEDTIME_MINUTES_BEFORE] ?: 30,
+                proteinTargetGrams   = prefs[Keys.PROTEIN_TARGET] ?: 140f,
+                carbsTargetGrams     = prefs[Keys.CARBS_TARGET] ?: 250f,
+                fatTargetGrams       = prefs[Keys.FAT_TARGET] ?: 70f
             )
         }
 
@@ -201,5 +210,13 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun updateBedtimeMinutesBefore(minutes: Int) {
         context.dataStore.edit { prefs -> prefs[Keys.BEDTIME_MINUTES_BEFORE] = minutes }
+    }
+
+    suspend fun updateMacroTargets(protein: Float, carbs: Float, fat: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.PROTEIN_TARGET] = protein
+            prefs[Keys.CARBS_TARGET] = carbs
+            prefs[Keys.FAT_TARGET] = fat
+        }
     }
 }

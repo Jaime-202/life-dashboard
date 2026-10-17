@@ -32,4 +32,5 @@ object DatabaseModule {
     @Provides fun provideWaterIntakeDao(db: AppDatabase): WaterIntakeDao = db.waterIntakeDao()
     @Provides fun provideAchievementDao(db: AppDatabase): AchievementDao = db.achievementDao()
     @Provides fun provideWeightDao(db: AppDatabase): WeightDao = db.weightDao()
+    @Provides fun provideMealDao(db: AppDatabase): MealDao = db.mealDao()
 }
