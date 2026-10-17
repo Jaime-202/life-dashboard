@@ -44,7 +44,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.inject.Inject
 
-enum class HealthTab { PASOS, SUENO, CALORIAS, CORAZON }
+enum class HealthTab { PASOS, SUENO, CALORIAS }
 
 // ─── ViewModel ────────────────────────────────────────────────────────────────
 
@@ -110,7 +110,6 @@ fun HealthScreen(
         when (initialTabName.uppercase()) {
             "SUENO", "SUEÑO" -> HealthTab.SUENO
             "CALORIAS", "CALORÍAS" -> HealthTab.CALORIAS
-            "CORAZON", "CORAZÓN", "CARDIO", "HEART", "PULSO" -> HealthTab.CORAZON
             else -> HealthTab.PASOS
         }
     }
@@ -120,7 +119,6 @@ fun HealthScreen(
         selectedTab = when (initialTabName.uppercase()) {
             "SUENO", "SUEÑO" -> HealthTab.SUENO
             "CALORIAS", "CALORÍAS" -> HealthTab.CALORIAS
-            "CORAZON", "CORAZÓN", "CARDIO", "HEART", "PULSO" -> HealthTab.CORAZON
             else -> HealthTab.PASOS
         }
     }
@@ -157,7 +155,6 @@ fun HealthScreen(
                 HealthTab.PASOS    -> PasosSubSection(state = state)
                 HealthTab.SUENO    -> SuenoSubSection(state = state)
                 HealthTab.CALORIAS -> CaloriasSubSection(state = state)
-                HealthTab.CORAZON  -> CorazonSubSection(state = state)
             }
         }
     }
@@ -276,7 +273,6 @@ private fun ModernTabSelector(
                     HealthTab.PASOS    -> Triple("Pasos", Icons.AutoMirrored.Filled.DirectionsWalk, RingSteps)
                     HealthTab.SUENO    -> Triple("Sueño", Icons.Default.Bedtime, RingSleep)
                     HealthTab.CALORIAS -> Triple("Calorías", Icons.Default.LocalFireDepartment, Amber400)
-                    HealthTab.CORAZON  -> Triple("Pulso", Icons.Default.Favorite, Rose400)
                 }
 
                 Box(
@@ -532,191 +528,6 @@ private fun CaloriasSubSection(state: HealthUiState) {
             color     = Amber400,
             formatVal = { "${it.toInt()} kcal" },
             subFormat = { item -> "Total con basal: ~${(item.activeCalories + bmr).toInt()} kcal" }
-        )
-    }
-}
-
-// ─── Sub-apartado Ritmo Cardíaco ──────────────────────────────────────────────
-
-@Composable
-private fun CorazonSubSection(state: HealthUiState) {
-    val todayEntity = state.last14Days.firstOrNull()
-    val avgBpm = todayEntity?.avgHeartRate ?: 0
-    val minBpm = todayEntity?.minHeartRate ?: 0
-    val maxBpm = todayEntity?.maxHeartRate ?: 0
-
-    // Si aún no hay BPM registrado hoy, intentamos obtener el último promedio no cero de los 14 días
-    val displayAvgBpm = if (avgBpm > 0) avgBpm else state.last14Days.firstOrNull { it.avgHeartRate > 0 }?.avgHeartRate ?: 0
-    val displayMinBpm = if (minBpm > 0) minBpm else state.last14Days.firstOrNull { it.minHeartRate > 0 }?.minHeartRate ?: 0
-    val displayMaxBpm = if (maxBpm > 0) maxBpm else state.last14Days.firstOrNull { it.maxHeartRate > 0 }?.maxHeartRate ?: 0
-
-    val heartStateText = when {
-        displayAvgBpm == 0 -> "Sin registros"
-        displayAvgBpm < 60 -> "Reposo Atlético"
-        displayAvgBpm <= 80 -> "Ritmo Óptimo"
-        displayAvgBpm <= 100 -> "Normal"
-        else -> "Elevado"
-    }
-
-    val progress = if (displayAvgBpm > 0) (displayAvgBpm / 140f).coerceIn(0.1f, 1f) else 0f
-
-    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        // Hero Card de Ritmo Cardíaco
-        HealthHeroCard(
-            title         = "Frecuencia Cardíaca",
-            currentVal    = if (displayAvgBpm > 0) "$displayAvgBpm" else "--",
-            targetVal     = "60-100",
-            unit          = "bpm promedio",
-            progress      = progress,
-            color         = Rose400,
-            icon          = Icons.Default.Favorite,
-            metric1Label  = "En Reposo",
-            metric1Value  = if (displayMinBpm > 0) "$displayMinBpm bpm" else "--",
-            metric2Label  = "Pico Máx",
-            metric2Value  = if (displayMaxBpm > 0) "$displayMaxBpm bpm" else "--",
-            metric3Label  = "Estado",
-            metric3Value  = heartStateText
-        )
-
-        // Gráfico Semanal de Ritmo Cardíaco (Últimos 7 Días)
-        WeeklyBarChart(
-            title     = "Ritmo Cardíaco Promedio (Últimos 7 Días)",
-            data      = state.last14Days.take(7).reversed(),
-            getValue  = { it.avgHeartRate.toFloat() },
-            target    = 75f,
-            barColor  = Rose400,
-            formatVal = { if (it > 0f) "${it.toInt()}" else "-" }
-        )
-
-        // Zonas Cardiovasculares
-        HeartRateZonesCard(currentBpm = displayAvgBpm)
-
-        // Card de Salud y Recuperación
-        ConsistencyCard(
-            title     = "Salud Cardiovascular",
-            subtitle  = when {
-                displayAvgBpm in 50..75 -> "Tu frecuencia cardíaca en reposo refleja un excelente tono vagal y recuperación física."
-                displayAvgBpm in 76..95 -> "Ritmo cardíaco dentro del rango saludable estándar. Una caminata o cardio moderado mejora tu eficiencia cardíaca."
-                displayAvgBpm > 95      -> "Ritmo elevado. Asegúrate de descansar bien, reducir el estrés y mantenerte bien hidratado."
-                else                    -> "Sincroniza tu pulsera o reloj inteligente con Health Connect para registrar tu ritmo cardíaco en tiempo real."
-            },
-            color     = Rose400,
-            badgeText = if (displayAvgBpm > 0) "$displayAvgBpm BPM" else "Health Connect",
-            icon      = Icons.Default.Favorite
-        )
-
-        // Historial Detallado de Ritmo Cardíaco
-        HistoryListCard(
-            title     = "Historial de Frecuencia Cardíaca",
-            data      = state.last14Days,
-            getValue  = { it.avgHeartRate.toFloat() },
-            target    = 75f,
-            color     = Rose400,
-            formatVal = { if (it > 0f) "${it.toInt()} bpm" else "Sin datos" },
-            subFormat = { item ->
-                if (item.minHeartRate > 0 || item.maxHeartRate > 0) {
-                    "Mín: ${item.minHeartRate} · Máx: ${item.maxHeartRate} bpm"
-                } else {
-                    "Health Connect"
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun HeartRateZonesCard(currentBpm: Int) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(Indigo800)
-            .border(1.dp, Indigo700, RoundedCornerShape(22.dp))
-            .padding(18.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment     = Alignment.CenterVertically,
-                modifier              = Modifier.fillMaxWidth()
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector        = Icons.Default.Speed,
-                        contentDescription = null,
-                        tint               = Rose400,
-                        modifier           = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text       = "Zonas de Frecuencia Cardíaca",
-                        style      = MaterialTheme.typography.titleSmall,
-                        color      = White,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Text(
-                    text  = "Referencia",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Gray400
-                )
-            }
-
-            HorizontalDivider(color = Indigo700, thickness = 1.dp)
-
-            ZoneItem("Zona 1 · Reposo / Recuperación", "< 100 bpm", "Recuperación activa y descanso", Cyan400, currentBpm in 1..99)
-            ZoneItem("Zona 2 · Quema de Grasa", "100 - 130 bpm", "Resistencia aeróbica base", Emerald400, currentBpm in 100..130)
-            ZoneItem("Zona 3 · Cardio Aeróbico", "131 - 160 bpm", "Capacidad cardiovascular y fondo", Amber400, currentBpm in 131..160)
-            ZoneItem("Zona 4 · Pico / Anaeróbico", "> 160 bpm", "Potencia máxima y sprint", Rose400, currentBpm > 160)
-        }
-    }
-}
-
-@Composable
-private fun ZoneItem(
-    title: String,
-    range: String,
-    desc: String,
-    color: Color,
-    isActive: Boolean
-) {
-    Row(
-        verticalAlignment     = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-        modifier              = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (isActive) color.copy(alpha = 0.12f) else Color.Transparent)
-            .padding(horizontal = 8.dp, vertical = 6.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(color)
-            )
-            Spacer(Modifier.width(8.dp))
-            Column {
-                Text(
-                    text       = title,
-                    style      = MaterialTheme.typography.labelMedium,
-                    color      = if (isActive) White else Gray300,
-                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold
-                )
-                Text(
-                    text     = desc,
-                    style    = MaterialTheme.typography.bodySmall,
-                    color    = Gray500,
-                    fontSize = 11.sp
-                )
-            }
-        }
-        Text(
-            text       = range,
-            style      = MaterialTheme.typography.labelSmall,
-            color      = color,
-            fontWeight = FontWeight.Bold
         )
     }
 }

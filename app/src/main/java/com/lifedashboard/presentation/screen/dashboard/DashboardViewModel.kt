@@ -34,9 +34,6 @@ data class DashboardUiState(
     val caloriesProgress: Float = 0f,
     val workoutDoneToday: Boolean = false,
     val workoutTypeToday: WorkoutType? = null,
-    val todayHeartRate: Int = 0,
-    val todayMinHeartRate: Int = 0,
-    val todayMaxHeartRate: Int = 0,
     val progressByDate: Map<LocalDate, DailyProgress> = emptyMap(),
     val upcomingEvents: List<CalendarEvent> = emptyList(),
     val aiInsight: String? = null,
@@ -105,22 +102,16 @@ class DashboardViewModel @Inject constructor(
                 val steps = h?.steps ?: 0
                 val sleep = h?.sleepHours ?: 0f
                 val cals  = h?.activeCalories ?: 0f
-                val hr    = h?.avgHeartRate ?: 0
-                val minHr = h?.minHeartRate ?: 0
-                val maxHr = h?.maxHeartRate ?: 0
 
                 _uiState.update { state ->
                     state.copy(
-                        todaySteps        = steps,
-                        todaySleepHours   = sleep,
-                        todayCalories     = cals,
-                        todayHeartRate    = hr,
-                        todayMinHeartRate = minHr,
-                        todayMaxHeartRate = maxHr,
-                        stepsProgress     = (steps.toFloat() / state.stepsTarget).coerceIn(0f, 1f),
-                        sleepProgress     = (sleep / state.sleepTargetHours).coerceIn(0f, 1f),
-                        caloriesProgress  = (cals / state.caloriesTarget).coerceIn(0f, 1f),
-                        isDataLoading     = false
+                        todaySteps       = steps,
+                        todaySleepHours  = sleep,
+                        todayCalories    = cals,
+                        stepsProgress    = (steps.toFloat() / state.stepsTarget).coerceIn(0f, 1f),
+                        sleepProgress    = (sleep / state.sleepTargetHours).coerceIn(0f, 1f),
+                        caloriesProgress = (cals / state.caloriesTarget).coerceIn(0f, 1f),
+                        isDataLoading    = false
                     )
                 }
             }
@@ -183,8 +174,7 @@ class DashboardViewModel @Inject constructor(
                     stepsProgress    = (h.steps.toFloat() / _uiState.value.stepsTarget).coerceIn(0f, 1f),
                     sleepProgress    = (h.sleepHours / _uiState.value.sleepTargetHours).coerceIn(0f, 1f),
                     waterProgress    = 0f,
-                    actualSteps      = h.steps,
-                    avgHeartRate     = h.avgHeartRate
+                    actualSteps      = h.steps
                 )
             }
             map

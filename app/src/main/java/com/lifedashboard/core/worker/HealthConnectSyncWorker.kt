@@ -6,7 +6,6 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
-import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
@@ -171,25 +170,6 @@ class HealthConnectSyncWorker @AssistedInject constructor(
             // Ignorar si no hay registro o permiso
         }
 
-        // Ritmo Cardíaco (Health Connect HeartRateRecord)
-        var avgHeartRate = 0
-        var minHeartRate = 0
-        var maxHeartRate = 0
-        try {
-            val hrResp = client.readRecords(
-                ReadRecordsRequest(HeartRateRecord::class, timeRange)
-            )
-            val allSamples = hrResp.records.flatMap { it.samples }
-            if (allSamples.isNotEmpty()) {
-                val bpmList = allSamples.map { it.beatsPerMinute.toInt() }
-                avgHeartRate = bpmList.average().toInt()
-                minHeartRate = bpmList.minOrNull() ?: 0
-                maxHeartRate = bpmList.maxOrNull() ?: 0
-            }
-        } catch (e: Exception) {
-            // Ignorar si no hay registro o permiso de ritmo cardíaco
-        }
-
         return HealthDataEntity(
             dateMillis      = date.toStartOfDayMillis(),
             steps           = steps,
@@ -197,10 +177,7 @@ class HealthConnectSyncWorker @AssistedInject constructor(
             activeCalories  = calories,
             sleepHours      = totalSleepMinutes / 60f,
             sleepDeepHours  = deepMinutes / 60f,
-            sleepRemHours   = remMinutes / 60f,
-            avgHeartRate    = avgHeartRate,
-            minHeartRate    = minHeartRate,
-            maxHeartRate    = maxHeartRate
+            sleepRemHours   = remMinutes / 60f
         )
     }
 

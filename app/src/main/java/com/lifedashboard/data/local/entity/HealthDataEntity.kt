@@ -13,8 +13,5 @@ data class HealthDataEntity(
     val sleepHours: Float = 0f,         // Horas totales de sueño ese día
     val sleepDeepHours: Float = 0f,
     val sleepRemHours: Float = 0f,
-    val avgHeartRate: Int = 0,          // Ritmo cardíaco promedio del día (BPM)
-    val minHeartRate: Int = 0,          // Ritmo cardíaco mínimo / reposo (BPM)
-    val maxHeartRate: Int = 0,          // Ritmo cardíaco máximo alcanzado (BPM)
     val syncedAt: Long = System.currentTimeMillis()
 )
