@@ -19,7 +19,8 @@ import javax.inject.Singleton
 class NutritionRepository @Inject constructor(
     private val mealDao: MealDao,
     private val catalogService: FoodCatalogService,
-    private val aiService: FoodAiService
+    private val aiService: FoodAiService,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
 
     fun observeMealsForDate(date: LocalDate): Flow<List<MealEntryEntity>> {
@@ -30,15 +31,19 @@ class NutritionRepository @Inject constructor(
     }
 
     suspend fun insertMeal(meal: MealEntryEntity): Long {
-        return mealDao.insertMeal(meal)
+        val id = mealDao.insertMeal(meal)
+        com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
+        return id
     }
 
     suspend fun insertMeals(meals: List<MealEntryEntity>) {
         mealDao.insertMeals(meals)
+        com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
     }
 
     suspend fun deleteMeal(mealId: Long) {
         mealDao.deleteMealById(mealId)
+        com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
     }
 
     suspend fun searchFoods(query: String, category: FoodSourceCategory): List<FoodCatalogItem> {

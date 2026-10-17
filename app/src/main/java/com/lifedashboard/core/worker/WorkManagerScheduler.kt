@@ -18,6 +18,7 @@ class WorkManagerScheduler @Inject constructor(
     /** Programa todos los workers si no están ya activos */
     fun scheduleAll(symmetryFolderUri: String? = null) {
         scheduleHealthConnectSync()
+        scheduleWidgetUpdates()
         symmetryFolderUri?.let { scheduleSymmetrySync(it) }
         scheduleBedtimeReminder()
     }
@@ -73,8 +74,16 @@ class WorkManagerScheduler @Inject constructor(
     fun scheduleHealthConnectSync() {
         workManager.enqueueUniquePeriodicWork(
             HealthConnectSyncWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,    // No reinicia si ya existe
+            ExistingPeriodicWorkPolicy.UPDATE,
             HealthConnectSyncWorker.buildRequest()
+        )
+    }
+
+    fun scheduleWidgetUpdates() {
+        workManager.enqueueUniquePeriodicWork(
+            WidgetUpdateWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            WidgetUpdateWorker.buildPeriodicRequest()
         )
     }
 
@@ -86,10 +95,13 @@ class WorkManagerScheduler @Inject constructor(
         )
     }
 
-    /** Fuerza ejecución inmediata de Health Connect (ej. al abrir la app) */
+    /** Fuerza ejecución inmediata de Health Connect y actualiza los widgets al instante */
     fun runHealthSyncNow() {
-        val oneTimeRequest = OneTimeWorkRequestBuilder<HealthConnectSyncWorker>().build()
-        workManager.enqueue(oneTimeRequest)
+        val syncRequest = OneTimeWorkRequestBuilder<HealthConnectSyncWorker>().build()
+        val widgetRequest = OneTimeWorkRequestBuilder<WidgetUpdateWorker>().build()
+        workManager.beginWith(syncRequest)
+            .then(widgetRequest)
+            .enqueue()
     }
 
     fun cancelAll() {

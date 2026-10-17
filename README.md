@@ -1,70 +1,100 @@
-# ⚡ Vital
+# ⚡ Vital — Life Dashboard
 
-> **Dashboard Integral de Salud, Rendimiento Físico, Hábitos y Peso con IA Local y Health Connect.**
+> **Dashboard Integral de Salud, Nutrición Inteligente con IA, Hábitos y Peso para Android con Sincronización en Segundo Plano y Widgets Glassmorphic.**
 
-[![Android](https://img.shields.io/badge/Platform-Android-3DDC84.svg?style=flat&logo=android)](https://www.android.com)
+[![Android](https://img.shields.io/badge/Platform-Android%209.0%2B-3DDC84.svg?style=flat&logo=android)](https://www.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/Jetpack%20Compose-BOM%202024.09.00-4285F4.svg?style=flat&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
 [![Health Connect](https://img.shields.io/badge/Health%20Connect-1.1.0--alpha11-EA4335.svg?style=flat&logo=googlefit)](https://developer.android.com/health-and-fitness/guides/health-connect)
-[![AI Engine](https://img.shields.io/badge/AI-Gemini%202.0%20Flash%20%7C%20Local%20Heuristic-8E24AA.svg?style=flat)](https://aistudio.google.com)
+[![Glance](https://img.shields.io/badge/Jetpack%20Glance-Widgets%201.1.1-00C853.svg?style=flat)](https://developer.android.com/jetpack/compose/glance)
+[![AI Vision Engine](https://img.shields.io/badge/AI%20Vision-Gemini%202.0%20Flash-8E24AA.svg?style=flat&logo=google)](https://aistudio.google.com)
+[![Open Food Facts](https://img.shields.io/badge/Food%20Catalog-Open%20Food%20Facts-FF6F00.svg?style=flat)](https://world.openfoodfacts.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Vital** es una aplicación moderna para Android diseñada bajo la filosofía de privacidad total y diseño biométrico de vanguardia. Centraliza tus métricas de salud (pasos, sueño, calorías), historial y evolución de peso corporal, entrenamientos de fuerza/cardio, agenda y hábitos en una interfaz fluida e intuitiva con widgets semitransparentes en múltiples dimensiones tanto para tu pantalla de inicio como de bloqueo.
+**Vital** es una aplicación moderna y de alto rendimiento para Android diseñada con enfoque en **privacidad total**, estética *dark obsidian* premium y automatización en segundo plano. Centraliza la actividad biométrica diaria (pasos, calorías, sueño reparador), seguimiento y evolución de peso corporal, entrenamientos, agenda, aviso para ir a dormir, registro nutricional con inteligencia artificial multimodal y widgets semitransparentes auto-actualizables para la pantalla de inicio y bloqueo.
 
 ---
 
-## 📸 Características Destacadas
+## 🌟 Funcionalidades Principales
 
-### 🔮 1. Núcleo Biométrico de Vitalidad (Vitality Core)
-* **Arco Orbital Dinámico:** Sustituye las ruedas concéntricas tradicionales por un arco de energía de 240° que calcula tu puntuación de vitalidad ponderada en tiempo real.
-* **Cápsulas Interactivas:** Acceso directo e instantáneo a tus métricas de pasos, sueño y calorías activas.
+### 🥗 1. Comida y Nutrición Inteligente con IA (Gemini 2.0 Flash)
+* **Reconocimiento Visual de Platos por Foto:** Captura o sube una fotografía de tu comida y la IA multimodal (`gemini-2.0-flash`) analiza instantáneamente los ingredientes y porciones, estimando con alta fidelidad calorías totales, proteínas, carbohidratos y grasas.
+* **Descripción de Contexto Pre-Envío:** Permite añadir una descripción textual opcional antes de enviar la foto (por ejemplo: *"lleva 2 cucharadas de aceite de oliva y salsa de soja baja en sal"*) para maximizar la exactitud de la inferencia nutricional.
+* **Buscador de Supermercados Españoles:** Motor integrado conectado al catálogo abierto de *Open Food Facts* con soporte especializado para cadenas como **Mercadona (Hacendado)**, **Día**, **Carrefour**, **Alcampo**, **Supercor / El Corte Inglés** y alimentos genéricos.
+* **Cálculo Dinámico de Cantidades:** Ajuste en tiempo real de calorías y macronutrientes introduciendo los gramos o raciones exactas del alimento.
+* **Control de Objetivos de Macronutrientes:** Tarjetas de balance diario con desglose de Proteínas (Azul), Carbohidratos (Ámbar) y Grasas (Rosa) respecto a tus metas personalizadas.
 
-### 🏃 2. Sincronización Biométrica con Health Connect
-* **Idempotencia y Cero Duplicados:** Sincronización periódica automática (WorkManager) y manual con Health Connect (Google / Samsung Health).
-* **Entrenamientos Automáticos:** Detecta sesiones de fuerza y cardio registradas en tu ecosistema de salud y calcula el volumen semanal.
-* **Métricas de Sueño Avanzadas:** Desglose de horas totales, fases de sueño profundo y sueño REM.
+### 🧩 2. Widgets Glassmorphic Auto-Actualizables (1x1, 1x2, 2x2, 4x2)
+Diseñados con acabado translúcido de alta estética para integrarse elegantemente con cualquier fondo de pantalla:
+* **Auto-actualización Periódica Autónoma:** Impulsada por un `WidgetUpdateWorker` de WorkManager programado para refrescar los datos biométricos automáticamente cada 15 minutos en segundo plano sin intervención del usuario.
+* **Sincronización Reactiva Inmediata:** Los widgets se actualizan al instante ante cualquier evento relevante dentro de la app (registro o eliminación de comidas, entrada de peso, sincronización con Health Connect o reapertura de la aplicación).
+* **Formatos Disponibles:**
+  * **1x1 (Micro Badge):** Puntuación de vitalidad, pasos acumulados y cápsulas compactas de calorías y horas de sueño.
+  * **1x2 / 2x1 (Cápsula de Pulso):** Tres columnas simétricas y perfectamente alineadas para **Pasos** (Cyan), **Calorías** (Ámbar) y **Sueño** (Turquesa), con micro-barras de progreso y números limpios.
+  * **2x2 (Cuadrante Glass):** Vista en cuadrícula con barras de progreso individuales para cada métrica clave.
+  * **4x2 (Suite Biométrica):** Panel completo con métricas de salud, estado del entrenamiento del día y próximo evento del calendario.
 
-### ⚖️ 3. Control y Seguimiento de Peso Corporal
-* **Registro Intuitivo:** Registro rápido de pesaje con botones de ajuste fino (±0.1 kg, ±0.5 kg) y notas personalizadas (en ayunas, post-entreno).
-* **Análisis de Evolución:** Cálculo automático de variación respecto al pesaje anterior, evolución histórica e índice de masa corporal (IMC) contextualizado.
-* **Historial Completo:** Registro detallado con fecha, hora, notas y posibilidad de eliminación o corrección.
+### 🏃 3. Sincronización Biométrica con Health Connect
+* **Lectura Idempotente y Cero Duplicados:** Sincronización continua de pasos, calorías activas y registro detallado de sueño (horas totales, fases de sueño profundo y REM).
+* **Workouts Automáticos:** Reconocimiento de sesiones de fuerza y cardio registradas en aplicaciones compatibles con Health Connect (Google Fit, Samsung Health, Garmin, etc.).
+* **Arquitectura de Sincronización en Segundo Plano:** `HealthConnectSyncWorker` mantiene los datos actualizados periódicamente.
 
-### 🧩 4. Widgets Biométricos Semitransparentes (1x1, 1x2, 2x2, 4x2)
-Diseño moderno *glassmorphic* con fondo translúcido que muestra con claridad tus 3 pilares clave: **Pasos** (Cyan 🏃), **Calorías** (Ámbar 🔥) y **Sueño** (Turquesa 🌙):
-* **1x1 (Tile / Badge):** Porcentaje de vitalidad, pasos acumulados y micro-cápsulas de calorías y horas de descanso.
-* **1x2 / 2x1 (Cápsula de Pulso):** Tres columnas dedicadas para pasos, calorías y sueño con iconos y valores de alto contraste.
-* **2x2 (Cuadrante Glassmorphic):** Tarjeta con barras de progreso individuales para cada métrica respecto a sus objetivos.
-* **4x2 (Suite Completa):** Vista completa con agenda de eventos del calendario y monitor biométrico.
+### ⚖️ 4. Control y Seguimiento de Peso Corporal
+* **Registro Preciso:** Selector de peso con ajustes rápidos (±0.1 kg, ±0.5 kg) y notas personalizadas (en ayunas, post-entreno).
+* **Análisis de Evolución:** Cálculo automático de variación respecto al pesaje anterior, seguimiento de tendencia histórica y cálculo contextualizado del Índice de Masa Corporal (IMC).
+* **Interfaz Limpia:** Botones de acción flotantes e interactivos sin solapamientos con textos ni elementos de la lista.
 
-### 📅 5. Calendario Obsidian de Hábitos y Consistencia
-* **Vistas Semanal, Mensual y Anual:** Tarjetas con diseño obsidian glassmorphic.
-* **Indicadores Luminosos de Hábitos:** Puntos de estado discretos para pasos (Cyan), sueño óptimo (Teal) y entrenamiento realizado (Violeta).
-* **Navegación Fluida:** Selección de días y vista de progreso histórico sin bloqueos.
+### 🌙 5. Notificación Inteligente de Hora de Dormir
+* **Aviso 30 Minutos Antes:** La aplicación calcula automáticamente la hora ideal para acostarse en base a tu hora configurada de despertar (ej. 08:30) y tu objetivo de horas de sueño, emitiendo una notificación de descanso 30 minutos antes de la hora límite para optimizar el ritmo circadiano.
 
-### 🤖 6. Motor de IA Híbrido (100% Gratis y Privado)
-* **Privacidad Absoluta:** Tus datos biométricos **nunca** salen de tu dispositivo sin tu autorización.
-* **Gemini 2.0 Flash:** Integración opcional con la clave gratuita de Google AI Studio para análisis de patrones de correlación entre fatiga, descanso y rendimiento.
-* **Motor Heurístico Offline:** Si no dispones de conexión a internet o de clave API, la app ejecuta un motor local que analiza tus métricas y te brinda recomendaciones fisiológicas inmediatas.
-
-### ⚙️ 7. Perfil Biométrico y Personalización Total
-* Configuración centralizada de metas (Pasos, Sueño, Calorías, Días y Minutos de entrenamiento).
-* Perfil antropométrico (Nivel de entrenamiento, Objetivo primario, Peso, Altura y cálculo automático de IMC).
-* Notificaciones inteligentes: Recordatorios matutinos, alerta de hidratación y pausas activas, y resumen nocturno de recuperación.
-* Exportación de datos de salud en formato JSON estructurado.
+### 🤖 6. Motor de IA Híbrido (100% Gratuito y Privado)
+* **Gemini 2.0 Flash:** Integración directa mediante API Key gratuita de Google AI Studio para análisis de patrones de recuperación y reconocimiento visual de comidas.
+* **Motor Heurístico Local Offline:** En caso de no disponer de conexión o clave API, la aplicación utiliza un algoritmo fisiológico local en el dispositivo para generar recomendaciones diarias y consejos de entrenamiento.
 
 ---
 
-## 🛠️ Arquitectura y Tecnologías
+## 🛠️ Arquitectura y Stack Tecnológico
 
-La aplicación sigue los principios de **Clean Architecture** y patrón **MVVM** recomendados por Google:
+El proyecto está construido bajo los principios de **Clean Architecture** y patrón **MVVM** recomendados por Google:
 
-* **UI:** Jetpack Compose + Material 3 + Jetpack Glance (Widgets).
-* **Inyección de Dependencias:** Dagger Hilt.
-* **Persistencia Local:** Room Database con SQLite (DAOs reactivos con Kotlin Coroutines y Flow).
-* **Almacenamiento de Preferencias:** Jetpack DataStore Preferences.
-* **Trabajo en Segundo Plano:** AndroidX WorkManager con HiltWorker.
-* **Salud y Deporte:** AndroidX Health Connect Client SDK.
-* **IA:** Google AI Client SDK para Android (`gemini-2.0-flash`).
+* **Lenguaje:** Kotlin 2.0.21.
+* **Interfaz de Usuario (UI):** Jetpack Compose, Material 3, Canvas Graphics, Animaciones fluidas.
+* **Widgets de Pantalla:** Jetpack Glance AppWidget 1.1.1 con layouts reactivos.
+* **Inyección de Dependencias:** Dagger Hilt 2.52.
+* **Base de Datos Local:** SQLite mediante AndroidX Room Database con soporte para Flow reactivo.
+* **Preferencias:** Jetpack DataStore Preferences.
+* **Tareas en Segundo Plano:** AndroidX WorkManager con workers asistidos por Hilt (`@HiltWorker`).
+* **Integración de Salud:** AndroidX Health Connect Client SDK (`1.1.0-alpha11`).
+* **Red y APIs:** OkHttp 4.12, Gson y Kotlinx Coroutines.
+* **IA Multimodal:** Google GenAI / Google AI Client SDK (`gemini-2.0-flash`).
+
+---
+
+## 📁 Estructura del Código
+
+```
+app/src/main/java/com/lifedashboard/
+├── core/
+│   ├── worker/                 # HealthConnectSyncWorker, WidgetUpdateWorker, BedtimeNotificationWorker
+│   └── scheduler/              # WorkManagerScheduler (orquestador de tareas en background)
+├── data/
+│   ├── local/                  # Room Database, Entidades y DAOs (Health, Workout, Weight, Meals, Calendar)
+│   ├── remote/                 # FoodCatalogService (Open Food Facts), FoodAiService (Gemini Vision)
+│   └── repository/             # Implementaciones de repositorios (Health, Workout, Nutrition, Preferences)
+├── domain/
+│   ├── model/                  # Modelos puros de dominio (HealthSummary, MealEntry, UserGoals, WeightEntry)
+│   └── usecase/                # Casos de uso (DataAggregatorUseCase, CalculateBedtimeUseCase)
+└── presentation/
+    ├── navigation/             # NavGraph, Screen (Panel, Comida, Entreno, Salud, Config)
+    ├── screen/
+    │   ├── dashboard/          # Pantalla principal con Vitality Core y tarjetas de métricas
+    │   ├── nutrition/          # Registro nutricional, cámara/galería, buscador de supermercados y macros
+    │   ├── workout/            # Registro y lista de entrenamientos de fuerza y cardio
+    │   ├── health/             # Historial biométrico y evolución de hábitos
+    │   └── settings/           # Configuración de metas, perfil, hora de despertar y seguimiento de peso
+    ├── theme/                  # Sistema de diseño Obsidian Glassmorphic, colores y tipografía
+    └── widget/                 # Glance AppWidgets (1x1, 1x2, 2x2, 4x2) y receptores de broadcast
+```
 
 ---
 
@@ -73,9 +103,9 @@ La aplicación sigue los principios de **Clean Architecture** y patrón **MVVM**
 ### Requisitos Previos
 * **Android Studio:** Ladybug (2024.2.1) o superior.
 * **JDK:** Java 17 o superior (incluido en Android Studio JBR).
-* **Dispositivo / Emulador:** Android 9.0 (API 28) o superior. Para soporte completo de Health Connect, se recomienda Android 14+ o dispositivo con la app [Health Connect](https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata) instalada.
+* **Dispositivo / Emulador:** Android 9.0 (API 28) o superior. Se recomienda Android 14+ para soporte nativo de Health Connect.
 
-### Pasos para Configurar el Proyecto
+### Pasos de Configuración
 
 1. **Clonar el repositorio:**
    ```bash
@@ -83,30 +113,28 @@ La aplicación sigue los principios de **Clean Architecture** y patrón **MVVM**
    cd life-dashboard
    ```
 
-2. **Configurar el archivo local de propiedades:**
-   Copia la plantilla de ejemplo:
+2. **Configurar el archivo `local.properties`:**
+   Copia el archivo de ejemplo:
    ```bash
    # En Windows PowerShell:
    Copy-Item local.properties.example local.properties
 
-   # En macOS/Linux:
+   # En macOS / Linux:
    cp local.properties.example local.properties
    ```
-   Asegúrate de que `local.properties` tenga la ruta a tu Android SDK:
+   Define tu ruta de SDK y, opcionalmente, tu clave de Gemini API (obtenida gratis en [Google AI Studio](https://aistudio.google.com)):
    ```properties
    sdk.dir=C\:\\Users\\tu_usuario\\AppData\\Local\\Android\\Sdk
-   # Opcional: Clave gratis de Google AI Studio (aistudio.google.com)
-   GEMINI_API_KEY=
+   GEMINI_API_KEY=tu_clave_api_de_gemini_aqui
    ```
 
 3. **Compilar y Ejecutar:**
-   Abre el proyecto en Android Studio y presiona **Run** (`Shift + F10`) o compila desde terminal:
    ```bash
-   # Windows PowerShell
+   # Windows PowerShell:
    $env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
    .\gradlew.bat assembleDebug
 
-   # macOS / Linux
+   # macOS / Linux:
    ./gradlew assembleDebug
    ```
 
@@ -114,12 +142,12 @@ La aplicación sigue los principios de **Clean Architecture** y patrón **MVVM**
 
 ## 🔒 Privacidad y Seguridad
 
-* **Sin rastreadores ni analíticas de terceros.**
-* Todos los datos biométricos se almacenan en una base de datos local SQLite mediante Room en el almacenamiento privado del sandbox de la aplicación.
-* Los archivos con claves privadas (`local.properties`), keystores de firma y credenciales están excluidos mediante `.gitignore`.
+* **Almacenamiento Local First:** Todas las métricas de salud, entrenamientos, comidas y registros de peso se almacenan exclusivamente en la base de datos local SQLite del dispositivo.
+* **Sin Rastreo ni Telemetría:** Sin SDKs de análisis de terceros, sin anuncios y sin recolección de datos personales.
+* **Seguridad de Credenciales:** Claves de API y configuraciones del entorno están salvaguardadas en `local.properties` e ignoradas por Git.
 
 ---
 
 ## 📄 Licencia
 
-Este proyecto está bajo la licencia [MIT](LICENSE). Puedes usarlo, estudiarlo y adaptarlo libremente.
+Este proyecto está bajo la licencia [MIT](LICENSE). Siéntete libre de utilizarlo, modificarlo y contribuir.

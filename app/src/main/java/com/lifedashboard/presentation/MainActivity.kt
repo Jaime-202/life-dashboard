@@ -21,9 +21,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.lifedashboard.core.worker.WidgetUpdateWorker
 import com.lifedashboard.core.worker.WorkManagerScheduler
 import com.lifedashboard.presentation.navigation.*
 import com.lifedashboard.presentation.theme.*
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -44,6 +48,13 @@ class MainActivity : ComponentActivity() {
             LifeDashboardTheme {
                 LifeDashboardApp()
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch(Dispatchers.IO) {
+            WidgetUpdateWorker.updateAllWidgets(applicationContext)
         }
     }
 }

@@ -181,35 +181,24 @@ class HealthConnectSyncWorker @AssistedInject constructor(
         )
     }
 
-    private fun updateWidget() {
-        val receivers = listOf(
-            LifeDashboardWidgetReceiver::class.java,
-            com.lifedashboard.presentation.widget.LifeDashboard1x1WidgetReceiver::class.java,
-            com.lifedashboard.presentation.widget.LifeDashboard1x2WidgetReceiver::class.java,
-            com.lifedashboard.presentation.widget.LifeDashboard2x2WidgetReceiver::class.java
-        )
-        receivers.forEach { receiverClass ->
-            val intent = android.content.Intent(context, receiverClass).apply {
-                action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
-            }
-            context.sendBroadcast(intent)
-        }
+    private suspend fun updateWidget() {
+        WidgetUpdateWorker.updateAllWidgets(context)
     }
 
     companion object {
         const val WORK_NAME = "health_connect_sync"
 
         fun buildRequest(): PeriodicWorkRequest =
-            PeriodicWorkRequestBuilder<HealthConnectSyncWorker>(6, TimeUnit.HOURS)
+            PeriodicWorkRequestBuilder<HealthConnectSyncWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
-                        .setRequiresBatteryNotLow(true)
+                        .setRequiresBatteryNotLow(false)
                         .build()
                 )
                 .setBackoffCriteria(
                     BackoffPolicy.EXPONENTIAL,
-                    30, TimeUnit.MINUTES
+                    15, TimeUnit.MINUTES
                 )
                 .build()
     }

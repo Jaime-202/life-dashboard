@@ -15,6 +15,7 @@ import androidx.glance.unit.ColorProvider
 import androidx.compose.ui.graphics.Color
 import com.lifedashboard.data.local.dao.CalendarEventDao
 import com.lifedashboard.data.local.dao.HealthDao
+import com.lifedashboard.data.local.dao.MealDao
 import com.lifedashboard.data.local.dao.WorkoutDao
 import com.lifedashboard.data.repository.UserPreferencesRepository
 import com.lifedashboard.presentation.theme.*
@@ -527,8 +528,9 @@ suspend fun loadWidgetData(context: Context): WidgetData =
             val today = LocalDate.now()
             val zone  = ZoneId.systemDefault()
             val todayMillis = today.atStartOfDay(zone).toInstant().toEpochMilli()
+            val tomorrowMillis = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
 
-            val health = healthDao.getHealthForDay(todayMillis)
+            val health = healthDao.getHealthForDay(todayMillis) ?: healthDao.getLastNDays(1).firstOrNull()
             val sessions = workoutDao.getRecentSessions(1)
             val workoutToday = sessions.firstOrNull()?.let { s ->
                 Instant.ofEpochMilli(s.dateMillis).atZone(zone).toLocalDate() == today
@@ -543,8 +545,15 @@ suspend fun loadWidgetData(context: Context): WidgetData =
                     "${ev.title} ($timeStr)"
                 }
 
+            val mealCalories = try {
+                entryPoint.mealDao().getMealsForDay(todayMillis, tomorrowMillis - 1).sumOf { it.calories.toDouble() }.toInt()
+            } catch (e: Exception) {
+                0
+            }
+
             val steps = health?.steps ?: 0
-            val calories = health?.activeCalories?.toInt() ?: 0
+            val activeCal = health?.activeCalories?.toInt() ?: 0
+            val calories = if (activeCal > 0) activeCal else mealCalories
             val sleep = (health?.sleepHours ?: 0f).let { (it * 10).toInt() / 10f }
 
             val stepsProg = (steps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f)
@@ -575,6 +584,7 @@ interface WidgetEntryPoint {
     fun healthDao(): HealthDao
     fun workoutDao(): WorkoutDao
     fun calendarEventDao(): CalendarEventDao
+    fun mealDao(): MealDao
     fun userPreferences(): UserPreferencesRepository
 }
 
