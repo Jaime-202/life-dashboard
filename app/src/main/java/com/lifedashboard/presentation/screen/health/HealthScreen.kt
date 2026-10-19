@@ -472,11 +472,16 @@ private fun SuenoSubSection(state: HealthUiState) {
 
 @Composable
 private fun CaloriasSubSection(state: HealthUiState) {
-    val todayCal = state.last14Days.firstOrNull()?.activeCalories?.toInt() ?: 0
+    val todayEntity = state.last14Days.firstOrNull()
+    val rawCal = todayEntity?.activeCalories ?: 0f
+    val todaySteps = todayEntity?.steps ?: 0
+    val todayCal = (if (rawCal > 0f) rawCal else todaySteps * 0.04f).toInt()
     val progress = (todayCal.toFloat() / state.caloriesTarget).coerceIn(0f, 1f)
     val bmr = 1650
     val totalExpenditure = bmr + todayCal
-    val avgCal = if (state.last14Days.isNotEmpty()) state.last14Days.map { it.activeCalories }.average().toInt() else 0
+    val avgCal = if (state.last14Days.isNotEmpty()) {
+        state.last14Days.map { if (it.activeCalories > 0f) it.activeCalories else it.steps * 0.04f }.average().toInt()
+    } else 0
 
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         // Hero Card de Calorías
@@ -500,7 +505,7 @@ private fun CaloriasSubSection(state: HealthUiState) {
         WeeklyBarChart(
             title     = "Calorías Quemadas (Últimos 7 Días)",
             data      = state.last14Days.take(7).reversed(),
-            getValue  = { it.activeCalories },
+            getValue  = { if (it.activeCalories > 0f) it.activeCalories else it.steps * 0.04f },
             target    = state.caloriesTarget.toFloat(),
             barColor  = Amber400,
             formatVal = { "${it.toInt()}" }
@@ -523,11 +528,14 @@ private fun CaloriasSubSection(state: HealthUiState) {
         HistoryListCard(
             title     = "Historial de Gasto Energético",
             data      = state.last14Days,
-            getValue  = { it.activeCalories },
+            getValue  = { if (it.activeCalories > 0f) it.activeCalories else it.steps * 0.04f },
             target    = state.caloriesTarget.toFloat(),
             color     = Amber400,
             formatVal = { "${it.toInt()} kcal" },
-            subFormat = { item -> "Total con basal: ~${(item.activeCalories + bmr).toInt()} kcal" }
+            subFormat = { item ->
+                val cal = if (item.activeCalories > 0f) item.activeCalories else item.steps * 0.04f
+                "Total con basal: ~${(cal + bmr).toInt()} kcal"
+            }
         )
     }
 }

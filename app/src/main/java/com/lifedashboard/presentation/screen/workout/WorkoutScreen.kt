@@ -179,8 +179,7 @@ fun WorkoutScreen(
         // ─── Desglose de Modalidad de Entrenamiento ────────────────────────
         if (state.totalMinutesThisWeek > 0 || state.weekSessions.isNotEmpty()) {
             TrainingDistributionCard(
-                strengthSessions = state.strengthCount,
-                cardioSessions   = state.cardioCount,
+                strengthSessions = state.weekSessions.size,
                 totalMinutes     = state.totalMinutesThisWeek
             )
         }
@@ -508,12 +507,11 @@ private fun NewWeekDayIndicator(weekSessions: List<WorkoutSessionEntity>) {
     }
 }
 
-// ─── Componente: Distribución de Entrenamiento ────────────────────────────────
+// ─── Componente: Rendimiento de Fuerza Semanal ────────────────────────────────
 
 @Composable
 private fun TrainingDistributionCard(
     strengthSessions: Int,
-    cardioSessions: Int,
     totalMinutes: Int
 ) {
     Box(
@@ -526,7 +524,7 @@ private fun TrainingDistributionCard(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                text       = "Distribución Semanal",
+                text       = "Rendimiento de Fuerza Semanal",
                 style      = MaterialTheme.typography.labelLarge,
                 color      = White,
                 fontWeight = FontWeight.Bold
@@ -547,7 +545,7 @@ private fun TrainingDistributionCard(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.FitnessCenter, null, tint = Violet300, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Fuerza", style = MaterialTheme.typography.labelSmall, color = Gray300)
+                            Text("Sesiones de Fuerza", style = MaterialTheme.typography.labelSmall, color = Gray300)
                         }
                         Spacer(Modifier.height(6.dp))
                         Text(
@@ -568,13 +566,13 @@ private fun TrainingDistributionCard(
                 ) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.AutoMirrored.Filled.DirectionsRun, null, tint = Cyan400, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Timer, null, tint = Amber400, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Cardio", style = MaterialTheme.typography.labelSmall, color = Gray300)
+                            Text("Tiempo Total", style = MaterialTheme.typography.labelSmall, color = Gray300)
                         }
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            text       = "$cardioSessions ${if (cardioSessions == 1) "sesión" else "sesiones"}",
+                            text       = "$totalMinutes min",
                             style      = MaterialTheme.typography.titleMedium,
                             color      = White,
                             fontWeight = FontWeight.Bold
@@ -589,10 +587,8 @@ private fun TrainingDistributionCard(
 // ─── Componente: Timeline de Sesiones Recientes ───────────────────────────────
 
 private fun workoutTypeName(type: String): String = when (type) {
-    "STRENGTH" -> "Entrenamiento de Fuerza"
-    "CARDIO"   -> "Entrenamiento de Cardio"
     "REST"     -> "Día de Descanso"
-    else       -> "Sesión de Ejercicio"
+    else       -> "Entrenamiento de Fuerza"
 }
 
 @Composable

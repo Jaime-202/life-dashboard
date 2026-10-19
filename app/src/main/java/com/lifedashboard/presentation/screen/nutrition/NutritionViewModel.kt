@@ -81,7 +81,13 @@ data class NutritionUiState(
 
     // Coach Nutricional IA
     val nutritionAdvice: String? = null,
-    val isAdviceLoading: Boolean = false
+    val isAdviceLoading: Boolean = false,
+
+    // Escáner de Códigos de Barras y QR
+    val scannedFoodItem: FoodCatalogItem? = null,
+    val scannedBarcode: String? = null,
+    val isScanningBarcode: Boolean = false,
+    val scannedUnknownBarcode: String? = null
 ) {
     val totalCalories: Float get() = meals.sumOf { it.calories.toDouble() }.toFloat()
     val totalProtein: Float get() = meals.sumOf { it.protein.toDouble() }.toFloat()
@@ -207,6 +213,36 @@ class NutritionViewModel @Inject constructor(
         _uiState.update { it.copy(isSearching = true) }
         val results = repository.searchFoods(query, category)
         _uiState.update { it.copy(searchResults = results, isSearching = false) }
+    }
+
+    fun onBarcodeDetected(rawCode: String, mealType: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isScanningBarcode = true, activeMealType = mealType) }
+            val item = repository.findFoodByBarcode(rawCode)
+            if (item != null) {
+                _uiState.update {
+                    it.copy(
+                        isScanningBarcode = false,
+                        scannedFoodItem = item,
+                        scannedBarcode = rawCode,
+                        scannedUnknownBarcode = null
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isScanningBarcode = false,
+                        scannedFoodItem = null,
+                        scannedBarcode = rawCode,
+                        scannedUnknownBarcode = rawCode
+                    )
+                }
+            }
+        }
+    }
+
+    fun dismissScannedItem() {
+        _uiState.update { it.copy(scannedFoodItem = null, scannedUnknownBarcode = null, isScanningBarcode = false) }
     }
 
     fun addFoodFromCatalog(

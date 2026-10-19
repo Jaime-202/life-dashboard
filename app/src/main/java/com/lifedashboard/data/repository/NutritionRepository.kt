@@ -50,6 +50,10 @@ class NutritionRepository @Inject constructor(
         return catalogService.searchFoods(query, category)
     }
 
+    suspend fun findFoodByBarcode(barcode: String): FoodCatalogItem? {
+        return catalogService.findFoodByBarcode(barcode)
+    }
+
     suspend fun analyzeFoodPhoto(bitmap: Bitmap, userDescription: String): FoodAiResult {
         return aiService.analyzeFoodImage(bitmap, userDescription)
     }

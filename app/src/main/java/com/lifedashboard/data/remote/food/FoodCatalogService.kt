@@ -447,10 +447,11 @@ class FoodCatalogService @Inject constructor(
         val cached = assetFoods
         if (cached != null) return cached
 
-        return try {
+        val list = ArrayList<FoodCatalogItem>()
+        // 1. Mercadona Catalog
+        try {
             val jsonString = context.assets.open("mercadona_catalog.json").bufferedReader().use { it.readText() }
             val jsonArray = JSONArray(jsonString)
-            val list = ArrayList<FoodCatalogItem>(jsonArray.length())
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
                 list.add(
@@ -465,16 +466,44 @@ class FoodCatalogService @Inject constructor(
                         servingSizeGrams = obj.optDouble("servingSizeGrams", 100.0).toFloat(),
                         servingDescription = obj.optString("servingDescription", "100g"),
                         imageUrl = obj.optString("imageUrl", "").takeIf { it.isNotBlank() },
+                        barcode = obj.optString("barcode", "").takeIf { it.isNotBlank() },
                         isGeneric = false
                     )
                 )
             }
-            assetFoods = list
-            list
         } catch (e: Exception) {
-            Log.w(TAG, "Error cargando mercadona_catalog.json desde assets: ${e.message}")
-            emptyList()
+            Log.w(TAG, "Error cargando mercadona_catalog.json: ${e.message}")
         }
+
+        // 2. Supermarkets Catalog (Día, Supercor, Carrefour)
+        try {
+            val jsonString = context.assets.open("supermarkets_catalog.json").bufferedReader().use { it.readText() }
+            val jsonArray = JSONArray(jsonString)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(
+                    FoodCatalogItem(
+                        id = obj.getString("id"),
+                        name = obj.getString("name"),
+                        brand = obj.getString("brand"),
+                        caloriesPer100g = obj.getDouble("caloriesPer100g").toFloat(),
+                        proteinPer100g = obj.getDouble("proteinPer100g").toFloat(),
+                        carbsPer100g = obj.getDouble("carbsPer100g").toFloat(),
+                        fatPer100g = obj.getDouble("fatPer100g").toFloat(),
+                        servingSizeGrams = obj.optDouble("servingSizeGrams", 100.0).toFloat(),
+                        servingDescription = obj.optString("servingDescription", "100g"),
+                        imageUrl = obj.optString("imageUrl", "").takeIf { it.isNotBlank() },
+                        barcode = obj.optString("barcode", "").takeIf { it.isNotBlank() },
+                        isGeneric = false
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error cargando supermarkets_catalog.json: ${e.message}")
+        }
+
+        assetFoods = list
+        return list
     }
 
     private fun normalize(text: String): String {
@@ -522,14 +551,15 @@ class FoodCatalogService @Inject constructor(
         val trimmed = query.trim()
         val allFoods = builtInFoods + loadAssetFoods()
 
-        // 1. Detección y búsqueda por código de barras
-        if (trimmed.length in 8..14 && trimmed.all { it.isDigit() }) {
-            val localBarcodeMatch = allFoods.firstOrNull { it.barcode == trimmed }
+        // 1. Detección y búsqueda por código de barras o QR
+        val digitMatch = Regex("""\b(\d{8,14})\b""").find(trimmed)?.value ?: trimmed
+        if (digitMatch.length in 8..14 && digitMatch.all { it.isDigit() }) {
+            val localBarcodeMatch = allFoods.firstOrNull { it.barcode == digitMatch }
             if (localBarcodeMatch != null) {
                 val resolvedBarcodeImg = RealFoodImageResolver.resolve(localBarcodeMatch.name, localBarcodeMatch.brand, localBarcodeMatch.imageUrl)
                 return@withContext listOf(localBarcodeMatch.copy(imageUrl = resolvedBarcodeImg))
             }
-            val barcodeItem = queryByBarcode(trimmed)
+            val barcodeItem = queryByBarcode(digitMatch)
             if (barcodeItem != null) {
                 val resolvedBarcodeImg = RealFoodImageResolver.resolve(barcodeItem.name, barcodeItem.brand, barcodeItem.imageUrl)
                 return@withContext listOf(barcodeItem.copy(imageUrl = resolvedBarcodeImg))
@@ -541,7 +571,7 @@ class FoodCatalogService @Inject constructor(
         val tokens = normQuery.split("\\s+".toRegex()).filter { it.isNotBlank() }
 
         val localMatches = if (trimmed.isBlank()) {
-            filterByCategory(allFoods, category).take(80)
+            filterByCategory(allFoods, category).take(300)
         } else {
             val categorized = filterByCategory(allFoods, category)
             val filtered = categorized.filter { item ->
@@ -550,11 +580,18 @@ class FoodCatalogService @Inject constructor(
             }
             filtered.sortedByDescending { item ->
                 calculateRelevance(item, normQuery, tokens)
-            }.take(80)
+            }.take(200)
         }
 
-        // Si tenemos suficientes resultados locales relevantes para Mercadona o Todos, devolverlos directamente
-        if (localMatches.size >= 15 || (category == FoodSourceCategory.MERCADONA && localMatches.isNotEmpty())) {
+        // Si la búsqueda está vacía (ej: selección de pestaña de supermercado), devolver catálogo completo filtrado
+        if (trimmed.isBlank()) {
+            return@withContext localMatches.map { item ->
+                item.copy(imageUrl = RealFoodImageResolver.resolve(item.name, item.brand, item.imageUrl))
+            }
+        }
+
+        // Si tenemos suficientes resultados locales relevantes para Mercadona, Día, Carrefour o Todos, devolverlos
+        if (localMatches.isNotEmpty() && (localMatches.size >= 8 || category != FoodSourceCategory.TODOS)) {
             return@withContext localMatches.map { item ->
                 item.copy(imageUrl = RealFoodImageResolver.resolve(item.name, item.brand, item.imageUrl))
             }
@@ -569,11 +606,10 @@ class FoodCatalogService @Inject constructor(
             normalize(it.name) to normalize(it.brand)
         }.sortedByDescending {
             calculateRelevance(it, normQuery, tokens)
-        }
-        val filteredResults = filterByCategory(combined, category)
+        }.take(200)
 
-        if (filteredResults.isNotEmpty()) {
-            return@withContext filteredResults.map { item ->
+        if (combined.isNotEmpty()) {
+            return@withContext combined.map { item ->
                 item.copy(imageUrl = RealFoodImageResolver.resolve(item.name, item.brand, item.imageUrl))
             }
         }
@@ -589,6 +625,29 @@ class FoodCatalogService @Inject constructor(
         emptyList()
     }
 
+    /**
+     * Busca un alimento de forma directa e instantánea por código de barras o extraído de un código QR.
+     * Busca primero en los catálogos locales (Mercadona, Día, Supercor, Carrefour) y si no existe consulta Open Food Facts.
+     */
+    suspend fun findFoodByBarcode(barcode: String): FoodCatalogItem? = withContext(Dispatchers.IO) {
+        val trimmed = barcode.trim()
+        val allFoods = builtInFoods + loadAssetFoods()
+        val digitMatch = Regex("""\b(\d{8,14})\b""").find(trimmed)?.value ?: trimmed
+        if (digitMatch.length in 8..14 && digitMatch.all { it.isDigit() }) {
+            val localMatch = allFoods.firstOrNull { it.barcode == digitMatch }
+            if (localMatch != null) {
+                val resolvedImg = RealFoodImageResolver.resolve(localMatch.name, localMatch.brand, localMatch.imageUrl)
+                return@withContext localMatch.copy(imageUrl = resolvedImg)
+            }
+            val offMatch = queryByBarcode(digitMatch)
+            if (offMatch != null) {
+                val resolvedImg = RealFoodImageResolver.resolve(offMatch.name, offMatch.brand, offMatch.imageUrl)
+                return@withContext offMatch.copy(imageUrl = resolvedImg)
+            }
+        }
+        null
+    }
+
     private fun filterByCategory(items: List<FoodCatalogItem>, category: FoodSourceCategory): List<FoodCatalogItem> {
         return when (category) {
             FoodSourceCategory.TODOS -> items
@@ -597,13 +656,15 @@ class FoodCatalogService @Inject constructor(
                 it.brand.contains("hacendado", ignoreCase = true) ||
                 it.name.contains("hacendado", ignoreCase = true)
             }
-            FoodSourceCategory.CARREFOUR -> items.filter { it.brand.contains("carrefour", ignoreCase = true) }
-            FoodSourceCategory.DIA -> items.filter { it.brand.contains("dia", ignoreCase = true) || it.brand.contains("día", ignoreCase = true) }
-            FoodSourceCategory.ALCAMPO -> items.filter { it.brand.contains("alcampo", ignoreCase = true) || it.brand.contains("auchan", ignoreCase = true) }
+            FoodSourceCategory.CARREFOUR -> items.filter { it.brand.contains("carrefour", ignoreCase = true) || it.name.contains("carrefour", ignoreCase = true) }
+            FoodSourceCategory.DIA -> items.filter { it.brand.contains("dia", ignoreCase = true) || it.brand.contains("día", ignoreCase = true) || it.name.contains("día", ignoreCase = true) || it.name.contains("dia", ignoreCase = true) }
+            FoodSourceCategory.ALCAMPO -> items.filter { it.brand.contains("alcampo", ignoreCase = true) || it.brand.contains("auchan", ignoreCase = true) || it.name.contains("alcampo", ignoreCase = true) }
             FoodSourceCategory.SUPERCOR -> items.filter {
                 it.brand.contains("supercor", ignoreCase = true) ||
-                it.brand.contains("corte inglés", ignoreCase = true) ||
-                it.brand.contains("hipercor", ignoreCase = true)
+                it.brand.contains("corte", ignoreCase = true) ||
+                it.brand.contains("hipercor", ignoreCase = true) ||
+                it.name.contains("supercor", ignoreCase = true) ||
+                it.name.contains("corte", ignoreCase = true)
             }
             FoodSourceCategory.BASICOS -> items.filter { it.isGeneric }
         }

@@ -28,6 +28,7 @@ data class DashboardUiState(
     val todaySteps: Int = 0,
     val todaySleepHours: Float = 0f,
     val todayCalories: Float = 0f,
+    val todayMealsCalories: Float = 0f,
     val stepsTarget: Int = 10000,
     val sleepTargetHours: Float = 8.0f,
     val caloriesTarget: Float = 2200f,
@@ -84,7 +85,8 @@ class DashboardViewModel @Inject constructor(
                 _uiState.update { state ->
                     val stepsProg = if (goals.stepsTarget > 0) (state.todaySteps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f) else 0f
                     val sleepProg = if (goals.sleepTargetHours > 0) (state.todaySleepHours / goals.sleepTargetHours).coerceIn(0f, 1f) else 0f
-                    val calProg   = if (goals.caloriesTarget > 0) (state.todayCalories / goals.caloriesTarget).coerceIn(0f, 1f) else 0f
+                    val effectiveCalories = if (state.todayCalories > 0f) state.todayCalories else (state.todaySteps * 0.04f).coerceAtLeast(0f)
+                    val calProg   = if (goals.caloriesTarget > 0) (effectiveCalories / goals.caloriesTarget).coerceIn(0f, 1f) else 0f
 
                     state.copy(
                         userName           = goals.userName,
@@ -94,6 +96,7 @@ class DashboardViewModel @Inject constructor(
                         workoutDaysTarget  = goals.workoutDaysTarget,
                         stepsProgress      = stepsProg,
                         sleepProgress      = sleepProg,
+                        todayCalories      = effectiveCalories,
                         caloriesProgress   = calProg,
                         showHeroRings      = goals.showHeroRings,
                         showAiInsight      = goals.showAiInsight,
@@ -110,23 +113,16 @@ class DashboardViewModel @Inject constructor(
         val todayMillis = today.toStartOfDayMillis()
         val tomorrowMillis = today.plusDays(1).toStartOfDayMillis()
 
-        combine(
-            mealDao.observeMealsForDay(todayMillis, tomorrowMillis),
-            userPreferences.userGoals
-        ) { meals, goals ->
-            val consumed = meals.sumOf { it.calories.toDouble() }.toFloat()
-            val calProg = if (goals.caloriesTarget > 0) (consumed / goals.caloriesTarget).coerceIn(0f, 1f) else 0f
-            consumed to calProg
-        }
-        .onEach { (consumed, calProg) ->
-            _uiState.update { state ->
-                state.copy(
-                    todayCalories = consumed,
-                    caloriesProgress = calProg
-                )
+        mealDao.observeMealsForDay(todayMillis, tomorrowMillis)
+            .onEach { meals ->
+                val consumed = meals.sumOf { it.calories.toDouble() }.toFloat()
+                _uiState.update { state ->
+                    state.copy(
+                        todayMealsCalories = consumed
+                    )
+                }
             }
-        }
-        .launchIn(viewModelScope)
+            .launchIn(viewModelScope)
     }
 
     private fun observeWeights() {
@@ -147,18 +143,23 @@ class DashboardViewModel @Inject constructor(
         val todayMillis = today.toStartOfDayMillis()
         val tomorrowMillis = today.plusDays(1).toStartOfDayMillis()
 
-        healthDao.getHealthRange(todayMillis, tomorrowMillis)
+        healthDao.observeLastNDays(7)
             .onEach { list ->
                 val h = list.firstOrNull()
                 val steps = h?.steps ?: 0
                 val sleep = h?.sleepHours ?: 0f
+                val rawCalories = h?.activeCalories ?: 0f
+                val activeCalories = if (rawCalories > 0f) rawCalories else (steps * 0.04f).coerceAtLeast(0f)
 
                 _uiState.update { state ->
+                    val calProg = if (state.caloriesTarget > 0) (activeCalories / state.caloriesTarget).coerceIn(0f, 1f) else 0f
                     state.copy(
                         todaySteps       = steps,
                         todaySleepHours  = sleep,
+                        todayCalories    = activeCalories,
                         stepsProgress    = if (state.stepsTarget > 0) (steps.toFloat() / state.stepsTarget).coerceIn(0f, 1f) else 0f,
                         sleepProgress    = if (state.sleepTargetHours > 0) (sleep / state.sleepTargetHours).coerceIn(0f, 1f) else 0f,
+                        caloriesProgress = calProg,
                         isDataLoading    = false
                     )
                 }
@@ -172,10 +173,8 @@ class DashboardViewModel @Inject constructor(
                     state.copy(
                         workoutDoneToday = todaySession != null,
                         workoutTypeToday = when (todaySession?.type) {
-                            "STRENGTH" -> WorkoutType.STRENGTH
-                            "CARDIO"   -> WorkoutType.CARDIO
-                            "REST"     -> WorkoutType.REST
-                            else       -> null
+                            "REST" -> WorkoutType.REST
+                            else   -> if (todaySession != null) WorkoutType.STRENGTH else null
                         }
                     )
                 }
@@ -238,17 +237,15 @@ class DashboardViewModel @Inject constructor(
                     date             = date,
                     workoutCompleted = daySession != null,
                     workoutType      = when (daySession?.type) {
-                        "STRENGTH" -> WorkoutType.STRENGTH
-                        "CARDIO"   -> WorkoutType.CARDIO
                         "REST"     -> WorkoutType.REST
-                        else       -> null
+                        else       -> if (daySession != null) WorkoutType.STRENGTH else null
                     },
                     stepsProgress    = if (goals.stepsTarget > 0) (steps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f) else 0f,
                     sleepProgress    = if (goals.sleepTargetHours > 0) (sleep / goals.sleepTargetHours).coerceIn(0f, 1f) else 0f,
                     waterProgress    = 0f,
                     actualSteps      = steps,
                     actualSleepHours = sleep,
-                    actualCalories   = if (dayCals > 0) dayCals else (h?.activeCalories ?: 0f)
+                    actualCalories   = if ((h?.activeCalories ?: 0f) > 0f) h!!.activeCalories else (steps * 0.04f).coerceAtLeast(0f)
                 )
             }
             map

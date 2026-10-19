@@ -8,6 +8,7 @@ import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.hilt.work.HiltWorker
@@ -111,11 +112,37 @@ class HealthConnectSyncWorker @AssistedInject constructor(
             .sumOf { it.distance.inMeters }.toFloat()
 
         // Calorías activas
-        val calResp = client.readRecords(
-            ReadRecordsRequest(ActiveCaloriesBurnedRecord::class, timeRange)
-        )
-        val calories = calResp.records
-            .sumOf { it.energy.inKilocalories }.toFloat()
+        var calories = 0f
+        try {
+            val calResp = client.readRecords(
+                ReadRecordsRequest(ActiveCaloriesBurnedRecord::class, timeRange)
+            )
+            calories = calResp.records
+                .sumOf { it.energy.inKilocalories }.toFloat()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error leyendo ActiveCaloriesBurnedRecord: ${e.message}")
+        }
+
+        if (calories <= 0f) {
+            try {
+                val totalCalResp = client.readRecords(
+                    ReadRecordsRequest(TotalCaloriesBurnedRecord::class, timeRange)
+                )
+                val totalCal = totalCalResp.records
+                    .sumOf { it.energy.inKilocalories }.toFloat()
+                if (totalCal > 0f) {
+                    val stepKcal = steps * 0.04f
+                    calories = if (stepKcal > 0f) stepKcal else totalCal
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error leyendo TotalCaloriesBurnedRecord: ${e.message}")
+            }
+        }
+
+        // Si no se reportaron calorías pero hay pasos, estimar 0.04 kcal por paso
+        if (calories <= 0f && steps > 0) {
+            calories = steps * 0.04f
+        }
 
         // Sueño
         val sleepStart = date.minusDays(1).atTime(18, 0).atZone(zone).toInstant()
@@ -150,12 +177,7 @@ class HealthConnectSyncWorker @AssistedInject constructor(
             workoutDao.deleteHealthConnectSessionsForDay(date.toStartOfDayMillis())
             exResp.records.forEach { exSession ->
                 val durationMin = Duration.between(exSession.startTime, exSession.endTime).toMinutes().toInt()
-                val typeStr = when (exSession.exerciseType) {
-                    ExerciseSessionRecord.EXERCISE_TYPE_RUNNING,
-                    ExerciseSessionRecord.EXERCISE_TYPE_BIKING,
-                    ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> "CARDIO"
-                    else -> "STRENGTH"
-                }
+                val typeStr = "STRENGTH"
                 workoutDao.upsertSession(
                     WorkoutSessionEntity(
                         dateMillis      = date.toStartOfDayMillis(),

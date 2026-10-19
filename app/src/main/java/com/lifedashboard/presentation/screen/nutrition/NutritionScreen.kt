@@ -94,6 +94,22 @@ fun NutritionScreen(
         }
     }
 
+    // Lanzador directo del escáner de códigos de barras y QR de Google Play Services
+    val launchBarcodeScanner: (String) -> Unit = { mealType ->
+        selectedMealTypeForAdd = mealType
+        val scanner = GmsBarcodeScanning.getClient(context)
+        scanner.startScan()
+            .addOnSuccessListener { barcode ->
+                val code = barcode.rawValue
+                if (!code.isNullOrBlank()) {
+                    viewModel.onBarcodeDetected(code, mealType)
+                }
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(context, "No se pudo escanear: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
     // Diálogo de foto y descripción con IA
     if (state.stagedBitmap != null) {
         PhotoAiDialog(
@@ -131,6 +147,37 @@ fun NutritionScreen(
         )
     }
 
+    // Diálogo de confirmación de alimento detectado por QR o Código de Barras (1-tap add)
+    state.scannedFoodItem?.let { food ->
+        ScannedFoodDialog(
+            food = food,
+            initialMealType = state.activeMealType,
+            onConfirm = { item, grams, mealType ->
+                viewModel.addFoodFromCatalog(item, grams, mealType)
+                viewModel.dismissScannedItem()
+                Toast.makeText(context, "Añadido: ${item.name} (${grams.toInt()}g)", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = { viewModel.dismissScannedItem() }
+        )
+    }
+
+    // Diálogo para código escaneado desconocido (opción de buscar con IA o añadir manual)
+    state.scannedUnknownBarcode?.let { rawCode ->
+        UnknownBarcodeDialog(
+            barcode = rawCode,
+            onSearchAi = {
+                viewModel.openTextAiDialog(selectedMealTypeForAdd)
+                viewModel.onTextAiInputChange("Producto con código de barras $rawCode")
+                viewModel.dismissScannedItem()
+            },
+            onQuickAdd = {
+                showQuickAddDialog = true
+                viewModel.dismissScannedItem()
+            },
+            onDismiss = { viewModel.dismissScannedItem() }
+        )
+    }
+
     // Diálogo de búsqueda y escaneo de alimentos
     if (showSearchDialog) {
         SearchFoodDialog(
@@ -142,18 +189,8 @@ fun NutritionScreen(
             onQueryChange = { viewModel.onSearchQueryChange(it) },
             onCategorySelect = { viewModel.onCategorySelect(it) },
             onScanBarcode = {
-                val scanner = GmsBarcodeScanning.getClient(context)
-                scanner.startScan()
-                    .addOnSuccessListener { barcode ->
-                        val code = barcode.rawValue
-                        if (!code.isNullOrBlank()) {
-                            viewModel.onSearchQueryChange(code)
-                            Toast.makeText(context, "Código escaneado: $code", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    .addOnFailureListener { e ->
-                        Toast.makeText(context, "No se pudo escanear: ${e.message}", Toast.LENGTH_SHORT).show()
-                    }
+                showSearchDialog = false
+                launchBarcodeScanner(selectedMealTypeForAdd)
             },
             onAddFood = { item, grams ->
                 viewModel.addFoodFromCatalog(item, grams, selectedMealTypeForAdd)
@@ -268,6 +305,9 @@ fun NutritionScreen(
                     onAddClick = {
                         selectedMealTypeForAdd = section.key
                         showSearchDialog = true
+                    },
+                    onScanBarcodeClick = {
+                        launchBarcodeScanner(section.key)
                     },
                     onTextAiClick = {
                         viewModel.openTextAiDialog(section.key)
@@ -675,6 +715,7 @@ private fun MealSectionCard(
     section: MealSectionType,
     meals: List<MealEntryEntity>,
     onAddClick: () -> Unit,
+    onScanBarcodeClick: () -> Unit,
     onTextAiClick: () -> Unit,
     onCameraClick: () -> Unit,
     onGalleryClick: () -> Unit,
@@ -758,26 +799,53 @@ private fun MealSectionCard(
                 )
             }
 
-            // Barra de acciones: Añadir Alimento principal + Atajos de IA y Rápido
+            // Barra de acciones: Añadir Alimento principal + Escaneo QR + Atajos de IA y Rápido
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Button(
-                    onClick = onAddClick,
-                    colors  = ButtonDefaults.buttonColors(containerColor = Indigo700),
-                    shape   = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Violet300, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "Añadir Alimento",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = White,
-                        fontWeight = FontWeight.Bold
-                    )
+                    // Botón Buscar Alimento
+                    Button(
+                        onClick = onAddClick,
+                        colors  = ButtonDefaults.buttonColors(containerColor = Indigo700),
+                        shape   = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = null, tint = Violet300, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "Buscar",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = White,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                    }
+
+                    // Botón Escanear QR / Código de Barras (DIRECTO EN CADA SECCIÓN)
+                    Button(
+                        onClick = onScanBarcodeClick,
+                        colors  = ButtonDefaults.buttonColors(containerColor = Violet400.copy(alpha = 0.22f)),
+                        border  = BorderStroke(1.dp, Violet400.copy(alpha = 0.55f)),
+                        shape   = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.CropFree, contentDescription = null, tint = Cyan400, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "Escanear QR",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Cyan400,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                    }
                 }
 
                 Row(
@@ -791,13 +859,13 @@ private fun MealSectionCard(
                             containerColor = Violet400.copy(alpha = 0.12f),
                             contentColor = Violet300
                         ),
-                        border = BorderStroke(1.dp, Violet400.copy(alpha = 0.4f)),
+                        border = BorderStroke(1.dp, Violet400.copy(alpha = 0.35f)),
                         shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(5.dp))
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text("Texto IA", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
 
@@ -810,11 +878,11 @@ private fun MealSectionCard(
                         ),
                         border = BorderStroke(1.dp, Indigo600),
                         shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(5.dp))
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text("Foto IA", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
 
@@ -827,11 +895,11 @@ private fun MealSectionCard(
                         ),
                         border = BorderStroke(1.dp, Amber400.copy(alpha = 0.35f)),
                         shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.FlashOn, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(5.dp))
+                        Icon(Icons.Default.FlashOn, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text("Rápido", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
                 }
@@ -2024,6 +2092,346 @@ private fun SearchFoodDialog(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Diálogo de Confirmación de Alimento Detectado por QR / Código de Barras ──
+
+@Composable
+private fun ScannedFoodDialog(
+    food: FoodCatalogItem,
+    initialMealType: String,
+    onConfirm: (item: FoodCatalogItem, grams: Float, mealType: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedMeal by remember { mutableStateOf(initialMealType) }
+    var inputGrams by remember { mutableStateOf(food.servingSizeGrams.toInt().toString()) }
+
+    val parsedGrams = inputGrams.toFloatOrNull() ?: food.servingSizeGrams
+    val factor = parsedGrams / 100f
+    val calcKcal = (food.caloriesPer100g * factor).toInt()
+    val calcP = "%.1f".format(Locale.US, food.proteinPer100g * factor)
+    val calcC = "%.1f".format(Locale.US, food.carbsPer100g * factor)
+    val calcF = "%.1f".format(Locale.US, food.fatPer100g * factor)
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Indigo800)
+                .border(1.dp, Emerald400.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                .padding(20.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Header
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Emerald400.copy(alpha = 0.2f))
+                                .padding(6.dp)
+                        ) {
+                            Icon(Icons.Default.CropFree, contentDescription = null, tint = Emerald400, modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "¡Alimento Detectado!",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = White
+                            )
+                            if (!food.barcode.isNullOrBlank()) {
+                                Text(
+                                    text = "Código: ${food.barcode}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Gray400,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Gray400, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                // Info del Producto con Imagen Real
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Indigo900.copy(alpha = 0.7f))
+                        .padding(12.dp)
+                ) {
+                    FoodThumbnail(name = food.name, brand = food.brand, imageUrl = food.imageUrl, size = 60.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = food.name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = White,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Violet400.copy(alpha = 0.25f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = food.brand,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Violet300,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp
+                                )
+                            }
+                            Text(
+                                text = "${food.caloriesPer100g.toInt()} kcal / 100g",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Amber400,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+
+                // Selector de Comida Destino
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Añadir a:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gray300,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        MealSectionType.entries.forEach { section ->
+                            val isSel = section.key == selectedMeal
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSel) Violet400 else Indigo700)
+                                    .clickable { selectedMeal = section.key }
+                                    .padding(vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = section.title.take(4),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isSel) Indigo900 else Gray300,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Cantidad en gramos
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Porción consumida:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Gray300,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Recomendada: ${food.servingDescription}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Gray400,
+                            fontSize = 10.sp
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = inputGrams,
+                        onValueChange = { inputGrams = it },
+                        trailingIcon = { Text("g", color = Gray400, modifier = Modifier.padding(end = 12.dp)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Emerald400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // Chips de ajuste rápido
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        listOf("-50", "-20", "+20", "+50").forEach { diffStr ->
+                            val diff = diffStr.toInt()
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Indigo700)
+                                    .clickable {
+                                        val cur = inputGrams.toIntOrNull() ?: 100
+                                        inputGrams = (cur + diff).coerceAtLeast(5).toString()
+                                    }
+                                    .padding(vertical = 6.dp)
+                            ) {
+                                Text("${diffStr}g", style = MaterialTheme.typography.labelSmall, color = Gray200, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+
+                // Resumen de macros calculados
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Indigo900)
+                        .border(1.dp, Indigo700, RoundedCornerShape(14.dp))
+                        .padding(12.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Aporte calórico:", style = MaterialTheme.typography.bodySmall, color = Gray300)
+                            Text("$calcKcal kcal", style = MaterialTheme.typography.titleMedium, color = Amber400, fontWeight = FontWeight.Bold)
+                        }
+                        HorizontalDivider(color = Indigo700, thickness = 1.dp)
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("P: ${calcP}g", style = MaterialTheme.typography.labelSmall, color = Violet300, fontWeight = FontWeight.SemiBold)
+                            Text("C: ${calcC}g", style = MaterialTheme.typography.labelSmall, color = Cyan400, fontWeight = FontWeight.SemiBold)
+                            Text("G: ${calcF}g", style = MaterialTheme.typography.labelSmall, color = Amber400, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+
+                // Botones
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Gray400),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancelar", color = Gray400)
+                    }
+                    Button(
+                        onClick = {
+                            val finalGrams = inputGrams.toFloatOrNull() ?: food.servingSizeGrams
+                            onConfirm(food, finalGrams, selectedMeal)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Emerald400),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1.4f)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = Indigo900, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Registrar", color = Indigo900, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Diálogo para Código de Barras no Encontrado en Local ─────────────────────
+
+@Composable
+private fun UnknownBarcodeDialog(
+    barcode: String,
+    onSearchAi: () -> Unit,
+    onQuickAdd: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Indigo800)
+                .border(1.dp, Amber400.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                .padding(20.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CropFree, contentDescription = null, tint = Amber400, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Código Escaneado", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = White)
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Gray400, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Text(
+                    text = "Código: $barcode\n\nNo se encontró este código en la base local de Mercadona o supermercados. ¿Cómo prefieres registrarlo?",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray300
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = onSearchAi,
+                        colors = ButtonDefaults.buttonColors(containerColor = Violet400),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Indigo900, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Identificar con IA Gemini", color = Indigo900, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = onQuickAdd,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Amber400),
+                        border = BorderStroke(1.dp, Amber400.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.FlashOn, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Añadido Rápido Manual", color = Amber400, fontWeight = FontWeight.Bold)
                     }
                 }
             }

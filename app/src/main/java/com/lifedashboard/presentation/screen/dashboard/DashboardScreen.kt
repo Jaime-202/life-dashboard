@@ -163,7 +163,12 @@ fun DashboardContent(
                         Spacer(Modifier.width(12.dp))
                         Column {
                             Text("Nutrición & Comidas", style = MaterialTheme.typography.titleSmall, color = White, fontWeight = FontWeight.Bold)
-                            Text("Registra platos, macros o foto con IA ✨", style = MaterialTheme.typography.bodySmall, color = Gray400, fontSize = 11.sp)
+                            val subtitle = if (state.todayMealsCalories > 0) {
+                                "${state.todayMealsCalories.toInt()} kcal consumidas hoy · Toca para registrar"
+                            } else {
+                                "Registra platos, macros o foto con IA ✨"
+                            }
+                            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = if (state.todayMealsCalories > 0) Amber400 else Gray400, fontSize = 11.sp)
                         }
                     }
                     Icon(Icons.Default.ChevronRight, contentDescription = "Ir a nutrición", tint = Gray400, modifier = Modifier.size(18.dp))
@@ -252,10 +257,9 @@ private fun DashboardHeader(greeting: String, state: DashboardUiState) {
         ) {
             Icon(
                 imageVector = when (state.workoutTypeToday) {
-                    WorkoutType.STRENGTH -> Icons.Default.FitnessCenter
-                    WorkoutType.CARDIO   -> Icons.AutoMirrored.Filled.DirectionsRun
-                    WorkoutType.REST     -> Icons.Default.Bedtime
-                    null                 -> Icons.Default.Person
+                    WorkoutType.REST -> Icons.Default.Bedtime
+                    null             -> Icons.Default.Person
+                    else             -> Icons.Default.FitnessCenter
                 },
                 contentDescription = "Estado del día",
                 tint               = if (state.workoutDoneToday) Violet300 else Gray400,
