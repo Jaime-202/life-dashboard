@@ -58,6 +58,7 @@ class DashboardViewModel @Inject constructor(
     private val healthDao: HealthDao,
     private val workoutDao: WorkoutDao,
     private val weightDao: WeightDao,
+    private val mealDao: com.lifedashboard.data.local.dao.MealDao,
     private val calendarRepository: CalendarRepository,
     private val geminiService: GeminiApiService,
     private val evaluateAchievements: EvaluateRoutineAchievementUseCase,
@@ -70,6 +71,7 @@ class DashboardViewModel @Inject constructor(
     init {
         observeUserGoals()
         observeTodayHealth()
+        observeTodayMeals()
         observeWeights()
         observeCalendar()
         buildProgressMap()
@@ -103,6 +105,30 @@ class DashboardViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
+    private fun observeTodayMeals() {
+        val today = LocalDate.now()
+        val todayMillis = today.toStartOfDayMillis()
+        val tomorrowMillis = today.plusDays(1).toStartOfDayMillis()
+
+        combine(
+            mealDao.observeMealsForDay(todayMillis, tomorrowMillis),
+            userPreferences.userGoals
+        ) { meals, goals ->
+            val consumed = meals.sumOf { it.calories.toDouble() }.toFloat()
+            val calProg = if (goals.caloriesTarget > 0) (consumed / goals.caloriesTarget).coerceIn(0f, 1f) else 0f
+            consumed to calProg
+        }
+        .onEach { (consumed, calProg) ->
+            _uiState.update { state ->
+                state.copy(
+                    todayCalories = consumed,
+                    caloriesProgress = calProg
+                )
+            }
+        }
+        .launchIn(viewModelScope)
+    }
+
     private fun observeWeights() {
         weightDao.observeAllWeights()
             .onEach { list ->
@@ -126,16 +152,13 @@ class DashboardViewModel @Inject constructor(
                 val h = list.firstOrNull()
                 val steps = h?.steps ?: 0
                 val sleep = h?.sleepHours ?: 0f
-                val cals  = h?.activeCalories ?: 0f
 
                 _uiState.update { state ->
                     state.copy(
                         todaySteps       = steps,
                         todaySleepHours  = sleep,
-                        todayCalories    = cals,
                         stepsProgress    = if (state.stepsTarget > 0) (steps.toFloat() / state.stepsTarget).coerceIn(0f, 1f) else 0f,
                         sleepProgress    = if (state.sleepTargetHours > 0) (sleep / state.sleepTargetHours).coerceIn(0f, 1f) else 0f,
-                        caloriesProgress = if (state.caloriesTarget > 0) (cals / state.caloriesTarget).coerceIn(0f, 1f) else 0f,
                         isDataLoading    = false
                     )
                 }
@@ -187,18 +210,31 @@ class DashboardViewModel @Inject constructor(
         combine(
             healthDao.getHealthRange(fromMillis, toMillis),
             workoutDao.getSessionsInRange(fromMillis, toMillis),
+            mealDao.observeMealsForDay(fromMillis, toMillis),
             userPreferences.userGoals
-        ) { healthList, sessions, goals ->
+        ) { healthList, sessions, mealsList, goals ->
             val zone = ZoneId.systemDefault()
+            val healthByDate = healthList.associateBy { Instant.ofEpochMilli(it.dateMillis).atZone(zone).toLocalDate() }
             val sessionsByDate = sessions.groupBy { session ->
                 Instant.ofEpochMilli(session.dateMillis).atZone(zone).toLocalDate()
             }
+            val mealsByDate = mealsList.groupBy { meal ->
+                Instant.ofEpochMilli(meal.dateMillis).atZone(zone).toLocalDate()
+            }
 
-            val map = healthList.associate { h ->
-                val date = Instant.ofEpochMilli(h.dateMillis).atZone(zone).toLocalDate()
+            val dates = generateSequence(from) { it.plusDays(1) }
+                .takeWhile { !it.isAfter(to) }
+                .toList()
+
+            val map = dates.associateWith { date ->
+                val h = healthByDate[date]
                 val daySession = sessionsByDate[date]?.firstOrNull()
+                val dayMeals = mealsByDate[date] ?: emptyList()
+                val dayCals = dayMeals.sumOf { it.calories.toDouble() }.toFloat()
+                val steps = h?.steps ?: 0
+                val sleep = h?.sleepHours ?: 0f
 
-                date to DailyProgress(
+                DailyProgress(
                     date             = date,
                     workoutCompleted = daySession != null,
                     workoutType      = when (daySession?.type) {
@@ -207,12 +243,12 @@ class DashboardViewModel @Inject constructor(
                         "REST"     -> WorkoutType.REST
                         else       -> null
                     },
-                    stepsProgress    = if (goals.stepsTarget > 0) (h.steps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f) else 0f,
-                    sleepProgress    = if (goals.sleepTargetHours > 0) (h.sleepHours / goals.sleepTargetHours).coerceIn(0f, 1f) else 0f,
+                    stepsProgress    = if (goals.stepsTarget > 0) (steps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f) else 0f,
+                    sleepProgress    = if (goals.sleepTargetHours > 0) (sleep / goals.sleepTargetHours).coerceIn(0f, 1f) else 0f,
                     waterProgress    = 0f,
-                    actualSteps      = h.steps,
-                    actualSleepHours = h.sleepHours,
-                    actualCalories   = h.activeCalories
+                    actualSteps      = steps,
+                    actualSleepHours = sleep,
+                    actualCalories   = if (dayCals > 0) dayCals else (h?.activeCalories ?: 0f)
                 )
             }
             map

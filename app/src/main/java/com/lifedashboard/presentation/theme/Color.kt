@@ -22,6 +22,7 @@ val Rose400      = Color(0xFFFB7185)   // Alerts / rest day
 // ─── Neutros ─────────────────────────────────────────────────────────────────
 val White        = Color(0xFFFFFFFF)
 val Gray100      = Color(0xFFF3F4F6)
+val Gray200      = Color(0xFFE5E7EB)
 val Gray300      = Color(0xFFD1D5DB)
 val Gray400      = Color(0xFF9CA3AF)
 val Gray500      = Color(0xFF6B7280)

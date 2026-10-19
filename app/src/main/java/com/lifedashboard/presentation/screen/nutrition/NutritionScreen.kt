@@ -758,74 +758,82 @@ private fun MealSectionCard(
                 )
             }
 
-            // Barra de acciones: Añadir Alimento principal + Atajos de IA, Cámara, Galería y Rápido
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            // Barra de acciones: Añadir Alimento principal + Atajos de IA y Rápido
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Button(
                     onClick = onAddClick,
                     colors  = ButtonDefaults.buttonColors(containerColor = Indigo700),
                     shape   = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
-                    modifier = Modifier.weight(1f)
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Violet300, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Violet300, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = "Añadir Alimento",
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelLarge,
                         color = White,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        softWrap = false
+                        fontWeight = FontWeight.Bold
                     )
                 }
 
-                // Botón Texto IA
-                IconButton(
-                    onClick = onTextAiClick,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Violet400.copy(alpha = 0.20f))
-                        .border(1.dp, Violet400.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = "Registrar con Texto IA", tint = Violet300, modifier = Modifier.size(17.dp))
-                }
+                    // Botón Texto IA
+                    OutlinedButton(
+                        onClick = onTextAiClick,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Violet400.copy(alpha = 0.12f),
+                            contentColor = Violet300
+                        ),
+                        border = BorderStroke(1.dp, Violet400.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Texto IA", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    }
 
-                // Botón Foto IA
-                IconButton(
-                    onClick = onCameraClick,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Indigo700)
-                ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = "Foto con IA", tint = Gray300, modifier = Modifier.size(17.dp))
-                }
+                    // Botón Foto IA
+                    OutlinedButton(
+                        onClick = onCameraClick,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Indigo700.copy(alpha = 0.5f),
+                            contentColor = Gray200
+                        ),
+                        border = BorderStroke(1.dp, Indigo600),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Foto IA", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    }
 
-                // Botón Galería
-                IconButton(
-                    onClick = onGalleryClick,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Indigo700)
-                ) {
-                    Icon(Icons.Default.PhotoLibrary, contentDescription = "Elegir de galería", tint = Gray300, modifier = Modifier.size(17.dp))
-                }
-
-                // Botón Rápido
-                IconButton(
-                    onClick = onQuickAddClick,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Indigo700)
-                ) {
-                    Icon(Icons.Default.FlashOn, contentDescription = "Añadido Rápido", tint = Amber400, modifier = Modifier.size(17.dp))
+                    // Botón Añadido Rápido
+                    OutlinedButton(
+                        onClick = onQuickAddClick,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Indigo700.copy(alpha = 0.5f),
+                            contentColor = Amber400
+                        ),
+                        border = BorderStroke(1.dp, Amber400.copy(alpha = 0.35f)),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.FlashOn, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Rápido", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    }
                 }
             }
         }
@@ -849,30 +857,34 @@ private fun MealItemRow(
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         // Thumbnail visual real con fallback limpio
-        FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = meal.imageUrl, size = 42.dp)
+        FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = meal.imageUrl, size = 44.dp)
         Spacer(Modifier.width(10.dp))
 
         Column(modifier = Modifier.weight(1f)) {
+            // Línea 1: Nombre del alimento con 100% de anchura disponible
+            Text(
+                text       = meal.name,
+                style      = MaterialTheme.typography.bodyMedium,
+                color      = White,
+                fontWeight = FontWeight.SemiBold,
+                maxLines   = 1,
+                softWrap   = false,
+                overflow   = TextOverflow.Ellipsis,
+                modifier   = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(3.dp))
+
+            // Línea 2: Marca (si aplica), gramos, calorías y macronutrientes sin solapamientos
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text       = meal.name,
-                    style      = MaterialTheme.typography.bodyMedium,
-                    color      = White,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines   = 1,
-                    softWrap   = false,
-                    overflow   = TextOverflow.Ellipsis,
-                    modifier   = Modifier.weight(1f, fill = false)
-                )
                 if (meal.brand.isNotBlank() && meal.brand != "Básico" && meal.brand != "Manual") {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Violet400.copy(alpha = 0.2f))
+                            .background(Violet400.copy(alpha = 0.22f))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
@@ -880,19 +892,13 @@ private fun MealItemRow(
                             style      = MaterialTheme.typography.labelSmall,
                             color      = Violet300,
                             fontSize   = 10.sp,
-                            fontWeight = FontWeight.Medium,
+                            fontWeight = FontWeight.Bold,
                             maxLines   = 1,
-                            softWrap   = false,
-                            overflow   = TextOverflow.Ellipsis
+                            softWrap   = false
                         )
                     }
+                    Text("·", color = Gray600)
                 }
-            }
-            Spacer(Modifier.height(3.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
                 Text("${meal.grams.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp, maxLines = 1, softWrap = false)
                 Text("·", color = Gray600)
                 Text("${meal.calories.toInt()} kcal", style = MaterialTheme.typography.labelSmall, color = Amber400, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, maxLines = 1, softWrap = false)
@@ -2252,30 +2258,48 @@ fun FoodThumbnail(
     val emoji = remember(name) {
         RealFoodImageResolver.getAccurateEmoji(name)
     }
+    val isPackaging = remember(resolvedUrl) {
+        resolvedUrl?.contains("prod-mercadona.imgix.net") == true ||
+        resolvedUrl?.contains("openfoodfacts") == true
+    }
+
+    var imageLoaded by remember(resolvedUrl) { mutableStateOf(false) }
+    var imageFailed by remember(resolvedUrl) { mutableStateOf(false) }
 
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .size(size)
             .clip(RoundedCornerShape(12.dp))
-            .background(Indigo700.copy(alpha = 0.6f))
-            .border(1.dp, Indigo600.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .background(
+                if (imageLoaded && isPackaging) Color.White
+                else Indigo700.copy(alpha = 0.6f)
+            )
+            .border(
+                1.dp,
+                if (imageLoaded && isPackaging) Color(0xFFE2E8F0) else Indigo600.copy(alpha = 0.5f),
+                RoundedCornerShape(12.dp)
+            )
     ) {
-        // Emoji representativo exacto como fallback o durante la carga
-        Text(text = emoji, fontSize = (size.value * 0.45f).sp)
+        // Fallback emoji solo si no hay URL o si la carga falló
+        if (resolvedUrl.isNullOrBlank() || imageFailed || !imageLoaded) {
+            Text(text = emoji, fontSize = (size.value * 0.45f).sp)
+        }
 
-        // Foto real del producto/supermercado o gastronómica
-        if (!resolvedUrl.isNullOrBlank()) {
+        if (!resolvedUrl.isNullOrBlank() && !imageFailed) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(resolvedUrl)
                     .crossfade(true)
                     .build(),
                 contentDescription = name,
-                contentScale = ContentScale.Crop,
+                onSuccess = { imageLoaded = true },
+                onError = { imageFailed = true },
+                contentScale = if (isPackaging) ContentScale.Fit else ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(12.dp))
+                    .padding(if (isPackaging) 3.dp else 0.dp)
+                    .clip(RoundedCornerShape(10.dp))
             )
         }
     }
