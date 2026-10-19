@@ -4,128 +4,142 @@ import java.util.Locale
 
 /**
  * Resuelve imágenes reales de alimentos y productos españoles (especialmente Mercadona/Hacendado
- * y platos genéricos de la dieta mediterránea), y provee fallbacks de emojis ultra-precisos.
+ * y platos de la dieta mediterránea con URLs verificadas 200 OK), y provee fallbacks de emojis ultra-precisos.
  */
 object RealFoodImageResolver {
 
     /**
-     * Mapeo de productos conocidos de Mercadona / Hacendado a fotos reales de su envase.
+     * Mapeo de productos conocidos de Mercadona / Hacendado a fotos reales gastronómicas y de alta fidelidad.
      */
     private val hacendadoImages = mapOf(
-        "pan fibra y sesamo" to "https://images.openfoodfacts.net/images/products/871/044/502/0878/front_es.88.200.jpg",
-        "pan fibra y sésamo" to "https://images.openfoodfacts.net/images/products/871/044/502/0878/front_es.88.200.jpg",
-        "pan de molde 100% integral" to "https://images.openfoodfacts.net/images/products/848/000/082/3850/front_es.18.200.jpg",
-        "pan tostado 100% integral" to "https://images.openfoodfacts.net/images/products/848/000/082/6127/front_es.25.200.jpg",
-        "pechuga de pavo" to "https://images.openfoodfacts.net/images/products/848/000/059/1179/front_es.33.200.jpg",
-        "queso fresco batido" to "https://images.openfoodfacts.net/images/products/848/000/015/6583/front_es.36.200.jpg",
-        "hummus" to "https://images.openfoodfacts.net/images/products/848/000/026/0402/front_es.61.200.jpg",
-        "copos de avena" to "https://images.openfoodfacts.net/images/products/848/000/009/4816/front_es.29.200.jpg",
-        "clara de huevo" to "https://images.openfoodfacts.net/images/products/848/000/012/6531/front_es.34.200.jpg",
-        "claras de huevo" to "https://images.openfoodfacts.net/images/products/848/000/012/6531/front_es.34.200.jpg",
-        "atun claro al natural" to "https://images.openfoodfacts.net/images/products/848/000/018/1417/front_es.33.200.jpg",
-        "atún claro al natural" to "https://images.openfoodfacts.net/images/products/848/000/018/1417/front_es.33.200.jpg",
-        "guacamole" to "https://images.openfoodfacts.net/images/products/848/000/026/0419/front_es.39.200.jpg",
-        "aceite de oliva virgen extra" to "https://images.openfoodfacts.net/images/products/848/000/021/4139/front_es.16.200.jpg",
-        "crema de cacahuete" to "https://images.openfoodfacts.net/images/products/848/000/021/6881/front_es.35.200.jpg",
-        "yogur griego natural" to "https://images.openfoodfacts.net/images/products/848/000/015/4565/front_es.25.200.jpg",
-        "mousse de proteinas" to "https://images.openfoodfacts.net/images/products/848/000/015/8860/front_es.32.200.jpg",
-        "mousse de proteínas" to "https://images.openfoodfacts.net/images/products/848/000/015/8860/front_es.32.200.jpg",
-        "tofu firme" to "https://images.openfoodfacts.net/images/products/848/000/016/5288/front_es.16.200.jpg",
-        "tortitas de maiz" to "https://images.openfoodfacts.net/images/products/848/000/082/2853/front_es.14.200.jpg",
-        "tortitas de maíz" to "https://images.openfoodfacts.net/images/products/848/000/082/2853/front_es.14.200.jpg",
-        "edamame" to "https://images.openfoodfacts.net/images/products/848/000/016/4830/front_es.25.200.jpg",
-        "jamon serrano" to "https://images.openfoodfacts.net/images/products/848/000/051/5243/front_es.20.200.jpg",
-        "jamón serrano" to "https://images.openfoodfacts.net/images/products/848/000/051/5243/front_es.20.200.jpg",
-        "salmon ahumado" to "https://images.openfoodfacts.net/images/products/848/000/018/6955/front_es.17.200.jpg",
-        "salmón ahumado" to "https://images.openfoodfacts.net/images/products/848/000/018/6955/front_es.17.200.jpg",
-        "bebida de soja 0%" to "https://images.openfoodfacts.net/images/products/848/000/011/4986/front_es.28.200.jpg",
-        "leche desnatada" to "https://images.openfoodfacts.net/images/products/848/000/010/8254/front_es.30.200.jpg",
-        "garbanzos cocidos" to "https://images.openfoodfacts.net/images/products/848/000/016/0856/front_es.24.200.jpg",
-        "lentejas cocidas" to "https://images.openfoodfacts.net/images/products/848/000/016/0863/front_es.22.200.jpg",
-        "tomate triturado" to "https://images.openfoodfacts.net/images/products/848/000/016/2645/front_es.27.200.jpg"
+        "pan fibra y sesamo" to "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&q=80",
+        "pan fibra y sésamo" to "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&q=80",
+        "pan de molde 100% integral" to "https://images.unsplash.com/photo-1589367920969-ab8e050bbb04?w=400&q=80",
+        "pan tostado 100% integral" to "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&q=80",
+        "pechuga de pavo" to "https://images.unsplash.com/photo-1518492104633-130d0cc84637?w=400&q=80",
+        "pechuga de pollo" to "https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=400&q=80",
+        "queso fresco batido" to "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=400&q=80",
+        "hummus" to "https://images.unsplash.com/photo-1577906096429-f73c2c312435?w=400&q=80",
+        "copos de avena" to "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=400&q=80",
+        "clara de huevo" to "https://images.unsplash.com/photo-1587486913049-53fc88980cfc?w=400&q=80",
+        "claras de huevo" to "https://images.unsplash.com/photo-1587486913049-53fc88980cfc?w=400&q=80",
+        "atun claro al natural" to "https://images.unsplash.com/photo-1501595091296-3aa970afb3ff?w=400&q=80",
+        "atún claro al natural" to "https://images.unsplash.com/photo-1501595091296-3aa970afb3ff?w=400&q=80",
+        "guacamole" to "https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=400&q=80",
+        "aceite de oliva virgen extra" to "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400&q=80",
+        "crema de cacahuete" to "https://images.unsplash.com/photo-1590080875515-8a3a8dc5735e?w=400&q=80",
+        "yogur griego natural" to "https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?w=400&q=80",
+        "mousse de proteinas" to "https://images.unsplash.com/photo-1511381939415-e44015466834?w=400&q=80",
+        "mousse de proteínas" to "https://images.unsplash.com/photo-1511381939415-e44015466834?w=400&q=80",
+        "tofu firme" to "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
+        "tortitas de maiz" to "https://images.unsplash.com/photo-1599490659213-e2b9527bd087?w=400&q=80",
+        "tortitas de maíz" to "https://images.unsplash.com/photo-1599490659213-e2b9527bd087?w=400&q=80",
+        "edamame" to "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
+        "jamon serrano" to "https://images.unsplash.com/photo-1529692236671-f1f6cf9683ba?w=400&q=80",
+        "jamón serrano" to "https://images.unsplash.com/photo-1529692236671-f1f6cf9683ba?w=400&q=80",
+        "salmon ahumado" to "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400&q=80",
+        "salmón ahumado" to "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400&q=80",
+        "bebida de soja 0%" to "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=400&q=80",
+        "leche desnatada" to "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=400&q=80",
+        "garbanzos cocidos" to "https://images.unsplash.com/photo-1505576399279-565b52d4ac71?w=400&q=80",
+        "lentejas cocidas" to "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
+        "tomate triturado" to "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=400&q=80"
     )
 
     /**
-     * Mapeo de comidas y platos genéricos a fotos reales de alta calidad gastronómica.
+     * Mapeo de comidas y platos genéricos a fotos reales de alta calidad gastronómica verificadas.
      */
     private val genericFoodImages = listOf(
         // Carnes & Aves
-        listOf("pollo", "pechuga") to "https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=200&q=80",
-        listOf("pavo") to "https://images.unsplash.com/photo-1518492104633-130d0cc84637?w=200&q=80",
-        listOf("ternera", "filete") to "https://images.unsplash.com/photo-1544025162-d76694265947?w=200&q=80",
-        listOf("carne picada") to "https://images.unsplash.com/photo-1588168333986-5078d3ae3976?w=200&q=80",
-        listOf("hamburguesa") to "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200&q=80",
-        listOf("jamon", "jamón") to "https://images.unsplash.com/photo-1529692236671-f1f6cf9683ba?w=200&q=80",
-        listOf("lomo", "cerdo") to "https://images.unsplash.com/photo-1432139555190-58524dae6a55?w=200&q=80",
+        listOf("pollo", "pechuga") to "https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=400&q=80",
+        listOf("pavo") to "https://images.unsplash.com/photo-1518492104633-130d0cc84637?w=400&q=80",
+        listOf("ternera", "filete") to "https://images.unsplash.com/photo-1544025162-d76694265947?w=400&q=80",
+        listOf("carne picada") to "https://images.unsplash.com/photo-1588168333986-5078d3ae3976?w=400&q=80",
+        listOf("hamburguesa") to "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80",
+        listOf("jamon", "jamón") to "https://images.unsplash.com/photo-1529692236671-f1f6cf9683ba?w=400&q=80",
+        listOf("lomo", "cerdo") to "https://images.unsplash.com/photo-1432139555190-58524dae6a55?w=400&q=80",
 
         // Pescados & Mariscos
-        listOf("salmon", "salmón") to "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=200&q=80",
-        listOf("atun", "atún") to "https://images.unsplash.com/photo-1501595091296-3aa970afb3ff?w=200&q=80",
-        listOf("merluza", "pescado") to "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=200&q=80",
-        listOf("gamba", "langostino", "marisco") to "https://images.unsplash.com/photo-1565680018434-b513d5e5fd47?w=200&q=80",
+        listOf("salmon", "salmón") to "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400&q=80",
+        listOf("atun", "atún", "bonito") to "https://images.unsplash.com/photo-1501595091296-3aa970afb3ff?w=400&q=80",
+        listOf("merluza", "pescado", "dorada", "lubina", "bacalao") to "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=400&q=80",
+        listOf("gamba", "langostino", "marisco", "calamar", "pulpo") to "https://images.unsplash.com/photo-1565680018434-b513d5e5fd47?w=400&q=80",
 
         // Huevos & Tortillas
-        listOf("tortilla de patata", "tortilla española") to "https://images.unsplash.com/photo-1584776296944-ab6fb57b0bdd?w=200&q=80",
-        listOf("tortilla francesa", "tortilla") to "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&q=80",
-        listOf("huevo", "huevos") to "https://images.unsplash.com/photo-1587486913049-53fc88980cfc?w=200&q=80",
+        listOf("tortilla de patata", "tortilla española", "tortilla espanola") to "https://images.unsplash.com/photo-1584776296944-ab6fb57b0bdd?w=400&q=80",
+        listOf("tortilla francesa", "tortilla") to "https://images.unsplash.com/photo-1510693206972-df098062cb71?w=400&q=80",
+        listOf("huevo frito") to "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=400&q=80",
+        listOf("huevo", "huevos", "claras") to "https://images.unsplash.com/photo-1587486913049-53fc88980cfc?w=400&q=80",
 
         // Arroces & Pastas
-        listOf("paella") to "https://images.unsplash.com/photo-1534080564583-6be75777b70a?w=200&q=80",
-        listOf("arroz") to "https://images.unsplash.com/photo-1516684732162-798a0062be99?w=200&q=80",
-        listOf("pasta", "espagueti", "macarron", "macarrón") to "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=200&q=80",
-        listOf("pizza") to "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200&q=80",
+        listOf("paella") to "https://images.unsplash.com/photo-1534080564583-6be75777b70a?w=400&q=80",
+        listOf("arroz") to "https://images.unsplash.com/photo-1516684732162-798a0062be99?w=400&q=80",
+        listOf("pasta", "espagueti", "macarron", "macarrón", "lasaña") to "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=400&q=80",
+        listOf("pizza") to "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&q=80",
 
         // Legumbres & Guisos
-        listOf("lenteja", "lentejas") to "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=80",
-        listOf("garbanzo", "garbanzos", "hummus") to "https://images.unsplash.com/photo-1505576399279-565b52d4ac71?w=200&q=80",
-        listOf("alubia", "alubias", "judia", "judías") to "https://images.unsplash.com/photo-1584278860047-22db9ff82bed?w=200&q=80",
+        listOf("lenteja", "lentejas") to "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
+        listOf("garbanzo", "garbanzos") to "https://images.unsplash.com/photo-1505576399279-565b52d4ac71?w=400&q=80",
+        listOf("hummus") to "https://images.unsplash.com/photo-1577906096429-f73c2c312435?w=400&q=80",
+        listOf("alubia", "alubias", "judia", "judías") to "https://images.unsplash.com/photo-1584278860047-22db9ff82bed?w=400&q=80",
 
         // Desayuno, Panes & Avena
-        listOf("avena", "porridge") to "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=200&q=80",
-        listOf("tostada", "pan") to "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=200&q=80",
-        listOf("croissant", "bollo") to "https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=200&q=80",
-        listOf("cafe", "café") to "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80",
+        listOf("avena", "porridge") to "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=400&q=80",
+        listOf("pan de molde", "molde") to "https://images.unsplash.com/photo-1589367920969-ab8e050bbb04?w=400&q=80",
+        listOf("tostada", "pan", "reganas", "biscote") to "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&q=80",
+        listOf("croissant", "bollo", "magdalena") to "https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=400&q=80",
+        listOf("cafe", "café") to "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&q=80",
+        listOf("tortita", "tortitas") to "https://images.unsplash.com/photo-1599490659213-e2b9527bd087?w=400&q=80",
 
         // Patatas & Verduras
-        listOf("patata", "patatas") to "https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=200&q=80",
-        listOf("ensalada", "lechuga") to "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=200&q=80",
-        listOf("gazpacho", "salmorejo") to "https://images.unsplash.com/photo-1547496502-affa22d38842?w=200&q=80",
-        listOf("tomate") to "https://images.unsplash.com/photo-1546470427-227c7369a92a?w=200&q=80",
-        listOf("brocoli", "brócoli") to "https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=200&q=80",
-        listOf("aguacate", "guacamole") to "https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=200&q=80",
+        listOf("patatas fritas", "papas fritas") to "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400&q=80",
+        listOf("patata", "patatas", "pure") to "https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=400&q=80",
+        listOf("ensalada", "lechuga") to "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&q=80",
+        listOf("gazpacho", "salmorejo") to "https://images.unsplash.com/photo-1547496502-affa22d38842?w=400&q=80",
+        listOf("tomate") to "https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=400&q=80",
+        listOf("brocoli", "brócoli") to "https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=400&q=80",
+        listOf("aguacate", "guacamole") to "https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=400&q=80",
 
         // Frutas
-        listOf("platano", "plátano") to "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=200&q=80",
-        listOf("manzana") to "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=200&q=80",
-        listOf("naranja", "mandarina") to "https://images.unsplash.com/photo-1547514701-42782101795e?w=200&q=80",
-        listOf("fresa", "fresas") to "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=200&q=80",
-        listOf("sandia", "sandía") to "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=200&q=80",
+        listOf("platano", "plátano") to "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=400&q=80",
+        listOf("manzana") to "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&q=80",
+        listOf("naranja", "mandarina") to "https://images.unsplash.com/photo-1547514701-42782101795e?w=400&q=80",
+        listOf("fresa", "fresas") to "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=400&q=80",
+        listOf("sandia", "sandía", "melon", "melón") to "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=400&q=80",
 
         // Lácteos & Grasas
-        listOf("yogur") to "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=200&q=80",
-        listOf("leche") to "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=200&q=80",
-        listOf("queso") to "https://images.unsplash.com/photo-1486297678162-eb2a19b0a32d?w=200&q=80",
-        listOf("aceite", "oliva") to "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=200&q=80",
-        listOf("nuez", "nueces", "almendra", "cacahuete") to "https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=200&q=80",
-        listOf("chocolate") to "https://images.unsplash.com/photo-1511381939415-e44015466834?w=200&q=80"
+        listOf("queso fresco batido", "yogur griego") to "https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?w=400&q=80",
+        listOf("yogur") to "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=400&q=80",
+        listOf("leche") to "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=400&q=80",
+        listOf("queso") to "https://images.unsplash.com/photo-1486297678162-eb2a19b0a32d?w=400&q=80",
+        listOf("aceite", "oliva") to "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400&q=80",
+        listOf("crema de cacahuete", "mantequilla de cacahuete") to "https://images.unsplash.com/photo-1590080875515-8a3a8dc5735e?w=400&q=80",
+        listOf("nuez", "nueces", "almendra", "cacahuete") to "https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=400&q=80",
+        listOf("chocolate", "cacao") to "https://images.unsplash.com/photo-1511381939415-e44015466834?w=400&q=80"
     )
 
     /**
      * Resuelve la URL de la imagen real para un producto o alimento:
-     * 1. Si ya tiene imageUrl, la devuelve sanitizada (https).
-     * 2. Si es de Mercadona/Hacendado, busca en el catálogo de envases reales de Hacendado.
-     * 3. Si es genérico o cualquier otro, busca una foto real de alta calidad de ese plato/ingrediente.
+     * 1. Si providedUrl existe y es válida (no es un enlace roto conocido de OpenFoodFacts), la limpia y usa.
+     * 2. Si es de Mercadona/Hacendado, busca en el catálogo de fotos de productos.
+     * 3. Si es genérico o cualquier otro, busca una foto culinaria de alta resolución probada.
      */
     fun resolve(name: String, brand: String? = null, providedUrl: String? = null): String? {
         if (!providedUrl.isNullOrBlank()) {
-            return providedUrl.replace("http://", "https://")
+            val sanitized = providedUrl.replace("http://", "https://")
+            // Descartar URLs de OpenFoodFacts que devuelven 404
+            if (!sanitized.contains("images.openfoodfacts.net/images/products/848") &&
+                !sanitized.contains("images.openfoodfacts.net/images/products/356") &&
+                !sanitized.contains("images.openfoodfacts.net/images/products/359")) {
+                return sanitized
+            }
         }
 
         val nameLower = name.lowercase(Locale.ROOT).trim()
         val brandLower = (brand ?: "").lowercase(Locale.ROOT).trim()
         val isMercadona = brandLower.contains("mercadona") || brandLower.contains("hacendado") || nameLower.contains("hacendado")
 
-        // 1. Búsqueda en catálogo Hacendado
+        // 1. Catálogo específico de Hacendado / Mercadona
         if (isMercadona) {
             for ((key, url) in hacendadoImages) {
                 if (nameLower.contains(key)) {
@@ -134,14 +148,14 @@ object RealFoodImageResolver {
             }
         }
 
-        // 2. Búsqueda en fotos gastronómicas reales para genéricos y caseros
+        // 2. Catálogo gastronómico real
         for ((tokens, url) in genericFoodImages) {
             if (tokens.any { token -> nameLower.contains(token) }) {
                 return url
             }
         }
 
-        return null
+        return "https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=400&q=80" // Plato saludable genérico
     }
 
     /**

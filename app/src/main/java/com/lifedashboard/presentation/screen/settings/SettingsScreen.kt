@@ -1753,7 +1753,7 @@ private fun EnhancedProfileModal(
 
 @Composable
 private fun EditStepsGoalModal(currentValue: Int, onDismiss: () -> Unit, onSave: (Int) -> Unit) {
-    var selectedSteps by remember { mutableIntStateOf(currentValue) }
+    var stepsText by remember { mutableStateOf(currentValue.toString()) }
     val stepOptions = listOf(6000, 8000, 10000, 12000, 15000)
 
     AlertDialog(
@@ -1768,24 +1768,54 @@ private fun EditStepsGoalModal(currentValue: Int, onDismiss: () -> Unit, onSave:
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                stepOptions.forEach { steps ->
-                    val isSelected = steps == selectedSteps
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isSelected) RingSteps else Indigo700)
-                            .clickable { selectedSteps = steps }
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
-                    ) {
-                        Text("$steps pasos", color = if (isSelected) Indigo900 else White, fontWeight = FontWeight.Bold)
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("Escribe tu objetivo diario personalizado de pasos:", style = MaterialTheme.typography.bodySmall, color = Gray400)
+
+                OutlinedTextField(
+                    value = stepsText,
+                    onValueChange = { stepsText = it.filter { char -> char.isDigit() } },
+                    label = { Text("Pasos diarios", color = Cyan400) },
+                    trailingIcon = { Text("pasos", color = Gray400, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 12.dp)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Cyan400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("O elige una sugerencia rápida:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    stepOptions.forEach { steps ->
+                        val isSelected = stepsText == steps.toString()
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) RingSteps else Indigo700)
+                                .clickable { stepsText = steps.toString() }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text("${steps / 1000}k", color = if (isSelected) Indigo900 else White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                        }
                     }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(selectedSteps) }, colors = ButtonDefaults.buttonColors(containerColor = RingSteps, contentColor = Indigo900)) {
+            Button(
+                onClick = {
+                    val s = stepsText.toIntOrNull()?.coerceIn(1000, 100000) ?: currentValue
+                    onSave(s)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = RingSteps, contentColor = Indigo900)
+            ) {
                 Text("Guardar", fontWeight = FontWeight.Bold)
             }
         },
@@ -1795,7 +1825,7 @@ private fun EditStepsGoalModal(currentValue: Int, onDismiss: () -> Unit, onSave:
 
 @Composable
 private fun EditSleepGoalModal(currentValue: Float, onDismiss: () -> Unit, onSave: (Float) -> Unit) {
-    var selectedSleep by remember { mutableFloatStateOf(currentValue) }
+    var sleepText by remember { mutableStateOf(String.format(Locale.US, "%.1f", currentValue)) }
     val sleepOptions = listOf(6.5f, 7.0f, 7.5f, 8.0f, 8.5f, 9.0f)
 
     AlertDialog(
@@ -1810,29 +1840,55 @@ private fun EditSleepGoalModal(currentValue: Float, onDismiss: () -> Unit, onSav
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                sleepOptions.chunked(2).forEach { rowOptions ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        rowOptions.forEach { hours ->
-                            val isSelected = hours == selectedSleep
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isSelected) RingSleep else Indigo700)
-                                    .clickable { selectedSleep = hours }
-                                    .padding(vertical = 12.dp)
-                            ) {
-                                Text("$hours h", color = if (isSelected) Indigo900 else White, fontWeight = FontWeight.Bold)
-                            }
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("Escribe las horas de descanso nocturno deseadas:", style = MaterialTheme.typography.bodySmall, color = Gray400)
+
+                OutlinedTextField(
+                    value = sleepText,
+                    onValueChange = { sleepText = it.replace(',', '.') },
+                    label = { Text("Horas de sueño", color = Teal400) },
+                    trailingIcon = { Text("horas", color = Gray400, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 12.dp)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Teal400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("O elige una sugerencia rápida:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    sleepOptions.forEach { hours ->
+                        val formatted = String.format(Locale.US, "%.1f", hours)
+                        val isSelected = sleepText == formatted || sleepText == hours.toString()
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) RingSleep else Indigo700)
+                                .clickable { sleepText = formatted }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text("${hours}h", color = if (isSelected) Indigo900 else White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(selectedSleep) }, colors = ButtonDefaults.buttonColors(containerColor = RingSleep, contentColor = Indigo900)) {
+            Button(
+                onClick = {
+                    val h = sleepText.toFloatOrNull()?.coerceIn(4f, 14f) ?: currentValue
+                    onSave(h)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = RingSleep, contentColor = Indigo900)
+            ) {
                 Text("Guardar", fontWeight = FontWeight.Bold)
             }
         },
@@ -1842,7 +1898,7 @@ private fun EditSleepGoalModal(currentValue: Float, onDismiss: () -> Unit, onSav
 
 @Composable
 private fun EditCaloriesGoalModal(currentValue: Float, onDismiss: () -> Unit, onSave: (Float) -> Unit) {
-    var selectedCal by remember { mutableFloatStateOf(currentValue) }
+    var calText by remember { mutableStateOf(currentValue.toInt().toString()) }
     val calOptions = listOf(1600f, 1800f, 2000f, 2200f, 2500f, 2800f)
 
     AlertDialog(
@@ -1853,33 +1909,58 @@ private fun EditCaloriesGoalModal(currentValue: Float, onDismiss: () -> Unit, on
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.LocalFireDepartment, null, tint = Amber400, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Calorías Activas", color = White, fontWeight = FontWeight.Bold)
+                Text("Meta de Calorías Diarias", color = White, fontWeight = FontWeight.Bold)
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                calOptions.chunked(2).forEach { rowOptions ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        rowOptions.forEach { cal ->
-                            val isSelected = cal == selectedCal
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isSelected) Amber400 else Indigo700)
-                                    .clickable { selectedCal = cal }
-                                    .padding(vertical = 12.dp)
-                            ) {
-                                Text("${cal.toInt()} kcal", color = if (isSelected) Indigo900 else White, fontWeight = FontWeight.Bold)
-                            }
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("Escribe tu requerimiento calórico objetivo:", style = MaterialTheme.typography.bodySmall, color = Gray400)
+
+                OutlinedTextField(
+                    value = calText,
+                    onValueChange = { calText = it.filter { char -> char.isDigit() } },
+                    label = { Text("Calorías diarias", color = Amber400) },
+                    trailingIcon = { Text("kcal", color = Gray400, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 12.dp)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Amber400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("O elige una sugerencia rápida:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    calOptions.forEach { cal ->
+                        val isSelected = calText == cal.toInt().toString()
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) Amber400 else Indigo700)
+                                .clickable { calText = cal.toInt().toString() }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text("${cal.toInt()}", color = if (isSelected) Indigo900 else White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(selectedCal) }, colors = ButtonDefaults.buttonColors(containerColor = Amber400, contentColor = Indigo900)) {
+            Button(
+                onClick = {
+                    val c = calText.toFloatOrNull()?.coerceIn(800f, 8000f) ?: currentValue
+                    onSave(c)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Amber400, contentColor = Indigo900)
+            ) {
                 Text("Guardar", fontWeight = FontWeight.Bold)
             }
         },
@@ -1889,8 +1970,8 @@ private fun EditCaloriesGoalModal(currentValue: Float, onDismiss: () -> Unit, on
 
 @Composable
 private fun EditWorkoutGoalModal(currentDays: Int, currentMinutes: Int, onDismiss: () -> Unit, onSave: (Int, Int) -> Unit) {
-    var selectedDays by remember { mutableIntStateOf(currentDays) }
-    var selectedMinutes by remember { mutableIntStateOf(currentMinutes) }
+    var daysText by remember { mutableStateOf(currentDays.toString()) }
+    var minutesText by remember { mutableStateOf(currentMinutes.toString()) }
     val dayOptions = listOf(2, 3, 4, 5, 6)
     val minuteOptions = listOf(120, 150, 180, 240, 300)
 
@@ -1906,23 +1987,67 @@ private fun EditWorkoutGoalModal(currentDays: Int, currentMinutes: Int, onDismis
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Días por semana:", style = MaterialTheme.typography.labelMedium, color = Gray300)
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Personaliza tus objetivos semanales escribiendo los valores:", style = MaterialTheme.typography.bodySmall, color = Gray400)
+
+                OutlinedTextField(
+                    value = daysText,
+                    onValueChange = { daysText = it.filter { char -> char.isDigit() } },
+                    label = { Text("Días por semana", color = Violet300) },
+                    trailingIcon = { Text("días", color = Gray400, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 12.dp)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                     dayOptions.forEach { days ->
-                        OptionChip("$days d", days == selectedDays, Modifier.weight(1f)) { selectedDays = days }
+                        OptionChip("$days d", days.toString() == daysText, Modifier.weight(1f)) { daysText = days.toString() }
                     }
                 }
-                Text("Minutos semanales:", style = MaterialTheme.typography.labelMedium, color = Gray300)
+
+                Spacer(Modifier.height(4.dp))
+
+                OutlinedTextField(
+                    value = minutesText,
+                    onValueChange = { minutesText = it.filter { char -> char.isDigit() } },
+                    label = { Text("Minutos totales semanales", color = Violet300) },
+                    trailingIcon = { Text("min", color = Gray400, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 12.dp)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                     minuteOptions.forEach { mins ->
-                        OptionChip("${mins}m", mins == selectedMinutes, Modifier.weight(1f)) { selectedMinutes = mins }
+                        OptionChip("${mins}m", mins.toString() == minutesText, Modifier.weight(1f)) { minutesText = mins.toString() }
                     }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(selectedDays, selectedMinutes) }, colors = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)) {
+            Button(
+                onClick = {
+                    val d = daysText.toIntOrNull()?.coerceIn(1, 7) ?: currentDays
+                    val m = minutesText.toIntOrNull()?.coerceIn(30, 2000) ?: currentMinutes
+                    onSave(d, m)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)
+            ) {
                 Text("Guardar", fontWeight = FontWeight.Bold)
             }
         },

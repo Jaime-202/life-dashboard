@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,6 +64,9 @@ fun NutritionScreen(
     // Estado para diálogo de búsqueda y añadido manual
     var showSearchDialog by remember { mutableStateOf(false) }
     var selectedMealTypeForAdd by remember { mutableStateOf("COMIDA") }
+    var editingMealItem by remember { mutableStateOf<MealEntryEntity?>(null) }
+    var showQuickAddDialog by remember { mutableStateOf(false) }
+    var showCustomTargetsDialog by remember { mutableStateOf(false) }
 
     // Launchers para tomar foto con la cámara y seleccionar de la galería
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -158,7 +163,7 @@ fun NutritionScreen(
         )
     }
 
-    // Diálogo de cálculo de ingesta calórica según peso y objetivo
+    // Diálogo de cálculo de ingesta calórica según peso y objetivo (Mifflin-St Jeor)
     if (state.showCalculatorDialog) {
         CaloricCalculatorDialog(
             currentWeight = state.userWeightKg,
@@ -170,6 +175,50 @@ fun NutritionScreen(
                 Toast.makeText(context, "Meta calórica actualizada: ${intake.calories.toInt()} kcal", Toast.LENGTH_SHORT).show()
             },
             onDismiss = { viewModel.setCalculatorDialogVisible(false) }
+        )
+    }
+
+    // Diálogo para escribir objetivos personalizados manualmente (Calorías y Macros)
+    if (showCustomTargetsDialog) {
+        CustomMacroTargetsDialog(
+            currentTargetCalories = state.targetCalories,
+            currentTargetProtein = state.targetProtein,
+            currentTargetCarbs = state.targetCarbs,
+            currentTargetFat = state.targetFat,
+            onSaveTargets = { cal, p, c, f ->
+                viewModel.updateCustomTargets(cal, p, c, f)
+                showCustomTargetsDialog = false
+                Toast.makeText(context, "Objetivos guardados: ${cal.toInt()} kcal", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = { showCustomTargetsDialog = false }
+        )
+    }
+
+    // Diálogo para ajustar porción (gramos) de un alimento ya registrado
+    editingMealItem?.let { meal ->
+        EditPortionDialog(
+            meal = meal,
+            onSaveGrams = { newGrams ->
+                viewModel.updateMealGrams(meal, newGrams)
+                editingMealItem = null
+            },
+            onDelete = {
+                viewModel.deleteMeal(meal.id)
+                editingMealItem = null
+            },
+            onDismiss = { editingMealItem = null }
+        )
+    }
+
+    // Diálogo de añadido rápido de calorías o comida manual
+    if (showQuickAddDialog) {
+        QuickAddMealDialog(
+            mealType = selectedMealTypeForAdd,
+            onAdd = { name, kcal, p, c, f ->
+                viewModel.addQuickMeal(name, kcal, p, c, f, selectedMealTypeForAdd)
+                showQuickAddDialog = false
+            },
+            onDismiss = { showQuickAddDialog = false }
         )
     }
 
@@ -197,6 +246,7 @@ fun NutritionScreen(
             item {
                 NutritionHeroCard(
                     state = state,
+                    onOpenCustomTargets = { showCustomTargetsDialog = true },
                     onOpenCalculator = { viewModel.setCalculatorDialogVisible(true) }
                 )
             }
@@ -229,6 +279,13 @@ fun NutritionScreen(
                     onGalleryClick = {
                         selectedMealTypeForAdd = section.key
                         galleryLauncher.launch("image/*")
+                    },
+                    onQuickAddClick = {
+                        selectedMealTypeForAdd = section.key
+                        showQuickAddDialog = true
+                    },
+                    onEditMeal = { meal ->
+                        editingMealItem = meal
                     },
                     onDeleteMeal = { mealId ->
                         viewModel.deleteMeal(mealId)
@@ -348,6 +405,7 @@ private fun NutritionHeader(
 @Composable
 private fun NutritionHeroCard(
     state: NutritionUiState,
+    onOpenCustomTargets: () -> Unit,
     onOpenCalculator: () -> Unit
 ) {
     val remaining = state.remainingCalories.toInt()
@@ -366,7 +424,7 @@ private fun NutritionHeroCard(
             .padding(18.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            // Cabecera con título y botón de cálculo automático
+            // Cabecera con título y botones de objetivos / calculadora
             Row(
                 verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -383,27 +441,51 @@ private fun NutritionHeroCard(
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Violet400.copy(alpha = 0.2f))
-                        .clickable(onClick = onOpenCalculator)
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Calculate, contentDescription = null, tint = Violet300, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = "Calcular Meta",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Violet300,
-                            fontWeight = FontWeight.Bold
-                        )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Botón para escribir objetivos personalizados manualmente
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Violet400.copy(alpha = 0.2f))
+                            .border(1.dp, Violet400.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                            .clickable(onClick = onOpenCustomTargets)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Edit, contentDescription = null, tint = Violet300, modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = "Mis Metas",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Violet300,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Botón para calcular científicamente con Mifflin-St Jeor
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Indigo700)
+                            .clickable(onClick = onOpenCalculator)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Calculate, contentDescription = null, tint = Gray300, modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = "Calcular",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Gray300,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
 
-            // 3 Columnas claras: Consumidas, Quemadas y Restantes
+            // 3 Columnas métricas: Consumidas, Quemadas y Restantes / Superado
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
@@ -469,7 +551,7 @@ private fun NutritionHeroCard(
 
             HorizontalDivider(color = Indigo700, thickness = 1.dp)
 
-            // Desglose de 3 Macronutrientes Principales
+            // Desglose de 3 Macronutrientes Principales con gramos restantes
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
@@ -538,6 +620,7 @@ private fun MacroColumnItem(
         animationSpec = tween(900, easing = FastOutSlowInEasing),
         label = "macro_progress"
     )
+    val remainingGrams = (targetVal - currentVal).coerceAtLeast(0f).toInt()
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -575,6 +658,13 @@ private fun MacroColumnItem(
                     .background(color)
             )
         }
+
+        Text(
+            text = "${remainingGrams}g rest.",
+            style = MaterialTheme.typography.labelSmall,
+            color = Gray400,
+            fontSize = 9.sp
+        )
     }
 }
 
@@ -588,9 +678,14 @@ private fun MealSectionCard(
     onTextAiClick: () -> Unit,
     onCameraClick: () -> Unit,
     onGalleryClick: () -> Unit,
+    onQuickAddClick: () -> Unit,
+    onEditMeal: (MealEntryEntity) -> Unit,
     onDeleteMeal: (Long) -> Unit
 ) {
     val sectionKcal = meals.sumOf { it.calories.toDouble() }.toInt()
+    val sectionP = meals.sumOf { it.protein.toDouble() }.toInt()
+    val sectionC = meals.sumOf { it.carbs.toDouble() }.toInt()
+    val sectionG = meals.sumOf { it.fat.toDouble() }.toInt()
 
     Box(
         modifier = Modifier
@@ -619,18 +714,26 @@ private fun MealSectionCard(
                 }
 
                 if (sectionKcal > 0) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Indigo700)
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
-                            text  = "$sectionKcal kcal",
+                            text = "P:${sectionP}g C:${sectionC}g G:${sectionG}g",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Amber400,
-                            fontWeight = FontWeight.Bold
+                            color = Gray400,
+                            fontSize = 10.sp
                         )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Indigo700)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text  = "$sectionKcal kcal",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Amber400,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -639,14 +742,25 @@ private fun MealSectionCard(
             if (meals.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     meals.forEach { meal ->
-                        MealItemRow(meal = meal, onDelete = { onDeleteMeal(meal.id) })
+                        MealItemRow(
+                            meal = meal,
+                            onEdit = { onEditMeal(meal) },
+                            onDelete = { onDeleteMeal(meal.id) }
+                        )
                     }
                 }
+            } else {
+                Text(
+                    text = "No has registrado alimentos en ${section.title.lowercase()} todavía.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray500,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
             }
 
-            // Botones de acción: Buscar Alimento, Texto IA & Foto con IA
+            // Botones de acción: Buscar Alimento, Texto IA, Rápido & Foto con IA
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -654,10 +768,10 @@ private fun MealSectionCard(
                     onClick = onAddClick,
                     colors  = ButtonDefaults.buttonColors(containerColor = Indigo700),
                     shape   = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                    modifier = Modifier.weight(1.15f)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    modifier = Modifier.weight(1.1f)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = White, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Add, contentDescription = null, tint = White, modifier = Modifier.size(15.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Buscar", style = MaterialTheme.typography.labelMedium, color = White, maxLines = 1)
                 }
@@ -666,34 +780,46 @@ private fun MealSectionCard(
                     onClick = onTextAiClick,
                     colors  = ButtonDefaults.buttonColors(containerColor = Violet400.copy(alpha = 0.25f)),
                     shape   = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                     border = BorderStroke(1.dp, Violet400.copy(alpha = 0.5f)),
-                    modifier = Modifier.weight(1.25f)
+                    modifier = Modifier.weight(1.2f)
                 ) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Violet300, modifier = Modifier.size(15.dp))
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Violet300, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Texto IA 💬", style = MaterialTheme.typography.labelMedium, color = Violet300, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text("Texto IA", style = MaterialTheme.typography.labelMedium, color = Violet300, fontWeight = FontWeight.Bold, maxLines = 1)
+                }
+
+                Button(
+                    onClick = onQuickAddClick,
+                    colors  = ButtonDefaults.buttonColors(containerColor = Indigo700),
+                    shape   = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    modifier = Modifier.weight(1.0f)
+                ) {
+                    Icon(Icons.Default.FlashOn, contentDescription = null, tint = Amber400, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text("Rápido", style = MaterialTheme.typography.labelMedium, color = White, maxLines = 1)
                 }
 
                 IconButton(
                     onClick = onCameraClick,
                     modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .background(Violet400.copy(alpha = 0.25f))
-                        .border(1.dp, Violet400.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                        .border(1.dp, Violet400.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                 ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = "Foto IA", tint = Violet300, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.CameraAlt, contentDescription = "Foto IA", tint = Violet300, modifier = Modifier.size(17.dp))
                 }
 
                 IconButton(
                     onClick = onGalleryClick,
                     modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .background(Indigo700)
                 ) {
-                    Icon(Icons.Default.PhotoLibrary, contentDescription = "Elegir de galería", tint = Gray300, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.PhotoLibrary, contentDescription = "Elegir de galería", tint = Gray300, modifier = Modifier.size(17.dp))
                 }
             }
         }
@@ -701,23 +827,29 @@ private fun MealSectionCard(
 }
 
 @Composable
-private fun MealItemRow(meal: MealEntryEntity, onDelete: () -> Unit) {
+private fun MealItemRow(
+    meal: MealEntryEntity,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
     Row(
         verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier              = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(Indigo900.copy(alpha = 0.6f))
+            .clickable(onClick = onEdit)
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
-        // Thumbnail visual categoría o foto con fallback limpio
+        // Thumbnail visual real con fallback limpio
         FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = meal.imageUrl, size = 42.dp)
         Spacer(Modifier.width(10.dp))
 
         Column(modifier = Modifier.weight(1f)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
@@ -729,8 +861,7 @@ private fun MealItemRow(meal: MealEntryEntity, onDelete: () -> Unit) {
                     overflow   = TextOverflow.Ellipsis,
                     modifier   = Modifier.weight(1f, fill = false)
                 )
-                if (meal.brand.isNotBlank() && meal.brand != "Básico") {
-                    Spacer(Modifier.width(6.dp))
+                if (meal.brand.isNotBlank() && meal.brand != "Básico" && meal.brand != "Manual") {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
@@ -738,31 +869,589 @@ private fun MealItemRow(meal: MealEntryEntity, onDelete: () -> Unit) {
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text     = meal.brand,
-                            style    = MaterialTheme.typography.labelSmall,
-                            color    = Violet300,
-                            fontSize = 9.sp,
-                            maxLines = 1,
-                            softWrap = false
+                            text       = meal.brand,
+                            style      = MaterialTheme.typography.labelSmall,
+                            color      = Violet300,
+                            fontSize   = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines   = 1,
+                            overflow   = TextOverflow.Ellipsis
                         )
                     }
                 }
             }
-            Spacer(Modifier.height(2.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Spacer(Modifier.height(3.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text("${meal.grams.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp)
-                Text("·", color = Gray500)
-                Text("${meal.calories.toInt()} kcal", style = MaterialTheme.typography.labelSmall, color = Amber400, fontSize = 11.sp)
-                Text("·", color = Gray500)
+                Text("·", color = Gray600)
+                Text("${meal.calories.toInt()} kcal", style = MaterialTheme.typography.labelSmall, color = Amber400, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+                Text("·", color = Gray600)
                 Text("P:${meal.protein.toInt()}g C:${meal.carbs.toInt()}g G:${meal.fat.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp)
             }
         }
 
-        IconButton(
-            onClick  = onDelete,
-            modifier = Modifier.size(28.dp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick  = onEdit,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = "Editar porción", tint = Gray400, modifier = Modifier.size(15.dp))
+            }
+            IconButton(
+                onClick  = onDelete,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(Icons.Default.DeleteOutline, contentDescription = "Eliminar", tint = Gray500, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+// ─── Diálogo para Editar la Porción en Gramos ──────────────────────────────────
+
+@Composable
+private fun EditPortionDialog(
+    meal: MealEntryEntity,
+    onSaveGrams: (Float) -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var gramsInput by remember(meal.grams) { mutableStateOf("${meal.grams.toInt()}") }
+    val parsedGrams = gramsInput.toFloatOrNull() ?: meal.grams
+    val ratio = if (meal.grams > 0f) parsedGrams / meal.grams else 1f
+
+    val previewKcal = (meal.calories * ratio).coerceAtLeast(0f).toInt()
+    val previewProtein = "%.1f".format(Locale.US, (meal.protein * ratio).coerceAtLeast(0f))
+    val previewCarbs = "%.1f".format(Locale.US, (meal.carbs * ratio).coerceAtLeast(0f))
+    val previewFat = "%.1f".format(Locale.US, (meal.fat * ratio).coerceAtLeast(0f))
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Indigo800)
+                .border(1.dp, Violet400.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                .padding(20.dp)
         ) {
-            Icon(Icons.Default.DeleteOutline, contentDescription = "Eliminar", tint = Gray500, modifier = Modifier.size(16.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                // Header
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier              = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = meal.imageUrl, size = 38.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = meal.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (meal.brand.isNotBlank() && meal.brand != "Básico") {
+                                Text(text = meal.brand, style = MaterialTheme.typography.labelSmall, color = Violet300)
+                            }
+                        }
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Gray400, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Text(
+                    text = "Ajusta la cantidad en gramos consumida para recalcular las calorías y macros automáticamente:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray300
+                )
+
+                // Input de gramos con teclado numérico
+                OutlinedTextField(
+                    value = gramsInput,
+                    onValueChange = { gramsInput = it },
+                    label = { Text("Porción consumida (gramos)", color = Gray400) },
+                    trailingIcon = { Text("g", color = Gray400, modifier = Modifier.padding(end = 12.dp)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Chips de ajuste rápido
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf("-50", "-20", "+20", "+50").forEach { diffStr ->
+                        val diff = diffStr.toInt()
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Indigo700)
+                                .clickable {
+                                    val current = gramsInput.toIntOrNull() ?: meal.grams.toInt()
+                                    val updated = (current + diff).coerceAtLeast(5)
+                                    gramsInput = "$updated"
+                                }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text("${diffStr}g", style = MaterialTheme.typography.labelSmall, color = Gray100, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                // Resumen en vivo
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Indigo900)
+                        .border(1.dp, Indigo700, RoundedCornerShape(16.dp))
+                        .padding(14.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Calorías recalculadas:", style = MaterialTheme.typography.bodySmall, color = Gray300)
+                            Text("$previewKcal kcal", style = MaterialTheme.typography.titleMedium, color = Amber400, fontWeight = FontWeight.Bold)
+                        }
+                        HorizontalDivider(color = Indigo700, thickness = 1.dp)
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Proteínas: ${previewProtein}g", style = MaterialTheme.typography.labelSmall, color = Violet300)
+                            Text("Carbos: ${previewCarbs}g", style = MaterialTheme.typography.labelSmall, color = Cyan400)
+                            Text("Grasas: ${previewFat}g", style = MaterialTheme.typography.labelSmall, color = Amber400)
+                        }
+                    }
+                }
+
+                // Acciones
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = onDelete,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Rose400),
+                        border = BorderStroke(1.dp, Rose400.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Eliminar", color = Rose400)
+                    }
+
+                    Button(
+                        onClick = {
+                            val finalGrams = gramsInput.toFloatOrNull() ?: meal.grams
+                            if (finalGrams > 0f) {
+                                onSaveGrams(finalGrams)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Violet400),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1.3f)
+                    ) {
+                        Text("Guardar", color = Indigo900, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Diálogo de Añadido Rápido de Comida ───────────────────────────────────────
+
+@Composable
+private fun QuickAddMealDialog(
+    mealType: String,
+    onAdd: (name: String, calories: Float, protein: Float, carbs: Float, fat: Float) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var nameInput by remember { mutableStateOf("") }
+    var kcalInput by remember { mutableStateOf("") }
+    var proteinInput by remember { mutableStateOf("") }
+    var carbsInput by remember { mutableStateOf("") }
+    var fatInput by remember { mutableStateOf("") }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Indigo800)
+                .border(1.dp, Violet400.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                .padding(20.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.FlashOn, contentDescription = null, tint = Amber400, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Añadido Rápido",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = White
+                        )
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Gray400, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Violet400.copy(alpha = 0.15f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text("Destino: $mealType", style = MaterialTheme.typography.labelSmall, color = Violet300, fontWeight = FontWeight.SemiBold)
+                }
+
+                OutlinedTextField(
+                    value = nameInput,
+                    onValueChange = { nameInput = it },
+                    label = { Text("Nombre o descripción", color = Gray400) },
+                    placeholder = { Text("Ej: Merienda o comida rápida", color = Gray500) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = kcalInput,
+                    onValueChange = { kcalInput = it },
+                    label = { Text("Calorías (kcal) *", color = Gray400) },
+                    trailingIcon = { Text("kcal", color = Amber400, modifier = Modifier.padding(end = 12.dp)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = proteinInput,
+                        onValueChange = { proteinInput = it },
+                        label = { Text("Proteína", color = Gray400, fontSize = 11.sp) },
+                        trailingIcon = { Text("g", color = Violet300, fontSize = 11.sp, modifier = Modifier.padding(end = 6.dp)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Violet400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = carbsInput,
+                        onValueChange = { carbsInput = it },
+                        label = { Text("Carbos", color = Gray400, fontSize = 11.sp) },
+                        trailingIcon = { Text("g", color = Cyan400, fontSize = 11.sp, modifier = Modifier.padding(end = 6.dp)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Violet400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = fatInput,
+                        onValueChange = { fatInput = it },
+                        label = { Text("Grasas", color = Gray400, fontSize = 11.sp) },
+                        trailingIcon = { Text("g", color = Amber400, fontSize = 11.sp, modifier = Modifier.padding(end = 6.dp)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Violet400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Gray400),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancelar", color = Gray400)
+                    }
+                    Button(
+                        onClick = {
+                            val kcal = kcalInput.toFloatOrNull() ?: 0f
+                            val p = proteinInput.toFloatOrNull() ?: 0f
+                            val c = carbsInput.toFloatOrNull() ?: 0f
+                            val f = fatInput.toFloatOrNull() ?: 0f
+                            if (kcal > 0f || p > 0f || c > 0f || f > 0f) {
+                                onAdd(nameInput.ifBlank { "Comida rápida" }, kcal, p, c, f)
+                            }
+                        },
+                        enabled = (kcalInput.toFloatOrNull() ?: 0f) > 0f || (proteinInput.toFloatOrNull() ?: 0f) > 0f,
+                        colors = ButtonDefaults.buttonColors(containerColor = Violet400),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1.3f)
+                    ) {
+                        Text("Añadir", color = Indigo900, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Diálogo para Escribir Objetivos Personalizados ───────────────────────────
+
+@Composable
+private fun CustomMacroTargetsDialog(
+    currentTargetCalories: Float,
+    currentTargetProtein: Float,
+    currentTargetCarbs: Float,
+    currentTargetFat: Float,
+    onSaveTargets: (calories: Float, protein: Float, carbs: Float, fat: Float) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var kcalInput by remember { mutableStateOf("${currentTargetCalories.toInt()}") }
+    var proteinInput by remember { mutableStateOf("${currentTargetProtein.toInt()}") }
+    var carbsInput by remember { mutableStateOf("${currentTargetCarbs.toInt()}") }
+    var fatInput by remember { mutableStateOf("${currentTargetFat.toInt()}") }
+
+    val kcal = kcalInput.toFloatOrNull() ?: currentTargetCalories
+    val p = proteinInput.toFloatOrNull() ?: currentTargetProtein
+    val c = carbsInput.toFloatOrNull() ?: currentTargetCarbs
+    val f = fatInput.toFloatOrNull() ?: currentTargetFat
+    val macroKcalSum = (p * 4f) + (c * 4f) + (f * 9f)
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Indigo800)
+                .border(1.dp, Violet400.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                .padding(20.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Edit, contentDescription = null, tint = Violet300, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Tus Objetivos Diarios",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = White
+                        )
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Gray400, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Text(
+                    text = "Escribe directamente tus metas diarias de calorías y macronutrientes:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray300
+                )
+
+                // Meta Calórica
+                OutlinedTextField(
+                    value = kcalInput,
+                    onValueChange = { kcalInput = it },
+                    label = { Text("Meta Calórica Diaria (kcal)", color = Gray400) },
+                    trailingIcon = { Text("kcal", color = Amber400, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 12.dp)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Amber400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Botones rápidos para calorías
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf(1800, 2000, 2200, 2500).forEach { preset ->
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (kcalInput == "$preset") Violet400.copy(alpha = 0.3f) else Indigo700)
+                                .border(1.dp, if (kcalInput == "$preset") Violet400 else Color.Transparent, RoundedCornerShape(10.dp))
+                                .clickable { kcalInput = "$preset" }
+                                .padding(vertical = 6.dp)
+                        ) {
+                            Text("$preset", style = MaterialTheme.typography.labelSmall, color = White, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+
+                // 3 Macros
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = proteinInput,
+                        onValueChange = { proteinInput = it },
+                        label = { Text("Proteína (g)", color = Gray400, fontSize = 11.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Violet400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = carbsInput,
+                        onValueChange = { carbsInput = it },
+                        label = { Text("Carbos (g)", color = Gray400, fontSize = 11.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Cyan400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = fatInput,
+                        onValueChange = { fatInput = it },
+                        label = { Text("Grasas (g)", color = Gray400, fontSize = 11.sp) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Amber400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Validación de equivalencia calórica
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Indigo900)
+                        .border(1.dp, Indigo700, RoundedCornerShape(14.dp))
+                        .padding(12.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Suma de macros:", style = MaterialTheme.typography.bodySmall, color = Gray400)
+                            Text("${macroKcalSum.toInt()} kcal", style = MaterialTheme.typography.bodySmall, color = White, fontWeight = FontWeight.Bold)
+                        }
+                        val diff = (macroKcalSum - kcal).toInt()
+                        Text(
+                            text = if (kotlin.math.abs(diff) <= 30) "✓ Los macros cuadran perfectamente con tu meta calórica." else "Nota: La suma de macros difiere en ${kotlin.math.abs(diff)} kcal respecto a tu meta de ${kcal.toInt()} kcal.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (kotlin.math.abs(diff) <= 30) Emerald400 else Gray400
+                        )
+                    }
+                }
+
+                // Botones
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Gray400),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancelar", color = Gray400)
+                    }
+                    Button(
+                        onClick = {
+                            val finalKcal = kcalInput.toFloatOrNull() ?: currentTargetCalories
+                            val finalP = proteinInput.toFloatOrNull() ?: currentTargetProtein
+                            val finalC = carbsInput.toFloatOrNull() ?: currentTargetCarbs
+                            val finalF = fatInput.toFloatOrNull() ?: currentTargetFat
+                            onSaveTargets(finalKcal, finalP, finalC, finalF)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Violet400),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(1.3f)
+                    ) {
+                        Text("Guardar Metas", color = Indigo900, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }

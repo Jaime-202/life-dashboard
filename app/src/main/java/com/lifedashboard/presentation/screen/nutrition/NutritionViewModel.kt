@@ -245,6 +245,76 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
+    fun updateMealGrams(meal: MealEntryEntity, newGrams: Float) {
+        if (meal.grams <= 0f || newGrams <= 0f) return
+        val ratio = newGrams / meal.grams
+        val updated = meal.copy(
+            grams = newGrams,
+            calories = (meal.calories * ratio).coerceAtLeast(0f),
+            protein = (meal.protein * ratio).coerceAtLeast(0f),
+            carbs = (meal.carbs * ratio).coerceAtLeast(0f),
+            fat = (meal.fat * ratio).coerceAtLeast(0f)
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.insertMeal(updated)
+            delay(200)
+            requestNutritionAdvice()
+        }
+    }
+
+    fun addQuickMeal(
+        name: String,
+        calories: Float,
+        protein: Float,
+        carbs: Float,
+        fat: Float,
+        mealType: String
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val date = _uiState.value.selectedDate
+            val zone = ZoneId.systemDefault()
+            val dateMillis = date.atStartOfDay(zone).toInstant().toEpochMilli()
+            val cleanName = name.ifBlank { "Comida rápida" }
+
+            val entry = MealEntryEntity(
+                dateMillis = dateMillis,
+                mealType = mealType,
+                name = cleanName,
+                brand = "Manual",
+                grams = 100f,
+                calories = calories.coerceAtLeast(0f),
+                protein = protein.coerceAtLeast(0f),
+                carbs = carbs.coerceAtLeast(0f),
+                fat = fat.coerceAtLeast(0f),
+                imageUrl = RealFoodImageResolver.resolve(cleanName, "Manual")
+            )
+            repository.insertMeal(entry)
+            delay(200)
+            requestNutritionAdvice()
+        }
+    }
+
+    fun updateCustomTargets(calories: Float, protein: Float, carbs: Float, fat: Float) {
+        viewModelScope.launch {
+            userPreferences.updateCalorieAndMacroTargets(
+                calories = calories.coerceAtLeast(500f),
+                protein = protein.coerceAtLeast(0f),
+                carbs = carbs.coerceAtLeast(0f),
+                fat = fat.coerceAtLeast(0f)
+            )
+            _uiState.update {
+                it.copy(
+                    targetCalories = calories.coerceAtLeast(500f),
+                    targetProtein = protein.coerceAtLeast(0f),
+                    targetCarbs = carbs.coerceAtLeast(0f),
+                    targetFat = fat.coerceAtLeast(0f)
+                )
+            }
+            delay(200)
+            requestNutritionAdvice()
+        }
+    }
+
     // ─── Cálculo y Ajuste de Ingesta Calórica Basada en Peso y Altura ─────────
 
     fun setCalculatorDialogVisible(visible: Boolean) {
