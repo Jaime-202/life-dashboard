@@ -24,5 +24,6 @@ data class MealEntryEntity(
     val carbs: Float,                  // Carbohidratos en gramos
     val fat: Float,                    // Grasas en gramos
     val notes: String = "",            // Observaciones o notas adicionales
+    val imageUrl: String? = null,      // Foto del producto o plato
     val createdAt: Long = System.currentTimeMillis()
 )

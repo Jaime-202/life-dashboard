@@ -105,7 +105,8 @@ class FoodCatalogService @Inject constructor() {
             fatPer100g = 9.8f,
             servingSizeGrams = 20f,
             servingDescription = "1 puñado (~20g)",
-            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/082/5359/front_es.3.200.jpg"
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/082/5359/front_es.3.200.jpg",
+            barcode = "8480000825359"
         ),
         FoodCatalogItem(
             id = "mer_pavo_1",
@@ -117,7 +118,21 @@ class FoodCatalogService @Inject constructor() {
             fatPer100g = 1.6f,
             servingSizeGrams = 50f,
             servingDescription = "2 lonchas (~50g)",
-            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/059/1179/front_es.33.200.jpg"
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/059/1179/front_es.33.200.jpg",
+            barcode = "8480000591179"
+        ),
+        FoodCatalogItem(
+            id = "mer_pollo_1",
+            name = "Pechuga de pollo 90% en lonchas",
+            brand = "Mercadona",
+            caloriesPer100g = 95f,
+            proteinPer100g = 19f,
+            carbsPer100g = 1f,
+            fatPer100g = 1.5f,
+            servingSizeGrams = 50f,
+            servingDescription = "2 lonchas (~50g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/059/1186/front_es.23.200.jpg",
+            barcode = "8480000591186"
         ),
         FoodCatalogItem(
             id = "mer_queso_1",
@@ -129,7 +144,8 @@ class FoodCatalogService @Inject constructor() {
             fatPer100g = 0.1f,
             servingSizeGrams = 200f,
             servingDescription = "1 tazón (~200g)",
-            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/015/6583/front_es.36.200.jpg"
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/015/6583/front_es.36.200.jpg",
+            barcode = "8480000156583"
         ),
         FoodCatalogItem(
             id = "mer_hummus_1",
@@ -141,7 +157,8 @@ class FoodCatalogService @Inject constructor() {
             fatPer100g = 19.8f,
             servingSizeGrams = 40f,
             servingDescription = "2 cucharadas (~40g)",
-            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/026/0402/front_es.61.200.jpg"
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/026/0402/front_es.61.200.jpg",
+            barcode = "8480000260402"
         ),
         FoodCatalogItem(
             id = "mer_avena_1",
@@ -153,7 +170,8 @@ class FoodCatalogService @Inject constructor() {
             fatPer100g = 7f,
             servingSizeGrams = 50f,
             servingDescription = "1 ración (~50g)",
-            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/009/4816/front_es.29.200.jpg"
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/009/4816/front_es.29.200.jpg",
+            barcode = "8480000094816"
         ),
         FoodCatalogItem(
             id = "mer_claras_1",
@@ -165,7 +183,8 @@ class FoodCatalogService @Inject constructor() {
             fatPer100g = 0.2f,
             servingSizeGrams = 100f,
             servingDescription = "100ml (3 claras)",
-            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/012/6531/front_es.34.200.jpg"
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/012/6531/front_es.34.200.jpg",
+            barcode = "8480000126531"
         ),
         FoodCatalogItem(
             id = "mer_atun_1",
@@ -177,7 +196,8 @@ class FoodCatalogService @Inject constructor() {
             fatPer100g = 0.6f,
             servingSizeGrams = 60f,
             servingDescription = "1 lata escurrida (~60g)",
-            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/018/1417/front_es.33.200.jpg"
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/018/1417/front_es.33.200.jpg",
+            barcode = "8480000181417"
         ),
         FoodCatalogItem(
             id = "mer_guaca_1",
@@ -189,7 +209,8 @@ class FoodCatalogService @Inject constructor() {
             fatPer100g = 15f,
             servingSizeGrams = 50f,
             servingDescription = "1 ración (~50g)",
-            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/026/0419/front_es.39.200.jpg"
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/026/0419/front_es.39.200.jpg",
+            barcode = "8480000260419"
         ),
         FoodCatalogItem(
             id = "mer_aceite_1",
@@ -201,7 +222,164 @@ class FoodCatalogService @Inject constructor() {
             fatPer100g = 100f,
             servingSizeGrams = 10f,
             servingDescription = "1 cucharada (~10g)",
-            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/021/4139/front_es.16.200.jpg"
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/021/4139/front_es.16.200.jpg",
+            barcode = "8480000214139"
+        ),
+        FoodCatalogItem(
+            id = "mer_cacahuete_1",
+            name = "Crema de cacahuete 100% cacahuetes",
+            brand = "Mercadona",
+            caloriesPer100g = 618f,
+            proteinPer100g = 30f,
+            carbsPer100g = 7f,
+            fatPer100g = 50f,
+            servingSizeGrams = 20f,
+            servingDescription = "1 cucharada colmada (~20g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/021/6881/front_es.35.200.jpg",
+            barcode = "8480000216881"
+        ),
+        FoodCatalogItem(
+            id = "mer_mousse_1",
+            name = "Mousse de proteínas sabor chocolate +Proteínas",
+            brand = "Mercadona",
+            caloriesPer100g = 76f,
+            proteinPer100g = 10f,
+            carbsPer100g = 5.2f,
+            fatPer100g = 1.6f,
+            servingSizeGrams = 200f,
+            servingDescription = "1 tarrina (~200g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/015/8860/front_es.32.200.jpg",
+            barcode = "8480000158860"
+        ),
+        FoodCatalogItem(
+            id = "mer_griego_1",
+            name = "Yogur griego natural Hacendado",
+            brand = "Mercadona",
+            caloriesPer100g = 129f,
+            proteinPer100g = 3.9f,
+            carbsPer100g = 3.2f,
+            fatPer100g = 11f,
+            servingSizeGrams = 125f,
+            servingDescription = "1 yogur (~125g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/015/4565/front_es.25.200.jpg",
+            barcode = "8480000154565"
+        ),
+        FoodCatalogItem(
+            id = "mer_tofu_1",
+            name = "Tofu firme Hacendado",
+            brand = "Mercadona",
+            caloriesPer100g = 123f,
+            proteinPer100g = 12f,
+            carbsPer100g = 1.8f,
+            fatPer100g = 7.2f,
+            servingSizeGrams = 100f,
+            servingDescription = "1 ración (~100g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/016/5288/front_es.16.200.jpg",
+            barcode = "8480000165288"
+        ),
+        FoodCatalogItem(
+            id = "mer_tortitas_1",
+            name = "Tortitas de maíz Hacendado",
+            brand = "Mercadona",
+            caloriesPer100g = 387f,
+            proteinPer100g = 7.9f,
+            carbsPer100g = 82f,
+            fatPer100g = 2.3f,
+            servingSizeGrams = 8f,
+            servingDescription = "1 tortita (~8g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/082/2853/front_es.14.200.jpg",
+            barcode = "8480000822853"
+        ),
+        FoodCatalogItem(
+            id = "mer_jamon_1",
+            name = "Jamón serrano reserva lonchas",
+            brand = "Mercadona",
+            caloriesPer100g = 231f,
+            proteinPer100g = 32f,
+            carbsPer100g = 0.5f,
+            fatPer100g = 11f,
+            servingSizeGrams = 40f,
+            servingDescription = "2 lonchas (~40g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/051/5243/front_es.20.200.jpg",
+            barcode = "8480000515243"
+        ),
+        FoodCatalogItem(
+            id = "mer_salmon_1",
+            name = "Salmón ahumado lonchas",
+            brand = "Mercadona",
+            caloriesPer100g = 192f,
+            proteinPer100g = 22f,
+            carbsPer100g = 0.5f,
+            fatPer100g = 11.5f,
+            servingSizeGrams = 50f,
+            servingDescription = "2 lonchas (~50g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/018/6955/front_es.17.200.jpg",
+            barcode = "8480000186955"
+        ),
+        FoodCatalogItem(
+            id = "mer_soja_1",
+            name = "Bebida de soja 0% azúcares añadidos",
+            brand = "Mercadona",
+            caloriesPer100g = 32f,
+            proteinPer100g = 3.2f,
+            carbsPer100g = 0.8f,
+            fatPer100g = 1.8f,
+            servingSizeGrams = 200f,
+            servingDescription = "1 vaso (~200ml)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/011/4986/front_es.28.200.jpg",
+            barcode = "8480000114986"
+        ),
+        FoodCatalogItem(
+            id = "mer_leche_1",
+            name = "Leche desnatada vaca Hacendado",
+            brand = "Mercadona",
+            caloriesPer100g = 35f,
+            proteinPer100g = 3.2f,
+            carbsPer100g = 4.8f,
+            fatPer100g = 0.2f,
+            servingSizeGrams = 200f,
+            servingDescription = "1 vaso (~200ml)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/010/8254/front_es.30.200.jpg",
+            barcode = "8480000108254"
+        ),
+        FoodCatalogItem(
+            id = "mer_garbanzos_1",
+            name = "Garbanzos cocidos bote cristal",
+            brand = "Mercadona",
+            caloriesPer100g = 103f,
+            proteinPer100g = 6.5f,
+            carbsPer100g = 13f,
+            fatPer100g = 2.1f,
+            servingSizeGrams = 200f,
+            servingDescription = "Medio bote escurrido (~200g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/016/0856/front_es.24.200.jpg",
+            barcode = "8480000160856"
+        ),
+        FoodCatalogItem(
+            id = "mer_lentejas_1",
+            name = "Lentejas cocidas bote cristal",
+            brand = "Mercadona",
+            caloriesPer100g = 91f,
+            proteinPer100g = 7.2f,
+            carbsPer100g = 11.5f,
+            fatPer100g = 0.8f,
+            servingSizeGrams = 200f,
+            servingDescription = "Medio bote escurrido (~200g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/016/0863/front_es.22.200.jpg",
+            barcode = "8480000160863"
+        ),
+        FoodCatalogItem(
+            id = "mer_tomate_1",
+            name = "Tomate triturado natural",
+            brand = "Mercadona",
+            caloriesPer100g = 19f,
+            proteinPer100g = 1f,
+            carbsPer100g = 3.2f,
+            fatPer100g = 0.1f,
+            servingSizeGrams = 100f,
+            servingDescription = "100g",
+            imageUrl = "https://images.openfoodfacts.net/images/products/848/000/016/2645/front_es.27.200.jpg",
+            barcode = "8480000162645"
         ),
         FoodCatalogItem(
             id = "mer_platano_1",
@@ -280,19 +458,126 @@ class FoodCatalogService @Inject constructor() {
             imageUrl = "https://images.openfoodfacts.net/images/products/848/001/708/1793/front_es.12.200.jpg"
         ),
 
-        // ─── BÁSICOS / GENÉRICOS DE ESPAÑA CON FOTOS ──────────────────────────
+        // ─── ALCAMPO ──────────────────────────────────────────────────────────
+        FoodCatalogItem(
+            id = "alc_pan_1",
+            name = "Pan 100% integral Auchan",
+            brand = "Alcampo",
+            caloriesPer100g = 235f,
+            proteinPer100g = 9.2f,
+            carbsPer100g = 41f,
+            fatPer100g = 2.7f,
+            servingSizeGrams = 40f,
+            servingDescription = "1 rebanada (~40g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/359/671/045/6368/front_es.16.200.jpg"
+        ),
+        FoodCatalogItem(
+            id = "alc_pavo_1",
+            name = "Pechuga de pavo Auchan",
+            brand = "Alcampo",
+            caloriesPer100g = 94f,
+            proteinPer100g = 18f,
+            carbsPer100g = 1.4f,
+            fatPer100g = 1.3f,
+            servingSizeGrams = 50f,
+            servingDescription = "2 lonchas (~50g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/359/671/047/5567/front_es.15.200.jpg"
+        ),
+
+        // ─── SUPERCOR / EL CORTE INGLÉS ───────────────────────────────────────
+        FoodCatalogItem(
+            id = "sup_pavo_1",
+            name = "Pechuga de pavo braseada El Corte Inglés",
+            brand = "Supercor",
+            caloriesPer100g = 98f,
+            proteinPer100g = 19.5f,
+            carbsPer100g = 1.2f,
+            fatPer100g = 1.6f,
+            servingSizeGrams = 50f,
+            servingDescription = "2 lonchas (~50g)",
+            imageUrl = "https://images.openfoodfacts.net/images/products/843/332/902/5253/front_es.12.200.jpg"
+        ),
+
+        // ─── BÁSICOS / GENÉRICOS DE ESPAÑA (AMPLIADO A 60+ PLATOS Y ALIMENTOS CON FOTOS REALES) ─
+        // Carnes, Aves & Huevos
         FoodCatalogItem("gen_1", "Pechuga de pollo a la plancha", "Básico", 165f, 31f, 0f, 3.6f, 150f, "1 filete (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=200&q=80"),
-        FoodCatalogItem("gen_2", "Huevo entero de gallina", "Básico", 143f, 12.6f, 0.7f, 9.5f, 60f, "1 huevo mediano (~60g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1587486913049-53fc88980cfc?w=200&q=80"),
-        FoodCatalogItem("gen_3", "Arroz blanco cocido", "Básico", 130f, 2.7f, 28f, 0.3f, 150f, "1 plato (~150g cocido)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1516684732162-798a0062be99?w=200&q=80"),
-        FoodCatalogItem("gen_4", "Salmón a la plancha", "Básico", 208f, 20f, 0f, 13f, 150f, "1 lomo (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=200&q=80"),
-        FoodCatalogItem("gen_5", "Patata cocida al vapor", "Básico", 86f, 2f, 18.5f, 0.1f, 200f, "1 patata mediana (~200g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=200&q=80"),
-        FoodCatalogItem("gen_6", "Pasta de trigo cocida", "Básico", 158f, 5.8f, 31f, 0.9f, 180f, "1 plato (~180g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=200&q=80"),
-        FoodCatalogItem("gen_7", "Yogur griego natural", "Básico", 115f, 6.4f, 3.8f, 8.5f, 125f, "1 vaso (~125g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=200&q=80"),
-        FoodCatalogItem("gen_8", "Aguacate maduro", "Básico", 160f, 2f, 8.5f, 14.7f, 100f, "Medio aguacate (~100g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=200&q=80"),
-        FoodCatalogItem("gen_9", "Manzana fresca", "Básico", 52f, 0.3f, 13.8f, 0.2f, 150f, "1 manzana (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=200&q=80"),
-        FoodCatalogItem("gen_10", "Brócoli al vapor", "Básico", 35f, 2.4f, 7.2f, 0.4f, 150f, "1 ración (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=200&q=80"),
-        FoodCatalogItem("gen_11", "Lentejas cocidas", "Básico", 116f, 9f, 20f, 0.4f, 200f, "1 plato (~200g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=80"),
-        FoodCatalogItem("gen_12", "Nueces peladas", "Básico", 654f, 15f, 13.7f, 65f, 25f, "1 puñado (~25g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=200&q=80")
+        FoodCatalogItem("gen_2", "Pechuga de pavo a la plancha", "Básico", 135f, 29f, 0f, 1.8f, 150f, "1 filete (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1518492104633-130d0cc84637?w=200&q=80"),
+        FoodCatalogItem("gen_3", "Filete de ternera magra", "Básico", 175f, 26f, 0f, 7.5f, 150f, "1 filete (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1544025162-d76694265947?w=200&q=80"),
+        FoodCatalogItem("gen_4", "Carne picada de ternera y cerdo", "Básico", 215f, 19f, 0.5f, 15f, 150f, "1 ración (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1588168333986-5078d3ae3976?w=200&q=80"),
+        FoodCatalogItem("gen_5", "Hamburguesa de ternera a la plancha", "Básico", 245f, 21f, 0.8f, 17.5f, 150f, "1 unidad (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200&q=80"),
+        FoodCatalogItem("gen_6", "Lomo de cerdo a la plancha", "Básico", 160f, 27f, 0f, 5.5f, 140f, "2 filetes (~140g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1432139555190-58524dae6a55?w=200&q=80"),
+        FoodCatalogItem("gen_7", "Jamón serrano / ibérico", "Básico", 240f, 31f, 0.5f, 13f, 40f, "2 lonchas (~40g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1529692236671-f1f6cf9683ba?w=200&q=80"),
+        FoodCatalogItem("gen_8", "Huevo entero de gallina", "Básico", 143f, 12.6f, 0.7f, 9.5f, 60f, "1 huevo mediano (~60g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1587486913049-53fc88980cfc?w=200&q=80"),
+        FoodCatalogItem("gen_9", "Huevo frito en aceite de oliva", "Básico", 196f, 13.5f, 0.5f, 15f, 65f, "1 huevo frito (~65g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&q=80"),
+        FoodCatalogItem("gen_10", "Tortilla de patatas casera", "Básico", 154f, 5.5f, 13.5f, 8.8f, 180f, "1 ración (~180g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1584776296944-ab6fb57b0bdd?w=200&q=80"),
+        FoodCatalogItem("gen_11", "Tortilla francesa de 2 huevos", "Básico", 155f, 12f, 1f, 11.5f, 110f, "1 tortilla (~110g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=200&q=80"),
+
+        // Pescados & Mariscos
+        FoodCatalogItem("gen_12", "Salmón fresco a la plancha", "Básico", 208f, 20f, 0f, 13f, 150f, "1 lomo (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=200&q=80"),
+        FoodCatalogItem("gen_13", "Lomo de merluza al horno o plancha", "Básico", 89f, 17.5f, 0f, 1.8f, 150f, "1 filete (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=200&q=80"),
+        FoodCatalogItem("gen_14", "Atún fresco a la plancha", "Básico", 130f, 29f, 0f, 1f, 150f, "1 rodaja (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1501595091296-3aa970afb3ff?w=200&q=80"),
+        FoodCatalogItem("gen_15", "Dorada a la plancha o al horno", "Básico", 110f, 19.8f, 0f, 3.2f, 150f, "1 ración (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=200&q=80"),
+        FoodCatalogItem("gen_16", "Lubina al horno", "Básico", 97f, 18.4f, 0f, 2.3f, 150f, "1 ración (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=200&q=80"),
+        FoodCatalogItem("gen_17", "Bacalao fresco al vapor", "Básico", 82f, 17.8f, 0f, 0.7f, 150f, "1 lomo (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=200&q=80"),
+        FoodCatalogItem("gen_18", "Gambas o langostinos cocidos", "Básico", 99f, 21f, 0.5f, 1.2f, 120f, "1 ración pelada (~120g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1565680018434-b513d5e5fd47?w=200&q=80"),
+        FoodCatalogItem("gen_19", "Calamares a la plancha con ajo y perejil", "Básico", 92f, 16f, 1.5f, 1.4f, 150f, "1 ración (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1565680018434-b513d5e5fd47?w=200&q=80"),
+        FoodCatalogItem("gen_20", "Pulpo a la gallega con pimentón", "Básico", 128f, 22f, 2.5f, 3f, 150f, "1 ración (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1565680018434-b513d5e5fd47?w=200&q=80"),
+
+        // Arroces, Pastas & Platos de Cuchara
+        FoodCatalogItem("gen_21", "Arroz blanco cocido", "Básico", 130f, 2.7f, 28f, 0.3f, 150f, "1 plato (~150g cocido)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1516684732162-798a0062be99?w=200&q=80"),
+        FoodCatalogItem("gen_22", "Paella tradicional mixta", "Básico", 165f, 8.5f, 21f, 5.2f, 250f, "1 plato hondo (~250g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1534080564583-6be75777b70a?w=200&q=80"),
+        FoodCatalogItem("gen_23", "Arroz integral cocido", "Básico", 111f, 2.6f, 23f, 0.9f, 150f, "1 plato (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1516684732162-798a0062be99?w=200&q=80"),
+        FoodCatalogItem("gen_24", "Pasta de trigo cocida al dente", "Básico", 158f, 5.8f, 31f, 0.9f, 180f, "1 plato (~180g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=200&q=80"),
+        FoodCatalogItem("gen_25", "Pasta boloñesa con carne y tomate", "Básico", 145f, 7.5f, 19f, 4.2f, 220f, "1 plato (~220g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=200&q=80"),
+        FoodCatalogItem("gen_26", "Pizza casera de jamón y queso", "Básico", 265f, 11f, 30f, 10.5f, 125f, "1 porción (~125g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200&q=80"),
+        FoodCatalogItem("gen_27", "Lentejas estofadas con verduras", "Básico", 116f, 9f, 20f, 0.4f, 250f, "1 plato hondo (~250g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=80"),
+        FoodCatalogItem("gen_28", "Garbanzos cocidos con espinacas", "Básico", 128f, 7.8f, 18f, 2.6f, 250f, "1 plato (~250g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1505576399279-565b52d4ac71?w=200&q=80"),
+        FoodCatalogItem("gen_29", "Cocido madrileño completo", "Básico", 185f, 11.5f, 14f, 9f, 300f, "1 plato completo (~300g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=80"),
+        FoodCatalogItem("gen_30", "Alubias blancas estofadas", "Básico", 115f, 8.2f, 19.5f, 0.5f, 250f, "1 plato (~250g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1584278860047-22db9ff82bed?w=200&q=80"),
+        FoodCatalogItem("gen_31", "Sopa de fideos con caldo de pollo", "Básico", 48f, 2.5f, 6.8f, 1.2f, 250f, "1 tazón (~250ml)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1547496502-affa22d38842?w=200&q=80"),
+        FoodCatalogItem("gen_32", "Gazpacho andaluz tradicional", "Básico", 45f, 0.8f, 4.2f, 2.6f, 250f, "1 vaso (~250ml)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1547496502-affa22d38842?w=200&q=80"),
+        FoodCatalogItem("gen_33", "Salmorejo cordobés tradicional", "Básico", 85f, 2.1f, 7.5f, 5.2f, 200f, "1 cuenco (~200g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1547496502-affa22d38842?w=200&q=80"),
+        FoodCatalogItem("gen_34", "Crema de calabacín y puerros", "Básico", 42f, 1.2f, 4.5f, 1.9f, 250f, "1 plato hondo (~250g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1547496502-affa22d38842?w=200&q=80"),
+
+        // Patatas, Verduras & Ensaladas
+        FoodCatalogItem("gen_35", "Patata cocida o al vapor", "Básico", 86f, 2f, 18.5f, 0.1f, 200f, "1 patata mediana (~200g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=200&q=80"),
+        FoodCatalogItem("gen_36", "Patatas asadas al horno con especias", "Básico", 115f, 2.5f, 22f, 1.8f, 180f, "1 ración (~180g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=200&q=80"),
+        FoodCatalogItem("gen_37", "Patatas fritas caseras", "Básico", 285f, 3.4f, 37f, 14f, 120f, "1 ración (~120g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=200&q=80"),
+        FoodCatalogItem("gen_38", "Puré de patatas casero con leche", "Básico", 90f, 2f, 15f, 2.3f, 200f, "1 cuenco (~200g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=200&q=80"),
+        FoodCatalogItem("gen_39", "Ensalada mixta (lechuga, tomate, atún, cebolla)", "Básico", 65f, 4.5f, 3.2f, 3.5f, 200f, "1 ensaladera (~200g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=200&q=80"),
+        FoodCatalogItem("gen_40", "Brócoli cocido al vapor", "Básico", 35f, 2.4f, 7.2f, 0.4f, 150f, "1 ración (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=200&q=80"),
+        FoodCatalogItem("gen_41", "Judías verdes cocidas con patata", "Básico", 55f, 2.2f, 10f, 0.3f, 200f, "1 plato (~200g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1584278860047-22db9ff82bed?w=200&q=80"),
+        FoodCatalogItem("gen_42", "Espinacas salteadas con ajo", "Básico", 45f, 3.2f, 3.6f, 1.8f, 150f, "1 ración (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=200&q=80"),
+        FoodCatalogItem("gen_43", "Tomate fresco aliñado con aceite de oliva", "Básico", 55f, 1f, 3.8f, 4f, 150f, "1 tomate mediano (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1546470427-227c7369a92a?w=200&q=80"),
+        FoodCatalogItem("gen_44", "Champiñones salteados al ajillo", "Básico", 48f, 3.5f, 2.8f, 2.4f, 150f, "1 ración (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=80"),
+        FoodCatalogItem("gen_45", "Espárragos trigueros a la plancha", "Básico", 32f, 2.8f, 3.5f, 0.6f, 120f, "1 manojo (~120g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1459411621453-7b03977f4bfc?w=200&q=80"),
+        FoodCatalogItem("gen_46", "Aguacate maduro Hass", "Básico", 160f, 2f, 8.5f, 14.7f, 100f, "Medio aguacate (~100g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?w=200&q=80"),
+
+        // Frutas Frescas
+        FoodCatalogItem("gen_47", "Plátano de Canarias maduro", "Básico", 91f, 1.1f, 21.5f, 0.3f, 120f, "1 plátano mediano (~120g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=200&q=80"),
+        FoodCatalogItem("gen_48", "Manzana fresca de mesa", "Básico", 52f, 0.3f, 13.8f, 0.2f, 160f, "1 manzana mediana (~160g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=200&q=80"),
+        FoodCatalogItem("gen_49", "Naranja fresca de mesa", "Básico", 47f, 0.9f, 11.8f, 0.1f, 180f, "1 naranja mediana (~180g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1547514701-42782101795e?w=200&q=80"),
+        FoodCatalogItem("gen_50", "Fresas frescas", "Básico", 33f, 0.7f, 7.7f, 0.3f, 150f, "1 bol (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=200&q=80"),
+        FoodCatalogItem("gen_51", "Sandía fresca en rodajas", "Básico", 30f, 0.6f, 7.6f, 0.2f, 250f, "1 rodaja grande (~250g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=200&q=80"),
+        FoodCatalogItem("gen_52", "Melón piel de sapo", "Básico", 34f, 0.8f, 8.2f, 0.1f, 200f, "1 tajada (~200g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=200&q=80"),
+        FoodCatalogItem("gen_53", "Pera de conferencia fresca", "Básico", 57f, 0.4f, 15f, 0.1f, 150f, "1 pera (~150g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=200&q=80"),
+        FoodCatalogItem("gen_54", "Kiwi fresco", "Básico", 61f, 1.1f, 14.7f, 0.5f, 100f, "1 kiwi (~100g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=200&q=80"),
+        FoodCatalogItem("gen_55", "Uvas de mesa frescas", "Básico", 67f, 0.6f, 17f, 0.2f, 100f, "1 racimo pequeño (~100g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=200&q=80"),
+
+        // Lácteos, Panadería & Desayunos
+        FoodCatalogItem("gen_56", "Yogur griego natural sin azúcar", "Básico", 115f, 6.4f, 3.8f, 8.5f, 125f, "1 vaso (~125g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=200&q=80"),
+        FoodCatalogItem("gen_57", "Queso fresco tipo Burgos", "Básico", 174f, 11f, 3.5f, 13f, 100f, "1 ración (~100g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1486297678162-eb2a19b0a32d?w=200&q=80"),
+        FoodCatalogItem("gen_58", "Queso semicurado manchego", "Básico", 380f, 25f, 1f, 31f, 40f, "2 cuñas finas (~40g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1486297678162-eb2a19b0a32d?w=200&q=80"),
+        FoodCatalogItem("gen_59", "Leche semidesnatada de vaca", "Básico", 46f, 3.2f, 4.8f, 1.6f, 200f, "1 vaso (~200ml)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=200&q=80"),
+        FoodCatalogItem("gen_60", "Café con leche semidesnatada", "Básico", 38f, 2.2f, 3.5f, 1.2f, 150f, "1 taza (~150ml)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80"),
+        FoodCatalogItem("gen_61", "Tostada de pan con tomate y aceite", "Básico", 198f, 4.2f, 24f, 9.5f, 75f, "1 tostada grande (~75g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=200&q=80"),
+        FoodCatalogItem("gen_62", "Croissant clásico de mantequilla", "Básico", 406f, 8.2f, 45f, 21f, 60f, "1 croissant (~60g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=200&q=80"),
+
+        // Frutos Secos & Varios
+        FoodCatalogItem("gen_63", "Nueces peladas al natural", "Básico", 654f, 15f, 13.7f, 65f, 25f, "1 puñado (~25g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=200&q=80"),
+        FoodCatalogItem("gen_64", "Almendras tostadas sin sal", "Básico", 579f, 21f, 22f, 49f, 25f, "1 puñado (~25g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=200&q=80"),
+        FoodCatalogItem("gen_65", "Chocolate negro 85% cacao", "Básico", 576f, 9f, 22f, 48f, 20f, "2 onzas (~20g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1511381939415-e44015466834?w=200&q=80"),
+        FoodCatalogItem("gen_66", "Aceite de oliva virgen extra", "Básico", 900f, 0f, 0f, 100f, 10f, "1 cucharada sopera (~10g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=200&q=80")
     )
 
     /**
@@ -310,7 +595,8 @@ class FoodCatalogService @Inject constructor() {
         if (trimmed.length in 8..14 && trimmed.all { it.isDigit() }) {
             val barcodeItem = queryByBarcode(trimmed)
             if (barcodeItem != null) {
-                return@withContext listOf(barcodeItem)
+                val resolvedBarcodeImg = RealFoodImageResolver.resolve(barcodeItem.name, barcodeItem.brand, barcodeItem.imageUrl)
+                return@withContext listOf(barcodeItem.copy(imageUrl = resolvedBarcodeImg))
             }
         }
 
@@ -328,7 +614,9 @@ class FoodCatalogService @Inject constructor() {
 
         // Si la categoría es Básicos o la búsqueda tiene menos de 2 caracteres, no consultamos red
         if (category == FoodSourceCategory.BASICOS || trimmed.length < 2) {
-            return@withContext localMatches
+            return@withContext localMatches.map { item ->
+                item.copy(imageUrl = RealFoodImageResolver.resolve(item.name, item.brand, item.imageUrl))
+            }
         }
 
         // 3. Consulta remota en Open Food Facts (España / Mirror)
@@ -337,7 +625,10 @@ class FoodCatalogService @Inject constructor() {
         val combined = (localMatches + remoteResults).distinctBy {
             it.name.lowercase().trim() to it.brand.lowercase().trim()
         }
-        filterByCategory(combined, category)
+        val filteredResults = filterByCategory(combined, category)
+        filteredResults.map { item ->
+            item.copy(imageUrl = RealFoodImageResolver.resolve(item.name, item.brand, item.imageUrl))
+        }
     }
 
     private fun filterByCategory(items: List<FoodCatalogItem>, category: FoodSourceCategory): List<FoodCatalogItem> {
@@ -345,7 +636,8 @@ class FoodCatalogService @Inject constructor() {
             FoodSourceCategory.TODOS -> items
             FoodSourceCategory.MERCADONA -> items.filter {
                 it.brand.contains("mercadona", ignoreCase = true) ||
-                it.brand.contains("hacendado", ignoreCase = true)
+                it.brand.contains("hacendado", ignoreCase = true) ||
+                it.name.contains("hacendado", ignoreCase = true)
             }
             FoodSourceCategory.CARREFOUR -> items.filter { it.brand.contains("carrefour", ignoreCase = true) }
             FoodSourceCategory.DIA -> items.filter { it.brand.contains("dia", ignoreCase = true) || it.brand.contains("día", ignoreCase = true) }
@@ -475,7 +767,7 @@ class FoodCatalogService @Inject constructor() {
         val servingStr = p.optString("serving_size").ifBlank { "100g" }
 
         // Extraer imagen del producto
-        val imgUrl = p.optString("image_front_small_url")
+        val rawImgUrl = p.optString("image_front_small_url")
             .ifBlank { p.optString("image_small_url") }
             .ifBlank { p.optString("image_front_url") }
             .ifBlank { p.optString("image_url") }
@@ -484,11 +776,15 @@ class FoodCatalogService @Inject constructor() {
                 selected?.optString("es")?.ifBlank { selected.optString("en") } ?: ""
             }
 
+        val cleanName = cleanProductName(name)
+        val cleanBrand = cleanBrandName(brands)
+        val resolvedImg = RealFoodImageResolver.resolve(cleanName, cleanBrand, rawImgUrl)
+
         if (kcal > 0 || protein > 0 || carbs > 0 || fat > 0) {
             return FoodCatalogItem(
                 id = "off_${code.ifBlank { name.hashCode().toString() }}",
-                name = cleanProductName(name),
-                brand = cleanBrandName(brands),
+                name = cleanName,
+                brand = cleanBrand,
                 caloriesPer100g = kcal,
                 proteinPer100g = protein,
                 carbsPer100g = carbs,
@@ -496,7 +792,7 @@ class FoodCatalogService @Inject constructor() {
                 servingSizeGrams = 100f,
                 servingDescription = servingStr,
                 barcode = code.takeIf { it.isNotBlank() },
-                imageUrl = imgUrl.takeIf { it.isNotBlank() },
+                imageUrl = resolvedImg,
                 isGeneric = false
             )
         }

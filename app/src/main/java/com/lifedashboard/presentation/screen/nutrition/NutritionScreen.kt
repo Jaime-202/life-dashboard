@@ -45,6 +45,7 @@ import com.lifedashboard.data.local.entity.MealEntryEntity
 import com.lifedashboard.data.remote.food.DetectedFoodItem
 import com.lifedashboard.data.remote.food.FoodCatalogItem
 import com.lifedashboard.data.remote.food.FoodSourceCategory
+import com.lifedashboard.data.remote.food.RealFoodImageResolver
 import com.lifedashboard.presentation.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -711,7 +712,7 @@ private fun MealItemRow(meal: MealEntryEntity, onDelete: () -> Unit) {
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         // Thumbnail visual categoría o foto con fallback limpio
-        FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = null, size = 42.dp)
+        FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = meal.imageUrl, size = 42.dp)
         Spacer(Modifier.width(10.dp))
 
         Column(modifier = Modifier.weight(1f)) {
@@ -1531,24 +1532,11 @@ fun FoodThumbnail(
     size: androidx.compose.ui.unit.Dp = 46.dp,
     modifier: Modifier = Modifier
 ) {
+    val resolvedUrl = remember(name, brand, imageUrl) {
+        RealFoodImageResolver.resolve(name, brand, imageUrl)
+    }
     val emoji = remember(name) {
-        val lower = name.lowercase(Locale.ROOT)
-        when {
-            lower.contains("pan") || lower.contains("tostad") || lower.contains("baguette") || lower.contains("hogaza") -> "🥖"
-            lower.contains("huevo") || lower.contains("tortilla") -> "🥚"
-            lower.contains("leche") || lower.contains("yogur") || lower.contains("queso") || lower.contains("lacteo") || lower.contains("kéfir") -> "🥛"
-            lower.contains("pollo") || lower.contains("pechuga") || lower.contains("pavo") || lower.contains("carne") || lower.contains("ternera") || lower.contains("lomo") || lower.contains("jamon") || lower.contains("jamón") -> "🍗"
-            lower.contains("pescado") || lower.contains("atun") || lower.contains("atún") || lower.contains("salmon") || lower.contains("salmón") || lower.contains("merluza") || lower.contains("bacalao") -> "🐟"
-            lower.contains("arroz") || lower.contains("avena") || lower.contains("cereal") || lower.contains("pasta") || lower.contains("macarron") || lower.contains("espagueti") -> "🍚"
-            lower.contains("manzana") || lower.contains("fruta") || lower.contains("platano") || lower.contains("plátano") || lower.contains("naranja") || lower.contains("fresa") || lower.contains("pera") || lower.contains("uva") -> "🍎"
-            lower.contains("ensalada") || lower.contains("tomate") || lower.contains("lechuga") || lower.contains("verdura") || lower.contains("brocoli") || lower.contains("brócoli") || lower.contains("zanahoria") || lower.contains("espinaca") -> "🥗"
-            lower.contains("cafe") || lower.contains("café") -> "☕"
-            lower.contains("chocolate") || lower.contains("galleta") || lower.contains("dulce") || lower.contains("pastel") || lower.contains("cacao") -> "🍫"
-            lower.contains("aceite") || lower.contains("oliva") -> "🫒"
-            lower.contains("nuez") || lower.contains("nueces") || lower.contains("almendra") || lower.contains("cacahuete") || lower.contains("anacardo") -> "🥜"
-            lower.contains("agua") || lower.contains("refresco") || lower.contains("bebida") || lower.contains("zumo") -> "🥤"
-            else -> "🍽️"
-        }
+        RealFoodImageResolver.getAccurateEmoji(name)
     }
 
     Box(
@@ -1559,14 +1547,14 @@ fun FoodThumbnail(
             .background(Indigo700.copy(alpha = 0.6f))
             .border(1.dp, Indigo600.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
     ) {
-        // Icono o emoji representativo de la categoría (nunca se queda vacío ni roto)
+        // Emoji representativo exacto como fallback o durante la carga
         Text(text = emoji, fontSize = (size.value * 0.45f).sp)
 
-        // Foto real del producto/supermercado encima si está disponible
-        if (!imageUrl.isNullOrBlank()) {
+        // Foto real del producto/supermercado o gastronómica
+        if (!resolvedUrl.isNullOrBlank()) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(imageUrl)
+                    .data(resolvedUrl)
                     .crossfade(true)
                     .build(),
                 contentDescription = name,

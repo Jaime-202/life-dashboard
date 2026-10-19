@@ -10,6 +10,7 @@ import com.lifedashboard.data.remote.food.DetectedFoodItem
 import com.lifedashboard.data.remote.food.FoodAiResult
 import com.lifedashboard.data.remote.food.FoodCatalogItem
 import com.lifedashboard.data.remote.food.FoodSourceCategory
+import com.lifedashboard.data.remote.food.RealFoodImageResolver
 import com.lifedashboard.data.repository.NutritionRepository
 import com.lifedashboard.data.repository.UserPreferencesRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -227,7 +228,8 @@ class NutritionViewModel @Inject constructor(
                 calories = item.caloriesPer100g * factor,
                 protein = item.proteinPer100g * factor,
                 carbs = item.carbsPer100g * factor,
-                fat = item.fatPer100g * factor
+                fat = item.fatPer100g * factor,
+                imageUrl = RealFoodImageResolver.resolve(item.name, item.brand, item.imageUrl)
             )
             repository.insertMeal(entry)
             delay(200)
@@ -400,7 +402,8 @@ class NutritionViewModel @Inject constructor(
                     calories = item.calories,
                     protein = item.protein,
                     carbs = item.carbs,
-                    fat = item.fat
+                    fat = item.fat,
+                    imageUrl = RealFoodImageResolver.resolve(item.name, "Casero")
                 )
             }
             repository.insertMeals(entities)
@@ -494,7 +497,8 @@ class NutritionViewModel @Inject constructor(
                     calories = item.calories,
                     protein = item.protein,
                     carbs = item.carbs,
-                    fat = item.fat
+                    fat = item.fat,
+                    imageUrl = RealFoodImageResolver.resolve(item.name, "Casero")
                 )
             }
             repository.insertMeals(entities)
