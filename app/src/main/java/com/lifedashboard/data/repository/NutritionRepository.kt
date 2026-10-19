@@ -53,4 +53,34 @@ class NutritionRepository @Inject constructor(
     suspend fun analyzeFoodPhoto(bitmap: Bitmap, userDescription: String): FoodAiResult {
         return aiService.analyzeFoodImage(bitmap, userDescription)
     }
+
+    suspend fun analyzeFoodText(userDescription: String): FoodAiResult {
+        return aiService.analyzeFoodText(userDescription)
+    }
+
+    suspend fun getNutritionAdvice(
+        consumedCalories: Float,
+        targetCalories: Float,
+        burnedCalories: Float,
+        protein: Float,
+        targetProtein: Float,
+        carbs: Float,
+        targetCarbs: Float,
+        fat: Float,
+        targetFat: Float,
+        goal: String
+    ): String {
+        return aiService.generateNutritionAdvice(
+            consumedCalories = consumedCalories,
+            targetCalories = targetCalories,
+            burnedCalories = burnedCalories,
+            protein = protein,
+            targetProtein = targetProtein,
+            carbs = carbs,
+            targetCarbs = targetCarbs,
+            fat = fat,
+            targetFat = targetFat,
+            goal = goal
+        )
+    }
 }

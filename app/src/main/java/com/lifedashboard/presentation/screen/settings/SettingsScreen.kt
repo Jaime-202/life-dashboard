@@ -47,6 +47,7 @@ import com.lifedashboard.data.local.dao.WeightDao
 import com.lifedashboard.data.local.entity.WeightEntryEntity
 import com.lifedashboard.data.repository.UserPreferencesRepository
 import com.lifedashboard.domain.repository.CalendarRepository
+import com.lifedashboard.presentation.common.components.WeightEvolutionChart
 import com.lifedashboard.presentation.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -1336,42 +1337,14 @@ private fun WeightTrackerCard(
                 }
             }
 
-            // Historial reciente (mini chips de los últimos 4 pesajes si existen)
+            // Gráfica interactiva de evolución de peso
             if (weightHistory.isNotEmpty()) {
-                val recent = weightHistory.take(4)
-                val dateFormat = remember { SimpleDateFormat("d MMM", Locale("es")) }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    recent.forEach { entry ->
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Indigo900.copy(alpha = 0.5f))
-                                .border(1.dp, Indigo700.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = dateFormat.format(Date(entry.dateMillis)),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Gray400,
-                                    fontSize = 10.sp
-                                )
-                                Text(
-                                    text = "${String.format(Locale.US, "%.1f", entry.weightKg)} kg",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = White,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
+                WeightEvolutionChart(
+                    weightHistory = weightHistory,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                )
 
                 // Enlace al historial completo
                 Row(

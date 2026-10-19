@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lifedashboard.core.util.DateUtils.toStartOfDayMillis
 import com.lifedashboard.data.local.dao.HealthDao
+import com.lifedashboard.data.local.dao.WeightDao
 import com.lifedashboard.data.local.dao.WorkoutDao
+import com.lifedashboard.data.local.entity.WeightEntryEntity
 import com.lifedashboard.data.remote.gemini.GeminiApiService
 import com.lifedashboard.data.repository.UserPreferencesRepository
 import com.lifedashboard.domain.model.CalendarEvent
@@ -42,13 +44,18 @@ data class DashboardUiState(
     val isDataLoading: Boolean = true,
     val showHeroRings: Boolean = true,
     val showAiInsight: Boolean = true,
-    val showUpcomingEvents: Boolean = true
+    val showUpcomingEvents: Boolean = true,
+    val weightHistory: List<WeightEntryEntity> = emptyList(),
+    val latestWeightKg: Float? = null,
+    val userHeightCm: Int = 175,
+    val showAddWeightDialog: Boolean = false
 )
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val healthDao: HealthDao,
     private val workoutDao: WorkoutDao,
+    private val weightDao: WeightDao,
     private val calendarRepository: CalendarRepository,
     private val geminiService: GeminiApiService,
     private val evaluateAchievements: EvaluateRoutineAchievementUseCase,
@@ -61,6 +68,7 @@ class DashboardViewModel @Inject constructor(
     init {
         observeUserGoals()
         observeTodayHealth()
+        observeWeights()
         observeCalendar()
         buildProgressMap()
         viewModelScope.launch(Dispatchers.IO) { evaluateAchievements() }
@@ -84,7 +92,21 @@ class DashboardViewModel @Inject constructor(
                         caloriesProgress   = calProg,
                         showHeroRings      = goals.showHeroRings,
                         showAiInsight      = goals.showAiInsight,
-                        showUpcomingEvents = goals.showUpcomingEvents
+                        showUpcomingEvents = goals.showUpcomingEvents,
+                        userHeightCm       = goals.heightCm
+                    )
+                }
+            }
+            .launchIn(viewModelScope)
+    }
+
+    private fun observeWeights() {
+        weightDao.observeAllWeights()
+            .onEach { list ->
+                _uiState.update { state ->
+                    state.copy(
+                        weightHistory = list,
+                        latestWeightKg = list.firstOrNull()?.weightKg
                     )
                 }
             }
@@ -196,6 +218,23 @@ class DashboardViewModel @Inject constructor(
             _uiState.update { it.copy(isAiLoading = true) }
             val insight = geminiService.getDailyInsight()
             _uiState.update { it.copy(aiInsight = insight, isAiLoading = false) }
+        }
+    }
+
+    fun setAddWeightDialogVisible(visible: Boolean) {
+        _uiState.update { it.copy(showAddWeightDialog = visible) }
+    }
+
+    fun addWeightEntry(weight: Float, note: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            weightDao.upsert(
+                WeightEntryEntity(
+                    dateMillis = System.currentTimeMillis(),
+                    weightKg = weight,
+                    note = note
+                )
+            )
+            userPreferences.updateWeight(weight)
         }
     }
 }

@@ -67,7 +67,20 @@ data class NutritionUiState(
     val isAiAnalyzing: Boolean = false,
     val aiResultItems: List<DetectedFoodItem>? = null,
     val aiErrorMessage: String? = null,
-    val aiExplanation: String? = null
+    val aiExplanation: String? = null,
+
+    // Registro de comida por texto con IA (sin foto)
+    val showTextAiDialog: Boolean = false,
+    val textAiInput: String = "",
+    val isTextAiAnalyzing: Boolean = false,
+    val textAiResultItems: List<DetectedFoodItem>? = null,
+    val textAiErrorMessage: String? = null,
+    val textAiExplanation: String? = null,
+    val textAiMealType: String = "COMIDA",
+
+    // Coach Nutricional IA
+    val nutritionAdvice: String? = null,
+    val isAdviceLoading: Boolean = false
 ) {
     val totalCalories: Float get() = meals.sumOf { it.calories.toDouble() }.toFloat()
     val totalProtein: Float get() = meals.sumOf { it.protein.toDouble() }.toFloat()
@@ -131,12 +144,22 @@ class NutritionViewModel @Inject constructor(
         viewModelScope.launch {
             executeSearch("", FoodSourceCategory.TODOS)
         }
+
+        // Solicitar consejo inicial del coach
+        viewModelScope.launch {
+            delay(400)
+            requestNutritionAdvice()
+        }
     }
 
     fun selectDate(date: LocalDate) {
         _uiState.update { it.copy(selectedDate = date) }
         observeMealsForDate(date)
         loadHealthDataForDate(date)
+        viewModelScope.launch {
+            delay(300)
+            requestNutritionAdvice()
+        }
     }
 
     private fun observeMealsForDate(date: LocalDate) {
@@ -207,12 +230,16 @@ class NutritionViewModel @Inject constructor(
                 fat = item.fatPer100g * factor
             )
             repository.insertMeal(entry)
+            delay(200)
+            requestNutritionAdvice()
         }
     }
 
     fun deleteMeal(mealId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.deleteMeal(mealId)
+            delay(200)
+            requestNutritionAdvice()
         }
     }
 
@@ -233,10 +260,6 @@ class NutritionViewModel @Inject constructor(
             else -> tdee
         }
 
-        // Distribución óptima de macronutrientes:
-        // Proteínas: 2.0 g/kg (protege masa muscular en déficit)
-        // Grasas: 0.85 g/kg (salud hormonal)
-        // Carbohidratos: el resto calórico
         val protein = (weightKg * 2.0f).coerceIn(90f, 240f)
         val fat = (weightKg * 0.85f).coerceIn(40f, 110f)
         val remainingKcal = targetCalories - (protein * 4f + fat * 9f)
@@ -279,6 +302,8 @@ class NutritionViewModel @Inject constructor(
                     showCalculatorDialog = false
                 )
             }
+            delay(200)
+            requestNutritionAdvice()
         }
     }
 
@@ -380,6 +405,124 @@ class NutritionViewModel @Inject constructor(
             }
             repository.insertMeals(entities)
             clearStagedPhoto()
+            delay(200)
+            requestNutritionAdvice()
+        }
+    }
+
+    // ─── Registro de Comida por Texto con IA (Sin Foto) ───────────────────────
+
+    fun openTextAiDialog(mealType: String) {
+        _uiState.update {
+            it.copy(
+                showTextAiDialog = true,
+                textAiMealType = mealType,
+                textAiInput = "",
+                textAiResultItems = null,
+                textAiErrorMessage = null,
+                textAiExplanation = null,
+                isTextAiAnalyzing = false
+            )
+        }
+    }
+
+    fun closeTextAiDialog() {
+        _uiState.update { it.copy(showTextAiDialog = false) }
+    }
+
+    fun onTextAiInputChange(text: String) {
+        _uiState.update { it.copy(textAiInput = text) }
+    }
+
+    fun analyzeTextAiMeal() {
+        val input = _uiState.value.textAiInput.trim()
+        if (input.isBlank()) return
+
+        _uiState.update { it.copy(isTextAiAnalyzing = true, textAiErrorMessage = null) }
+        viewModelScope.launch {
+            when (val result = repository.analyzeFoodText(input)) {
+                is FoodAiResult.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            isTextAiAnalyzing = false,
+                            textAiResultItems = result.items,
+                            textAiExplanation = result.explanation
+                        )
+                    }
+                }
+                is FoodAiResult.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isTextAiAnalyzing = false,
+                            textAiErrorMessage = result.message
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun updateTextAiResultItem(index: Int, item: DetectedFoodItem) {
+        val current = _uiState.value.textAiResultItems?.toMutableList() ?: return
+        if (index in current.indices) {
+            current[index] = item
+            _uiState.update { it.copy(textAiResultItems = current) }
+        }
+    }
+
+    fun removeTextAiResultItem(index: Int) {
+        val current = _uiState.value.textAiResultItems?.toMutableList() ?: return
+        if (index in current.indices) {
+            current.removeAt(index)
+            _uiState.update { it.copy(textAiResultItems = current) }
+        }
+    }
+
+    fun confirmTextAiItems(items: List<DetectedFoodItem>, mealType: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val date = _uiState.value.selectedDate
+            val zone = ZoneId.systemDefault()
+            val dateMillis = date.atStartOfDay(zone).toInstant().toEpochMilli()
+
+            val entities = items.map { item ->
+                MealEntryEntity(
+                    dateMillis = dateMillis,
+                    mealType = mealType,
+                    name = item.name,
+                    brand = "Casero",
+                    grams = item.grams,
+                    calories = item.calories,
+                    protein = item.protein,
+                    carbs = item.carbs,
+                    fat = item.fat
+                )
+            }
+            repository.insertMeals(entities)
+            closeTextAiDialog()
+            delay(200)
+            requestNutritionAdvice()
+        }
+    }
+
+    // ─── Asesor / Coach Nutricional IA ────────────────────────────────────────
+
+    fun requestNutritionAdvice() {
+        _uiState.update { it.copy(isAdviceLoading = true) }
+        viewModelScope.launch {
+            val state = _uiState.value
+            val advice = repository.getNutritionAdvice(
+                consumedCalories = state.totalCalories,
+                targetCalories = state.targetCalories,
+                burnedCalories = state.activeBurnedCalories,
+                protein = state.totalProtein,
+                targetProtein = state.targetProtein,
+                carbs = state.totalCarbs,
+                targetCarbs = state.targetCarbs,
+                fat = state.totalFat,
+                targetFat = state.targetFat,
+                goal = state.userGoal
+            )
+            _uiState.update { it.copy(nutritionAdvice = advice, isAdviceLoading = false) }
         }
     }
 }

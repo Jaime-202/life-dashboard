@@ -228,4 +228,10 @@ class UserPreferencesRepository @Inject constructor(
             prefs[Keys.FAT_TARGET] = fat
         }
     }
+
+    suspend fun updateWeight(weightKg: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.WEIGHT_KG] = weightKg
+        }
+    }
 }

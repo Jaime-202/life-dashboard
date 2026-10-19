@@ -107,6 +107,24 @@ fun NutritionScreen(
         )
     }
 
+    // Diálogo de registro de comida con IA mediante Texto
+    if (state.showTextAiDialog) {
+        TextAiMealDialog(
+            mealType = state.textAiMealType,
+            inputText = state.textAiInput,
+            isAnalyzing = state.isTextAiAnalyzing,
+            detectedItems = state.textAiResultItems,
+            errorMessage = state.textAiErrorMessage,
+            explanation = state.textAiExplanation,
+            onInputChange = { viewModel.onTextAiInputChange(it) },
+            onAnalyze = { viewModel.analyzeTextAiMeal() },
+            onItemChange = { idx, item -> viewModel.updateTextAiResultItem(idx, item) },
+            onItemDelete = { idx -> viewModel.removeTextAiResultItem(idx) },
+            onConfirm = { items, type -> viewModel.confirmTextAiItems(items, type) },
+            onDismiss = { viewModel.closeTextAiDialog() }
+        )
+    }
+
     // Diálogo de búsqueda y escaneo de alimentos
     if (showSearchDialog) {
         SearchFoodDialog(
@@ -182,6 +200,15 @@ fun NutritionScreen(
                 )
             }
 
+            // ─── Coach Nutricional IA ─────────────────────────────────────
+            item {
+                NutritionCoachCard(
+                    advice = state.nutritionAdvice,
+                    isLoading = state.isAdviceLoading,
+                    onRefresh = { viewModel.requestNutritionAdvice() }
+                )
+            }
+
             // ─── Secciones de Comida ──────────────────────────────────────
             items(MealSectionType.entries.toTypedArray()) { section ->
                 MealSectionCard(
@@ -190,6 +217,9 @@ fun NutritionScreen(
                     onAddClick = {
                         selectedMealTypeForAdd = section.key
                         showSearchDialog = true
+                    },
+                    onTextAiClick = {
+                        viewModel.openTextAiDialog(section.key)
                     },
                     onCameraClick = {
                         selectedMealTypeForAdd = section.key
@@ -554,6 +584,7 @@ private fun MealSectionCard(
     section: MealSectionType,
     meals: List<MealEntryEntity>,
     onAddClick: () -> Unit,
+    onTextAiClick: () -> Unit,
     onCameraClick: () -> Unit,
     onGalleryClick: () -> Unit,
     onDeleteMeal: (Long) -> Unit
@@ -612,34 +643,46 @@ private fun MealSectionCard(
                 }
             }
 
-            // Botones de acción: Buscar Alimento & Foto con IA
+            // Botones de acción: Buscar Alimento, Texto IA & Foto con IA
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Button(
                     onClick = onAddClick,
                     colors  = ButtonDefaults.buttonColors(containerColor = Indigo700),
                     shape   = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    modifier = Modifier.weight(1f)
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    modifier = Modifier.weight(1.15f)
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, tint = White, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Buscar / Escanear", style = MaterialTheme.typography.labelMedium, color = White)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Buscar", style = MaterialTheme.typography.labelMedium, color = White, maxLines = 1)
                 }
 
                 Button(
-                    onClick = onCameraClick,
+                    onClick = onTextAiClick,
                     colors  = ButtonDefaults.buttonColors(containerColor = Violet400.copy(alpha = 0.25f)),
                     shape   = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     border = BorderStroke(1.dp, Violet400.copy(alpha = 0.5f)),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1.25f)
                 ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Violet300, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Foto IA ✨", style = MaterialTheme.typography.labelMedium, color = Violet300, fontWeight = FontWeight.Bold)
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Violet300, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Texto IA 💬", style = MaterialTheme.typography.labelMedium, color = Violet300, fontWeight = FontWeight.Bold, maxLines = 1)
+                }
+
+                IconButton(
+                    onClick = onCameraClick,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Violet400.copy(alpha = 0.25f))
+                        .border(1.dp, Violet400.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                ) {
+                    Icon(Icons.Default.CameraAlt, contentDescription = "Foto IA", tint = Violet300, modifier = Modifier.size(18.dp))
                 }
 
                 IconButton(
@@ -665,17 +708,25 @@ private fun MealItemRow(meal: MealEntryEntity, onDelete: () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(Indigo900.copy(alpha = 0.6f))
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
+        // Thumbnail visual categoría o foto con fallback limpio
+        FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = null, size = 42.dp)
+        Spacer(Modifier.width(10.dp))
+
         Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text(
                     text       = meal.name,
                     style      = MaterialTheme.typography.bodyMedium,
                     color      = White,
                     fontWeight = FontWeight.SemiBold,
                     maxLines   = 1,
-                    overflow   = TextOverflow.Ellipsis
+                    overflow   = TextOverflow.Ellipsis,
+                    modifier   = Modifier.weight(1f, fill = false)
                 )
                 if (meal.brand.isNotBlank() && meal.brand != "Básico") {
                     Spacer(Modifier.width(6.dp))
@@ -689,7 +740,9 @@ private fun MealItemRow(meal: MealEntryEntity, onDelete: () -> Unit) {
                             text     = meal.brand,
                             style    = MaterialTheme.typography.labelSmall,
                             color    = Violet300,
-                            fontSize = 9.sp
+                            fontSize = 9.sp,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -1117,21 +1170,8 @@ private fun SearchFoodDialog(
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (!item.imageUrl.isNullOrBlank()) {
-                                    AsyncImage(
-                                        model = ImageRequest.Builder(LocalContext.current)
-                                            .data(item.imageUrl)
-                                            .crossfade(true)
-                                            .build(),
-                                        contentDescription = item.name,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .size(56.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(Indigo700)
-                                    )
-                                    Spacer(Modifier.width(12.dp))
-                                }
+                                FoodThumbnail(name = item.name, brand = item.brand, imageUrl = item.imageUrl, size = 56.dp)
+                                Spacer(Modifier.width(12.dp))
 
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(text = item.name, style = MaterialTheme.typography.titleSmall, color = White, fontWeight = FontWeight.Bold)
@@ -1225,37 +1265,8 @@ private fun SearchFoodDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    // FOTO DEL ALIMENTO / PRODUCTO
-                                    if (!food.imageUrl.isNullOrBlank()) {
-                                        AsyncImage(
-                                            model = ImageRequest.Builder(LocalContext.current)
-                                                .data(food.imageUrl)
-                                                .crossfade(true)
-                                                .build(),
-                                            contentDescription = food.name,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .size(46.dp)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(Indigo700)
-                                        )
-                                    } else {
-                                        Box(
-                                            contentAlignment = Alignment.Center,
-                                            modifier = Modifier
-                                                .size(46.dp)
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(Indigo700)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Restaurant,
-                                                contentDescription = null,
-                                                tint = Violet300,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
-                                    }
-
+                                    // FOTO DEL ALIMENTO / PRODUCTO CON FALLBACK INTELIGENTE
+                                    FoodThumbnail(name = food.name, brand = food.brand, imageUrl = food.imageUrl, size = 46.dp)
                                     Spacer(Modifier.width(12.dp))
 
                                     Column(modifier = Modifier.weight(1f)) {
@@ -1506,6 +1517,398 @@ private fun GoalChip(
                 color = if (isSelected) Indigo900.copy(alpha = 0.8f) else Gray400,
                 fontSize = 9.sp
             )
+        }
+    }
+}
+
+// ─── Componente: Miniatura de Alimento con Fallback Inteligente ────────────────
+
+@Composable
+fun FoodThumbnail(
+    name: String,
+    brand: String? = null,
+    imageUrl: String? = null,
+    size: androidx.compose.ui.unit.Dp = 46.dp,
+    modifier: Modifier = Modifier
+) {
+    val emoji = remember(name) {
+        val lower = name.lowercase(Locale.ROOT)
+        when {
+            lower.contains("pan") || lower.contains("tostad") || lower.contains("baguette") || lower.contains("hogaza") -> "🥖"
+            lower.contains("huevo") || lower.contains("tortilla") -> "🥚"
+            lower.contains("leche") || lower.contains("yogur") || lower.contains("queso") || lower.contains("lacteo") || lower.contains("kéfir") -> "🥛"
+            lower.contains("pollo") || lower.contains("pechuga") || lower.contains("pavo") || lower.contains("carne") || lower.contains("ternera") || lower.contains("lomo") || lower.contains("jamon") || lower.contains("jamón") -> "🍗"
+            lower.contains("pescado") || lower.contains("atun") || lower.contains("atún") || lower.contains("salmon") || lower.contains("salmón") || lower.contains("merluza") || lower.contains("bacalao") -> "🐟"
+            lower.contains("arroz") || lower.contains("avena") || lower.contains("cereal") || lower.contains("pasta") || lower.contains("macarron") || lower.contains("espagueti") -> "🍚"
+            lower.contains("manzana") || lower.contains("fruta") || lower.contains("platano") || lower.contains("plátano") || lower.contains("naranja") || lower.contains("fresa") || lower.contains("pera") || lower.contains("uva") -> "🍎"
+            lower.contains("ensalada") || lower.contains("tomate") || lower.contains("lechuga") || lower.contains("verdura") || lower.contains("brocoli") || lower.contains("brócoli") || lower.contains("zanahoria") || lower.contains("espinaca") -> "🥗"
+            lower.contains("cafe") || lower.contains("café") -> "☕"
+            lower.contains("chocolate") || lower.contains("galleta") || lower.contains("dulce") || lower.contains("pastel") || lower.contains("cacao") -> "🍫"
+            lower.contains("aceite") || lower.contains("oliva") -> "🫒"
+            lower.contains("nuez") || lower.contains("nueces") || lower.contains("almendra") || lower.contains("cacahuete") || lower.contains("anacardo") -> "🥜"
+            lower.contains("agua") || lower.contains("refresco") || lower.contains("bebida") || lower.contains("zumo") -> "🥤"
+            else -> "🍽️"
+        }
+    }
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(size)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Indigo700.copy(alpha = 0.6f))
+            .border(1.dp, Indigo600.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+    ) {
+        // Icono o emoji representativo de la categoría (nunca se queda vacío ni roto)
+        Text(text = emoji, fontSize = (size.value * 0.45f).sp)
+
+        // Foto real del producto/supermercado encima si está disponible
+        if (!imageUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(imageUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(12.dp))
+            )
+        }
+    }
+}
+
+// ─── Componente: Coach Nutricional IA ──────────────────────────────────────────
+
+@Composable
+private fun NutritionCoachCard(
+    advice: String?,
+    isLoading: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Indigo800,
+                        Color(0xFF231448)
+                    )
+                )
+            )
+            .border(1.dp, Violet400.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
+            .padding(18.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Violet400.copy(alpha = 0.2f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = Violet300,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                        Text(
+                            text = "Coach Nutricional IA",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = White
+                        )
+                        Text(
+                            text = "¿Necesitas comer más o menos? ¿Qué comer?",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Gray400,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onRefresh,
+                    enabled = !isLoading,
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    val rotation by animateFloatAsState(
+                        targetValue = if (isLoading) 360f else 0f,
+                        animationSpec = if (isLoading)
+                            infiniteRepeatable(tween(1000), RepeatMode.Restart)
+                        else
+                            snap(),
+                        label = "coach_refresh_anim"
+                    )
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Actualizar recomendación",
+                        tint = if (isLoading) Violet300 else Gray400,
+                        modifier = Modifier.size(18.dp).rotate(rotation)
+                    )
+                }
+            }
+
+            AnimatedContent(
+                targetState = isLoading to advice,
+                transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(200)) },
+                label = "coach_advice_anim"
+            ) { (loading, text) ->
+                if (loading) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Violet400, strokeWidth = 2.dp)
+                        Text(
+                            text = "Calculando tu balance calórico y recomendación...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Violet300
+                        )
+                    }
+                } else if (!text.isNullOrBlank()) {
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Gray100,
+                        lineHeight = 22.sp
+                    )
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Toca para analizar tu ingesta y recibir consejo",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray400,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            onClick = onRefresh,
+                            colors = ButtonDefaults.buttonColors(containerColor = Violet400),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text("Consultar IA", color = Indigo900, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Diálogo de Registro de Comida con IA mediante Texto ───────────────────────
+
+@Composable
+private fun TextAiMealDialog(
+    mealType: String,
+    inputText: String,
+    isAnalyzing: Boolean,
+    detectedItems: List<DetectedFoodItem>?,
+    errorMessage: String?,
+    explanation: String?,
+    onInputChange: (String) -> Unit,
+    onAnalyze: () -> Unit,
+    onItemChange: (Int, DetectedFoodItem) -> Unit,
+    onItemDelete: (Int) -> Unit,
+    onConfirm: (List<DetectedFoodItem>, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Indigo800)
+                .border(1.dp, Violet400.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
+                .padding(20.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Cabecera
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Violet300, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Registrar con IA Texto",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = White
+                        )
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Gray400, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Violet400.copy(alpha = 0.15f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Destino: $mealType",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Violet300,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                // Campo de entrada de texto
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Describe lo que has comido en lenguaje natural:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gray300
+                    )
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = onInputChange,
+                        placeholder = {
+                            Text(
+                                "Ej: 2 tostadas de pan integral con aceite de oliva, 50g de jamón serrano y un café con leche",
+                                color = Gray500,
+                                fontSize = 12.sp
+                            )
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Violet400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        minLines = 3,
+                        maxLines = 5,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                // Botón de análisis
+                if (detectedItems == null && !isAnalyzing) {
+                    Button(
+                        onClick = onAnalyze,
+                        enabled = inputText.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Violet400),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Indigo900)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Calcular Alimentos y Macros", color = Indigo900, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Indicador de análisis en curso
+                if (isAnalyzing) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                    ) {
+                        CircularProgressIndicator(color = Violet400, strokeWidth = 3.dp)
+                        Text(
+                            text = "Gemini 2.0 Flash está calculando alimentos, porciones y calorías...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Violet300,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                // Mensaje de error
+                if (errorMessage != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Rose400.copy(alpha = 0.2f))
+                            .padding(12.dp)
+                    ) {
+                        Text(text = errorMessage, color = Rose400, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+
+                // Lista de alimentos detectados
+                if (detectedItems != null) {
+                    if (explanation != null) {
+                        Text(
+                            text = "💡 $explanation",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray300
+                        )
+                    }
+
+                    Text(
+                        text = "Alimentos calculados (ajusta gramos si es necesario):",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = White,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        detectedItems.forEachIndexed { idx, item ->
+                            DetectedItemEditor(
+                                item = item,
+                                onChange = { updated -> onItemChange(idx, updated) },
+                                onDelete = { onItemDelete(idx) }
+                            )
+                        }
+                    }
+
+                    // Resumen calórico
+                    val totalDetectedKcal = detectedItems.sumOf { it.calories.toDouble() }.toInt()
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    ) {
+                        Text("Total estimado:", style = MaterialTheme.typography.bodyMedium, color = Gray300)
+                        Text("$totalDetectedKcal kcal", style = MaterialTheme.typography.titleMedium, color = Amber400, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Botón de confirmación y guardado
+                    Button(
+                        onClick = { onConfirm(detectedItems, mealType) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Emerald400),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = Indigo900)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Añadir a $mealType", color = Indigo900, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }
