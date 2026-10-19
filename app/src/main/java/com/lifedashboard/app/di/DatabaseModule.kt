@@ -17,6 +17,18 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            try {
+                db.execSQL("ALTER TABLE `health_data` DROP COLUMN `avgHeartRate`")
+                db.execSQL("ALTER TABLE `health_data` DROP COLUMN `minHeartRate`")
+                db.execSQL("ALTER TABLE `health_data` DROP COLUMN `maxHeartRate`")
+            } catch (_: Exception) {
+                // Ignore if SQLite version doesn't support DROP COLUMN or already migrated
+            }
+        }
+    }
+
     private val MIGRATION_5_6 = object : Migration(5, 6) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("""
@@ -54,7 +66,8 @@ object DatabaseModule {
             AppDatabase::class.java,
             "life_dashboard.db"
         )
-            .addMigrations(MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .fallbackToDestructiveMigration()
             .fallbackToDestructiveMigrationOnDowngrade()
             .build()
 

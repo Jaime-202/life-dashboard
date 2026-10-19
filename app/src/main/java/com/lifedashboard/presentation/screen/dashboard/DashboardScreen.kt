@@ -770,7 +770,10 @@ private fun DashboardWeightCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
@@ -791,26 +794,32 @@ private fun DashboardWeightCard(
                             text = "Evolución de Peso",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = White
+                            color = White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Historial y tendencia corporal",
+                            text = "Historial y tendencia",
                             style = MaterialTheme.typography.labelSmall,
                             color = Gray400,
-                            fontSize = 11.sp
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
+
+                Spacer(Modifier.width(8.dp))
 
                 Button(
                     onClick = onAddWeight,
                     colors = ButtonDefaults.buttonColors(containerColor = Violet400),
                     shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, tint = Indigo900, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Pesar", color = Indigo900, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("Pesar", color = Indigo900, fontWeight = FontWeight.Bold, fontSize = 12.sp, softWrap = false, maxLines = 1)
                 }
             }
 
