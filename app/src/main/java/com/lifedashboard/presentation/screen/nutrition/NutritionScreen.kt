@@ -758,9 +758,9 @@ private fun MealSectionCard(
                 )
             }
 
-            // Botones de acción: Buscar Alimento, Texto IA, Rápido & Foto con IA
+            // Barra de acciones: Añadir Alimento principal + Atajos de IA, Cámara, Galería y Rápido
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -768,50 +768,45 @@ private fun MealSectionCard(
                     onClick = onAddClick,
                     colors  = ButtonDefaults.buttonColors(containerColor = Indigo700),
                     shape   = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                    modifier = Modifier.weight(1.1f)
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = White, modifier = Modifier.size(15.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Buscar", style = MaterialTheme.typography.labelMedium, color = White, maxLines = 1)
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Violet300, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Añadir Alimento",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = White,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 }
 
-                Button(
+                // Botón Texto IA
+                IconButton(
                     onClick = onTextAiClick,
-                    colors  = ButtonDefaults.buttonColors(containerColor = Violet400.copy(alpha = 0.25f)),
-                    shape   = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                    border = BorderStroke(1.dp, Violet400.copy(alpha = 0.5f)),
-                    modifier = Modifier.weight(1.2f)
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Violet400.copy(alpha = 0.20f))
+                        .border(1.dp, Violet400.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                 ) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Violet300, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Texto IA", style = MaterialTheme.typography.labelMedium, color = Violet300, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Icon(Icons.Default.AutoAwesome, contentDescription = "Registrar con Texto IA", tint = Violet300, modifier = Modifier.size(17.dp))
                 }
 
-                Button(
-                    onClick = onQuickAddClick,
-                    colors  = ButtonDefaults.buttonColors(containerColor = Indigo700),
-                    shape   = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                    modifier = Modifier.weight(1.0f)
-                ) {
-                    Icon(Icons.Default.FlashOn, contentDescription = null, tint = Amber400, modifier = Modifier.size(15.dp))
-                    Spacer(Modifier.width(2.dp))
-                    Text("Rápido", style = MaterialTheme.typography.labelMedium, color = White, maxLines = 1)
-                }
-
+                // Botón Foto IA
                 IconButton(
                     onClick = onCameraClick,
                     modifier = Modifier
                         .size(38.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Violet400.copy(alpha = 0.25f))
-                        .border(1.dp, Violet400.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .background(Indigo700)
                 ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = "Foto IA", tint = Violet300, modifier = Modifier.size(17.dp))
+                    Icon(Icons.Default.CameraAlt, contentDescription = "Foto con IA", tint = Gray300, modifier = Modifier.size(17.dp))
                 }
 
+                // Botón Galería
                 IconButton(
                     onClick = onGalleryClick,
                     modifier = Modifier
@@ -820,6 +815,17 @@ private fun MealSectionCard(
                         .background(Indigo700)
                 ) {
                     Icon(Icons.Default.PhotoLibrary, contentDescription = "Elegir de galería", tint = Gray300, modifier = Modifier.size(17.dp))
+                }
+
+                // Botón Rápido
+                IconButton(
+                    onClick = onQuickAddClick,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Indigo700)
+                ) {
+                    Icon(Icons.Default.FlashOn, contentDescription = "Añadido Rápido", tint = Amber400, modifier = Modifier.size(17.dp))
                 }
             }
         }
@@ -858,6 +864,7 @@ private fun MealItemRow(
                     color      = White,
                     fontWeight = FontWeight.SemiBold,
                     maxLines   = 1,
+                    softWrap   = false,
                     overflow   = TextOverflow.Ellipsis,
                     modifier   = Modifier.weight(1f, fill = false)
                 )
@@ -875,6 +882,7 @@ private fun MealItemRow(
                             fontSize   = 10.sp,
                             fontWeight = FontWeight.Medium,
                             maxLines   = 1,
+                            softWrap   = false,
                             overflow   = TextOverflow.Ellipsis
                         )
                     }
@@ -883,13 +891,21 @@ private fun MealItemRow(
             Spacer(Modifier.height(3.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text("${meal.grams.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp)
+                Text("${meal.grams.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp, maxLines = 1, softWrap = false)
                 Text("·", color = Gray600)
-                Text("${meal.calories.toInt()} kcal", style = MaterialTheme.typography.labelSmall, color = Amber400, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
+                Text("${meal.calories.toInt()} kcal", style = MaterialTheme.typography.labelSmall, color = Amber400, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, maxLines = 1, softWrap = false)
                 Text("·", color = Gray600)
-                Text("P:${meal.protein.toInt()}g C:${meal.carbs.toInt()}g G:${meal.fat.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp)
+                Text(
+                    text = "P:${meal.protein.toInt()}g C:${meal.carbs.toInt()}g G:${meal.fat.toInt()}g",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Gray400,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
 
@@ -1966,6 +1982,7 @@ private fun SearchFoodDialog(
                                             color = White,
                                             fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
+                                            softWrap = false,
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Spacer(Modifier.height(2.dp))
@@ -1977,13 +1994,21 @@ private fun SearchFoodDialog(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(4.dp))
                                                     .background(Indigo700)
-                                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
                                             ) {
-                                                Text(text = food.brand, style = MaterialTheme.typography.labelSmall, color = Violet300, fontSize = 9.sp)
+                                                Text(
+                                                    text = food.brand,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Violet300,
+                                                    fontSize = 9.sp,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
                                             }
-                                            Text("${food.caloriesPer100g.toInt()} kcal/100g", style = MaterialTheme.typography.labelSmall, color = Amber400, fontSize = 11.sp)
+                                            Text("${food.caloriesPer100g.toInt()} kcal/100g", style = MaterialTheme.typography.labelSmall, color = Amber400, fontSize = 11.sp, maxLines = 1, softWrap = false)
                                             Text("·", color = Gray500)
-                                            Text("P:${food.proteinPer100g.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp)
+                                            Text("P:${food.proteinPer100g.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp, maxLines = 1, softWrap = false)
                                         }
                                     }
 

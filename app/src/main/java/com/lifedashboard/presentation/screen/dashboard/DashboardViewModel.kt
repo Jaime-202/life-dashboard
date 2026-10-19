@@ -48,7 +48,9 @@ data class DashboardUiState(
     val weightHistory: List<WeightEntryEntity> = emptyList(),
     val latestWeightKg: Float? = null,
     val userHeightCm: Int = 175,
-    val showAddWeightDialog: Boolean = false
+    val showAddWeightDialog: Boolean = false,
+    val workoutDaysTarget: Int = 4,
+    val weeklyWorkoutsCount: Int = 0
 )
 
 @HiltViewModel
@@ -78,15 +80,16 @@ class DashboardViewModel @Inject constructor(
         userPreferences.userGoals
             .onEach { goals ->
                 _uiState.update { state ->
-                    val stepsProg = (state.todaySteps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f)
-                    val sleepProg = (state.todaySleepHours / goals.sleepTargetHours).coerceIn(0f, 1f)
-                    val calProg   = (state.todayCalories / goals.caloriesTarget).coerceIn(0f, 1f)
+                    val stepsProg = if (goals.stepsTarget > 0) (state.todaySteps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f) else 0f
+                    val sleepProg = if (goals.sleepTargetHours > 0) (state.todaySleepHours / goals.sleepTargetHours).coerceIn(0f, 1f) else 0f
+                    val calProg   = if (goals.caloriesTarget > 0) (state.todayCalories / goals.caloriesTarget).coerceIn(0f, 1f) else 0f
 
                     state.copy(
                         userName           = goals.userName,
                         stepsTarget        = goals.stepsTarget,
                         sleepTargetHours   = goals.sleepTargetHours,
                         caloriesTarget     = goals.caloriesTarget,
+                        workoutDaysTarget  = goals.workoutDaysTarget,
                         stepsProgress      = stepsProg,
                         sleepProgress      = sleepProg,
                         caloriesProgress   = calProg,
@@ -130,9 +133,9 @@ class DashboardViewModel @Inject constructor(
                         todaySteps       = steps,
                         todaySleepHours  = sleep,
                         todayCalories    = cals,
-                        stepsProgress    = (steps.toFloat() / state.stepsTarget).coerceIn(0f, 1f),
-                        sleepProgress    = (sleep / state.sleepTargetHours).coerceIn(0f, 1f),
-                        caloriesProgress = (cals / state.caloriesTarget).coerceIn(0f, 1f),
+                        stepsProgress    = if (state.stepsTarget > 0) (steps.toFloat() / state.stepsTarget).coerceIn(0f, 1f) else 0f,
+                        sleepProgress    = if (state.sleepTargetHours > 0) (sleep / state.sleepTargetHours).coerceIn(0f, 1f) else 0f,
+                        caloriesProgress = if (state.caloriesTarget > 0) (cals / state.caloriesTarget).coerceIn(0f, 1f) else 0f,
                         isDataLoading    = false
                     )
                 }
@@ -155,6 +158,16 @@ class DashboardViewModel @Inject constructor(
                 }
             }
             .launchIn(viewModelScope)
+
+        // Sesiones completadas en la semana en curso (Lunes a Domingo)
+        val monday = today.with(java.time.DayOfWeek.MONDAY)
+        val mondayMillis = monday.toStartOfDayMillis()
+        val nextMondayMillis = monday.plusDays(7).toStartOfDayMillis()
+        workoutDao.getSessionsInRange(mondayMillis, nextMondayMillis)
+            .onEach { weekSessions ->
+                _uiState.update { it.copy(weeklyWorkoutsCount = weekSessions.size) }
+            }
+            .launchIn(viewModelScope)
     }
 
     private fun observeCalendar() {
@@ -173,8 +186,9 @@ class DashboardViewModel @Inject constructor(
 
         combine(
             healthDao.getHealthRange(fromMillis, toMillis),
-            workoutDao.getSessionsInRange(fromMillis, toMillis)
-        ) { healthList, sessions ->
+            workoutDao.getSessionsInRange(fromMillis, toMillis),
+            userPreferences.userGoals
+        ) { healthList, sessions, goals ->
             val zone = ZoneId.systemDefault()
             val sessionsByDate = sessions.groupBy { session ->
                 Instant.ofEpochMilli(session.dateMillis).atZone(zone).toLocalDate()
@@ -193,10 +207,12 @@ class DashboardViewModel @Inject constructor(
                         "REST"     -> WorkoutType.REST
                         else       -> null
                     },
-                    stepsProgress    = (h.steps.toFloat() / _uiState.value.stepsTarget).coerceIn(0f, 1f),
-                    sleepProgress    = (h.sleepHours / _uiState.value.sleepTargetHours).coerceIn(0f, 1f),
+                    stepsProgress    = if (goals.stepsTarget > 0) (h.steps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f) else 0f,
+                    sleepProgress    = if (goals.sleepTargetHours > 0) (h.sleepHours / goals.sleepTargetHours).coerceIn(0f, 1f) else 0f,
                     waterProgress    = 0f,
-                    actualSteps      = h.steps
+                    actualSteps      = h.steps,
+                    actualSleepHours = h.sleepHours,
+                    actualCalories   = h.activeCalories
                 )
             }
             map

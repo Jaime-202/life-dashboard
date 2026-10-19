@@ -76,6 +76,8 @@ data class DailyProgress(
     val sleepProgress: Float,       // 0f..1f
     val waterProgress: Float = 0f,
     val actualSteps: Int = 0,       // Pasos reales de Health Connect
+    val actualSleepHours: Float = 0f, // Horas reales de sueño
+    val actualCalories: Float = 0f,   // Calorías activas quemadas
     val allGoalsMet: Boolean = workoutCompleted &&
             stepsProgress >= 1f && sleepProgress >= 1f
 )

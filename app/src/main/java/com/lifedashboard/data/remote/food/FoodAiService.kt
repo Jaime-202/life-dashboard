@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONObject
 import java.util.Locale
 import java.util.regex.Pattern
 import javax.inject.Inject
@@ -255,6 +256,118 @@ class FoodAiService @Inject constructor(
                 explanation = "Calculado a partir de tu texto."
             )
         }
+    }
+
+    /**
+     * Estima e infiere con IA (Gemini o motor local) los valores nutricionales por 100g y porción
+     * de cualquier alimento o producto de supermercado buscado por el usuario.
+     */
+    suspend fun estimateFoodCatalogItem(query: String, category: FoodSourceCategory): FoodCatalogItem? = withContext(Dispatchers.IO) {
+        val trimmed = query.trim()
+        if (trimmed.length < 2) return@withContext null
+
+        val brandName = when (category) {
+            FoodSourceCategory.MERCADONA -> "Mercadona / Hacendado"
+            FoodSourceCategory.CARREFOUR -> "Carrefour"
+            FoodSourceCategory.DIA -> "Día"
+            FoodSourceCategory.ALCAMPO -> "Alcampo"
+            FoodSourceCategory.SUPERCOR -> "El Corte Inglés"
+            FoodSourceCategory.BASICOS -> "Básico"
+            FoodSourceCategory.TODOS -> "Supermercado"
+        }
+
+        val userGoals = userPreferences.userGoals.first()
+        val apiKey = userGoals.geminiApiKey.ifBlank {
+            BuildConfig.GEMINI_API_KEY.takeIf { it.isNotBlank() && !it.contains("PEGA_AQUI") } ?: ""
+        }
+
+        if (apiKey.isNotBlank()) {
+            try {
+                val prompt = """
+                    Eres una base de datos nutricional de alimentos españoles y supermercados ($brandName).
+                    El usuario busca el alimento o producto: "$trimmed".
+                    Devuelve ÚNICAMENTE un objeto JSON con los valores nutricionales exactos por 100 gramos y la ración recomendada:
+                    {
+                      "name": "Nombre claro y formal del alimento en español",
+                      "brand": "$brandName",
+                      "caloriesPer100g": 150.0,
+                      "proteinPer100g": 12.0,
+                      "carbsPer100g": 18.0,
+                      "fatPer100g": 4.5,
+                      "servingSizeGrams": 150.0,
+                      "servingDescription": "1 porción (~150g)"
+                    }
+                """.trimIndent()
+
+                val model = GenerativeModel(
+                    modelName = "gemini-2.0-flash",
+                    apiKey = apiKey,
+                    generationConfig = generationConfig {
+                        temperature = 0.1f
+                        maxOutputTokens = 300
+                        responseMimeType = "application/json"
+                    }
+                )
+                val resp = model.generateContent(prompt)
+                val txt = resp.text?.trim() ?: ""
+                if (txt.isNotBlank()) {
+                    var cleaned = txt.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+                    val sIdx = cleaned.indexOf('{')
+                    val eIdx = cleaned.lastIndexOf('}')
+                    if (sIdx != -1 && eIdx != -1 && eIdx > sIdx) {
+                        cleaned = cleaned.substring(sIdx, eIdx + 1)
+                        val obj = JSONObject(cleaned)
+                        val name = obj.optString("name", trimmed).trim()
+                        val kcal = obj.optDouble("caloriesPer100g", 120.0).toFloat()
+                        val prot = obj.optDouble("proteinPer100g", 5.0).toFloat()
+                        val carb = obj.optDouble("carbsPer100g", 15.0).toFloat()
+                        val fat = obj.optDouble("fatPer100g", 3.0).toFloat()
+                        val serving = obj.optDouble("servingSizeGrams", 100.0).toFloat()
+                        val servDesc = obj.optString("servingDescription", "${serving.toInt()}g")
+
+                        val imgUrl = RealFoodImageResolver.resolve(name, brandName)
+                        return@withContext FoodCatalogItem(
+                            id = "ai_${name.hashCode()}",
+                            name = name,
+                            brand = brandName,
+                            caloriesPer100g = kcal,
+                            proteinPer100g = prot,
+                            carbsPer100g = carb,
+                            fatPer100g = fat,
+                            servingSizeGrams = serving,
+                            servingDescription = servDesc,
+                            imageUrl = imgUrl,
+                            isGeneric = category == FoodSourceCategory.BASICOS
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Fallo al estimar alimento con Gemini: ${e.message}")
+            }
+        }
+
+        // Fallback a motor local heurístico
+        val localList = parseFoodsFromTextLocally(trimmed)
+        val first = localList.firstOrNull()
+        if (first != null) {
+            val factor = if (first.grams > 0) 100f / first.grams else 1f
+            val imgUrl = RealFoodImageResolver.resolve(first.name, brandName)
+            return@withContext FoodCatalogItem(
+                id = "ai_local_${trimmed.hashCode()}",
+                name = first.name,
+                brand = brandName,
+                caloriesPer100g = first.calories * factor,
+                proteinPer100g = first.protein * factor,
+                carbsPer100g = first.carbs * factor,
+                fatPer100g = first.fat * factor,
+                servingSizeGrams = first.grams,
+                servingDescription = "1 ración (~${first.grams.toInt()}g)",
+                imageUrl = imgUrl,
+                isGeneric = category == FoodSourceCategory.BASICOS
+            )
+        }
+
+        return@withContext null
     }
 
     /**

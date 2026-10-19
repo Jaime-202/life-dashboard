@@ -1,8 +1,11 @@
 package com.lifedashboard.data.remote.food
 
+import android.content.Context
 import android.util.Log
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.net.HttpURLConnection
@@ -39,7 +42,10 @@ data class FoodCatalogItem(
 )
 
 @Singleton
-class FoodCatalogService @Inject constructor() {
+class FoodCatalogService @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val aiService: FoodAiService
+) {
 
     // ─── Catálogo Base de Alimentos Españoles & Supermercados (Offline & Rápido) ─
     private val builtInFoods = listOf(
@@ -580,19 +586,63 @@ class FoodCatalogService @Inject constructor() {
         FoodCatalogItem("gen_66", "Aceite de oliva virgen extra", "Básico", 900f, 0f, 0f, 100f, 10f, "1 cucharada sopera (~10g)", isGeneric = true, imageUrl = "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=200&q=80")
     )
 
+    private var assetFoods: List<FoodCatalogItem>? = null
+
+    private fun loadAssetFoods(): List<FoodCatalogItem> {
+        val cached = assetFoods
+        if (cached != null) return cached
+
+        return try {
+            val jsonString = context.assets.open("mercadona_catalog.json").bufferedReader().use { it.readText() }
+            val jsonArray = JSONArray(jsonString)
+            val list = ArrayList<FoodCatalogItem>(jsonArray.length())
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(
+                    FoodCatalogItem(
+                        id = obj.getString("id"),
+                        name = obj.getString("name"),
+                        brand = obj.getString("brand"),
+                        caloriesPer100g = obj.getDouble("caloriesPer100g").toFloat(),
+                        proteinPer100g = obj.getDouble("proteinPer100g").toFloat(),
+                        carbsPer100g = obj.getDouble("carbsPer100g").toFloat(),
+                        fatPer100g = obj.getDouble("fatPer100g").toFloat(),
+                        servingSizeGrams = obj.optDouble("servingSizeGrams", 100.0).toFloat(),
+                        servingDescription = obj.optString("servingDescription", "100g"),
+                        imageUrl = obj.optString("imageUrl", "").takeIf { it.isNotBlank() },
+                        isGeneric = false
+                    )
+                )
+            }
+            assetFoods = list
+            list
+        } catch (e: Exception) {
+            Log.w(TAG, "Error cargando mercadona_catalog.json desde assets: ${e.message}")
+            emptyList()
+        }
+    }
+
     /**
-     * Búsqueda híbrida instantánea:
-     * 1. Si es código de barras numérico (8 a 14 dígitos), consulta directa a Open Food Facts por barcode.
-     * 2. Si es texto, busca en el catálogo local con coincidencia inmediata y consulta la API remota.
+     * Búsqueda híbrida instantánea de ultra-alta cobertura:
+     * 1. Consulta el catálogo offline masivo (Mercadona/Hacendado oficial + Básicos españoles con fotos reales).
+     * 2. Si es código de barras, busca en local y consulta Open Food Facts.
+     * 3. Si no hay resultados locales y el usuario busca un plato o alimento específico,
+     *    genera automáticamente el alimento con IA nutricional (Gemini 2.0 Flash / motor local).
      */
     suspend fun searchFoods(
         query: String,
         category: FoodSourceCategory = FoodSourceCategory.TODOS
     ): List<FoodCatalogItem> = withContext(Dispatchers.IO) {
         val trimmed = query.trim()
+        val allFoods = builtInFoods + loadAssetFoods()
 
-        // 1. Detección de código de barras
+        // 1. Detección y búsqueda por código de barras
         if (trimmed.length in 8..14 && trimmed.all { it.isDigit() }) {
+            val localBarcodeMatch = allFoods.firstOrNull { it.barcode == trimmed }
+            if (localBarcodeMatch != null) {
+                val resolvedBarcodeImg = RealFoodImageResolver.resolve(localBarcodeMatch.name, localBarcodeMatch.brand, localBarcodeMatch.imageUrl)
+                return@withContext listOf(localBarcodeMatch.copy(imageUrl = resolvedBarcodeImg))
+            }
             val barcodeItem = queryByBarcode(trimmed)
             if (barcodeItem != null) {
                 val resolvedBarcodeImg = RealFoodImageResolver.resolve(barcodeItem.name, barcodeItem.brand, barcodeItem.imageUrl)
@@ -600,35 +650,49 @@ class FoodCatalogService @Inject constructor() {
             }
         }
 
-        // 2. Filtro local inmediato
+        // 2. Filtro local inmediato en memoria / assets
         val localMatches = if (trimmed.isBlank()) {
-            filterByCategory(builtInFoods, category)
+            filterByCategory(allFoods, category).take(80)
         } else {
             val tokens = trimmed.lowercase().split("\\s+".toRegex()).filter { it.isNotBlank() }
-            val filtered = builtInFoods.filter { item ->
+            val filtered = allFoods.filter { item ->
                 val fullText = "${item.name} ${item.brand}".lowercase()
                 tokens.all { token -> fullText.contains(token) }
             }
-            filterByCategory(filtered, category)
+            filterByCategory(filtered, category).take(80)
         }
 
-        // Si la categoría es Básicos o la búsqueda tiene menos de 2 caracteres, no consultamos red
-        if (category == FoodSourceCategory.BASICOS || trimmed.length < 2) {
+        if (localMatches.isNotEmpty()) {
             return@withContext localMatches.map { item ->
                 item.copy(imageUrl = RealFoodImageResolver.resolve(item.name, item.brand, item.imageUrl))
             }
         }
 
-        // 3. Consulta remota en Open Food Facts (España / Mirror)
-        val remoteResults = queryOpenFoodFacts(trimmed, category)
+        // 3. Consulta remota en Open Food Facts (si estuviera disponible)
+        val remoteResults = if (category != FoodSourceCategory.BASICOS && trimmed.length >= 2) {
+            queryOpenFoodFacts(trimmed, category)
+        } else emptyList()
 
         val combined = (localMatches + remoteResults).distinctBy {
             it.name.lowercase().trim() to it.brand.lowercase().trim()
         }
         val filteredResults = filterByCategory(combined, category)
-        filteredResults.map { item ->
-            item.copy(imageUrl = RealFoodImageResolver.resolve(item.name, item.brand, item.imageUrl))
+
+        if (filteredResults.isNotEmpty()) {
+            return@withContext filteredResults.map { item ->
+                item.copy(imageUrl = RealFoodImageResolver.resolve(item.name, item.brand, item.imageUrl))
+            }
         }
+
+        // 4. Fallback de IA Nutricional garantizada: nunca devolver lista vacía para búsquedas de alimentos
+        if (trimmed.length >= 2) {
+            val aiEstimated = aiService.estimateFoodCatalogItem(trimmed, category)
+            if (aiEstimated != null) {
+                return@withContext listOf(aiEstimated)
+            }
+        }
+
+        emptyList()
     }
 
     private fun filterByCategory(items: List<FoodCatalogItem>, category: FoodSourceCategory): List<FoodCatalogItem> {

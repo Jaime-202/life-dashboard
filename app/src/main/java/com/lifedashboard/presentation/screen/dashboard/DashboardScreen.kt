@@ -486,17 +486,17 @@ private fun PillarGrid(
                 onClick   = { onNavigateToHealth("CALORIAS") }
             )
 
+            val workoutProgress = (state.weeklyWorkoutsCount.toFloat() / state.workoutDaysTarget.coerceAtLeast(1)).coerceIn(0f, 1f)
             PillarCard(
                 title    = "Entreno",
-                value    = if (state.workoutDoneToday) "Hecho" else "Pendiente",
-                unit     = if (state.workoutDoneToday) "✓" else "",
-                subtitle = when (state.workoutTypeToday) {
-                    WorkoutType.STRENGTH -> "Fuerza registrada"
-                    WorkoutType.CARDIO   -> "Cardio registrado"
-                    WorkoutType.REST     -> "Descanso programado"
-                    null                 -> "Sin entreno hoy"
+                value    = "${state.weeklyWorkoutsCount}",
+                unit     = "/ ${state.workoutDaysTarget} d",
+                subtitle = when {
+                    state.workoutDoneToday -> "Hoy completado ✓"
+                    state.weeklyWorkoutsCount >= state.workoutDaysTarget -> "Meta semanal lograda"
+                    else -> "${(state.workoutDaysTarget - state.weeklyWorkoutsCount).coerceAtLeast(0)} días restantes"
                 },
-                progress  = if (state.workoutDoneToday) 1f else 0f,
+                progress  = workoutProgress,
                 ringColor = RingWorkout,
                 icon      = Icons.Default.FitnessCenter,
                 modifier  = Modifier.weight(1f),
@@ -582,9 +582,15 @@ private fun SelectedDayDetailCard(
                     )
                     DayStatChip(
                         label   = "Sueño",
-                        value   = "${String.format(Locale.US, "%.1f", progress.sleepProgress * 8f)}h",
+                        value   = "${String.format(Locale.US, "%.1f", progress.actualSleepHours)}h",
                         color   = Teal400,
                         onClick = { onNavigateToHealth("SUENO") }
+                    )
+                    DayStatChip(
+                        label   = "Calorías",
+                        value   = "${progress.actualCalories.toInt()}",
+                        color   = Amber400,
+                        onClick = { onNavigateToHealth("CALORIAS") }
                     )
                 }
             } else {

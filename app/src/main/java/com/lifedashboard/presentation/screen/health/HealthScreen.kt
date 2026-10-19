@@ -726,67 +726,90 @@ private fun WeeklyBarChart(
             }
 
             if (data.isNotEmpty()) {
-                Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment     = Alignment.Bottom,
-                    modifier              = Modifier
-                        .fillMaxWidth()
-                        .height(130.dp)
-                        .padding(top = 10.dp)
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
                 ) {
-                    data.forEach { item ->
-                        val date = Instant.ofEpochMilli(item.dateMillis).atZone(zone).toLocalDate()
-                        val isToday = date == today
-                        val value = getValue(item)
-                        val fraction = (value / maxVal).coerceIn(0.04f, 1f)
+                    // 1. Fila de barras con valores numéricos superiores
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment     = Alignment.Bottom,
+                        modifier              = Modifier
+                            .fillMaxWidth()
+                            .height(115.dp)
+                    ) {
+                        data.forEach { item ->
+                            val date = Instant.ofEpochMilli(item.dateMillis).atZone(zone).toLocalDate()
+                            val isToday = date == today
+                            val value = getValue(item)
+                            val fraction = (value / maxVal).coerceIn(0.04f, 1f)
 
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier            = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                        ) {
-                            Text(
-                                text     = formatVal(value),
-                                style    = MaterialTheme.typography.labelSmall,
-                                color    = if (isToday) barColor else Gray400,
-                                fontSize = 9.sp,
-                                maxLines = 1
-                            )
-                            Spacer(Modifier.height(4.dp))
-
-                            Box(
-                                modifier = Modifier
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Bottom,
+                                modifier            = Modifier
                                     .weight(1f)
-                                    .fillMaxWidth(),
-                                contentAlignment = Alignment.BottomCenter
+                                    .fillMaxHeight()
                             ) {
+                                Text(
+                                    text     = formatVal(value),
+                                    style    = MaterialTheme.typography.labelSmall,
+                                    color    = if (isToday) barColor else Gray400,
+                                    fontSize = 9.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Spacer(Modifier.height(4.dp))
+
                                 Box(
                                     modifier = Modifier
-                                        .width(18.dp)
-                                        .fillMaxHeight(fraction)
-                                        .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                                        .background(
-                                            if (isToday) Brush.verticalGradient(listOf(barColor, barColor.copy(alpha = 0.6f)))
-                                            else Brush.verticalGradient(listOf(barColor.copy(alpha = 0.45f), Indigo700))
-                                        )
-                                        .border(
-                                            width = if (isToday) 1.5.dp else 0.dp,
-                                            color = if (isToday) barColor else Color.Transparent,
-                                            shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
-                                        )
+                                        .weight(1f, fill = true)
+                                        .fillMaxWidth(),
+                                    contentAlignment = Alignment.BottomCenter
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(18.dp)
+                                            .fillMaxHeight(fraction)
+                                            .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                                            .background(
+                                                if (isToday) Brush.verticalGradient(listOf(barColor, barColor.copy(alpha = 0.6f)))
+                                                else Brush.verticalGradient(listOf(barColor.copy(alpha = 0.45f), Indigo700))
+                                            )
+                                            .border(
+                                                width = if (isToday) 1.5.dp else 0.dp,
+                                                color = if (isToday) barColor else Color.Transparent,
+                                                shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)
+                                            )
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Fila independiente para los días de la semana (fija y siempre visible)
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment     = Alignment.CenterVertically,
+                        modifier              = Modifier.fillMaxWidth()
+                    ) {
+                        data.forEach { item ->
+                            val date = Instant.ofEpochMilli(item.dateMillis).atZone(zone).toLocalDate()
+                            val isToday = date == today
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier         = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text       = date.format(dayFormatter).uppercase().take(2),
+                                    style      = MaterialTheme.typography.labelSmall,
+                                    color      = if (isToday) barColor else Gray400,
+                                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize   = 11.sp,
+                                    maxLines   = 1,
+                                    softWrap   = false
                                 )
                             }
-                            Spacer(Modifier.height(6.dp))
-
-                            Text(
-                                text       = date.format(dayFormatter).uppercase().take(2),
-                                style      = MaterialTheme.typography.labelSmall,
-                                color      = if (isToday) White else Gray500,
-                                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
-                                fontSize   = 11.sp,
-                                maxLines   = 1
-                            )
                         }
                     }
                 }

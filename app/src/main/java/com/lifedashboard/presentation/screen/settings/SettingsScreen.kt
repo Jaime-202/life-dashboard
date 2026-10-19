@@ -106,7 +106,8 @@ class SettingsViewModel @Inject constructor(
     private val scheduler: WorkManagerScheduler,
     private val calendarRepository: CalendarRepository,
     private val userPreferences: UserPreferencesRepository,
-    private val weightDao: WeightDao
+    private val weightDao: WeightDao,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) : ViewModel() {
     private val _state = MutableStateFlow(SettingsState())
     val state: StateFlow<SettingsState> = _state.asStateFlow()
@@ -226,19 +227,28 @@ class SettingsViewModel @Inject constructor(
 
     fun updateStepsTarget(target: Int) {
         if (target > 0) {
-            viewModelScope.launch { userPreferences.updateStepsTarget(target) }
+            viewModelScope.launch {
+                userPreferences.updateStepsTarget(target)
+                com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
+            }
         }
     }
 
     fun updateSleepTarget(target: Float) {
         if (target > 0f) {
-            viewModelScope.launch { userPreferences.updateSleepTarget(target) }
+            viewModelScope.launch {
+                userPreferences.updateSleepTarget(target)
+                com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
+            }
         }
     }
 
     fun updateCaloriesTarget(target: Float) {
         if (target > 0f) {
-            viewModelScope.launch { userPreferences.updateCaloriesTarget(target) }
+            viewModelScope.launch {
+                userPreferences.updateCaloriesTarget(target)
+                com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
+            }
         }
     }
 
@@ -246,12 +256,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             if (days > 0) userPreferences.updateWorkoutDaysTarget(days)
             if (minutes > 0) userPreferences.updateWorkoutMinutesTarget(minutes)
+            com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
         }
     }
 
     fun updateMacroTargets(protein: Float, carbs: Float, fat: Float) {
         viewModelScope.launch {
             userPreferences.updateMacroTargets(protein, carbs, fat)
+            com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
         }
     }
 

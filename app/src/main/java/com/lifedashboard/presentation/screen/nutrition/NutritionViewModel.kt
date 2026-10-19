@@ -103,7 +103,8 @@ class NutritionViewModel @Inject constructor(
     private val repository: NutritionRepository,
     private val userPreferences: UserPreferencesRepository,
     private val weightDao: WeightDao,
-    private val healthDao: HealthDao
+    private val healthDao: HealthDao,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(NutritionUiState())
@@ -302,6 +303,7 @@ class NutritionViewModel @Inject constructor(
                 carbs = carbs.coerceAtLeast(0f),
                 fat = fat.coerceAtLeast(0f)
             )
+            com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
             _uiState.update {
                 it.copy(
                     targetCalories = calories.coerceAtLeast(500f),
@@ -362,6 +364,7 @@ class NutritionViewModel @Inject constructor(
                 weight = weightKg,
                 height = heightCm
             )
+            com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
             _uiState.update {
                 it.copy(
                     targetCalories = intake.calories,
