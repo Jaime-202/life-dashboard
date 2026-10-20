@@ -557,7 +557,7 @@ suspend fun loadWidgetData(context: Context): WidgetData =
             val sleep = (health?.sleepHours ?: 0f).let { (it * 10).toInt() / 10f }
 
             val stepsProg = (steps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f)
-            val calProg   = (calories.toFloat() / goals.caloriesTarget).coerceIn(0f, 1f)
+            val calProg   = (calories.toFloat() / goals.activeCaloriesTarget).coerceIn(0f, 1f)
             val sleepProg = (sleep / goals.sleepTargetHours).coerceIn(0f, 1f)
             val vitality  = ((stepsProg * 0.35f + sleepProg * 0.35f + calProg * 0.30f) * 100).toInt()
 
@@ -565,7 +565,7 @@ suspend fun loadWidgetData(context: Context): WidgetData =
                 steps          = steps,
                 stepsTarget    = goals.stepsTarget,
                 calories       = calories,
-                caloriesTarget = goals.caloriesTarget.toInt(),
+                caloriesTarget = goals.activeCaloriesTarget.toInt(),
                 sleepHours     = sleep,
                 sleepTarget    = goals.sleepTargetHours,
                 workoutDone    = workoutToday,

@@ -87,7 +87,7 @@ data class SettingsState(
     val geminiModel: String = "gemini-3.8-flash",
     val stepsTarget: Int = 10000,
     val sleepTargetHours: Float = 8.0f,
-    val caloriesTarget: Float = 2200f,
+    val caloriesTarget: Float = 500f, // Meta de calorías activas quemadas
     val workoutDaysTarget: Int = 4,
     val workoutMinutesTarget: Int = 180,
     val healthConnectGranted: Boolean = false,
@@ -142,7 +142,7 @@ class SettingsViewModel @Inject constructor(
                     geminiModel          = goals.geminiModel,
                     stepsTarget          = goals.stepsTarget,
                     sleepTargetHours     = goals.sleepTargetHours,
-                    caloriesTarget       = goals.caloriesTarget,
+                    caloriesTarget       = goals.activeCaloriesTarget,
                     workoutDaysTarget    = goals.workoutDaysTarget,
                     workoutMinutesTarget = goals.workoutMinutesTarget,
                     bedtimeReminderEnabled = goals.bedtimeReminderEnabled,
@@ -301,13 +301,17 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun updateCaloriesTarget(target: Float) {
+    fun updateActiveCaloriesTarget(target: Float) {
         if (target > 0f) {
             viewModelScope.launch {
-                userPreferences.updateCaloriesTarget(target)
+                userPreferences.updateActiveCaloriesTarget(target)
                 com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
             }
         }
+    }
+
+    fun updateCaloriesTarget(target: Float) {
+        updateActiveCaloriesTarget(target)
     }
 
     fun updateWorkoutTargets(days: Int, minutes: Int) {
@@ -561,7 +565,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 icon      = Icons.Default.LocalFireDepartment,
                 iconColor = Amber400,
                 title     = "Objetivo de Calorías Activas",
-                subtitle  = "${state.caloriesTarget.toInt()} kcal al día",
+                subtitle  = "${state.caloriesTarget.toInt()} kcal quemadas / día",
                 trailing  = {
                     OutlinedButton(
                         onClick = { showCaloriesModal = true },
@@ -999,9 +1003,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             currentValue = state.caloriesTarget,
             onDismiss    = { showCaloriesModal = false },
             onSave       = { newCal ->
-                viewModel.updateCaloriesTarget(newCal)
+                viewModel.updateActiveCaloriesTarget(newCal)
                 showCaloriesModal = false
-                Toast.makeText(context, "Objetivo de calorías actualizado", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Objetivo de calorías activas actualizado", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -1972,7 +1976,7 @@ private fun EditSleepGoalModal(currentValue: Float, onDismiss: () -> Unit, onSav
 @Composable
 private fun EditCaloriesGoalModal(currentValue: Float, onDismiss: () -> Unit, onSave: (Float) -> Unit) {
     var calText by remember { mutableStateOf(currentValue.toInt().toString()) }
-    val calOptions = listOf(1600f, 1800f, 2000f, 2200f, 2500f, 2800f)
+    val calOptions = listOf(300f, 400f, 500f, 600f, 750f, 1000f)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1982,17 +1986,21 @@ private fun EditCaloriesGoalModal(currentValue: Float, onDismiss: () -> Unit, on
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.LocalFireDepartment, null, tint = Amber400, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Meta de Calorías Diarias", color = White, fontWeight = FontWeight.Bold)
+                Text("Meta de Calorías Activas", color = White, fontWeight = FontWeight.Bold)
             }
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Escribe tu requerimiento calórico objetivo:", style = MaterialTheme.typography.bodySmall, color = Gray400)
+                Text(
+                    "Calorías que quieres quemar al día con tu movimiento, pasos y ejercicio (independiente de tu comida):",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray400
+                )
 
                 OutlinedTextField(
                     value = calText,
                     onValueChange = { calText = it.filter { char -> char.isDigit() } },
-                    label = { Text("Calorías diarias", color = Amber400) },
+                    label = { Text("Calorías activas diarias", color = Amber400) },
                     trailingIcon = { Text("kcal", color = Gray400, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 12.dp)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -2029,7 +2037,7 @@ private fun EditCaloriesGoalModal(currentValue: Float, onDismiss: () -> Unit, on
         confirmButton = {
             Button(
                 onClick = {
-                    val c = calText.toFloatOrNull()?.coerceIn(800f, 8000f) ?: currentValue
+                    val c = calText.toFloatOrNull()?.coerceIn(100f, 5000f) ?: currentValue
                     onSave(c)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Amber400, contentColor = Indigo900)

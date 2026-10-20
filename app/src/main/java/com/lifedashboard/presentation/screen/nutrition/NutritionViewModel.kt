@@ -545,17 +545,22 @@ class NutritionViewModel @Inject constructor(
             val dateMillis = date.atStartOfDay(zone).toInstant().toEpochMilli()
 
             val entities = items.map { item ->
+                val finalBrand = if (!item.isGeneric && item.brand.isNotBlank() && !item.brand.equals("genérico", ignoreCase = true) && !item.brand.equals("casero", ignoreCase = true)) {
+                    item.brand
+                } else {
+                    "Genérico"
+                }
                 MealEntryEntity(
                     dateMillis = dateMillis,
                     mealType = mealType,
                     name = item.name,
-                    brand = "Casero",
+                    brand = finalBrand,
                     grams = item.grams,
                     calories = item.calories,
                     protein = item.protein,
                     carbs = item.carbs,
                     fat = item.fat,
-                    imageUrl = RealFoodImageResolver.resolve(item.name, "Casero")
+                    imageUrl = RealFoodImageResolver.resolve(item.name, finalBrand)
                 )
             }
             repository.insertMeals(entities)
@@ -586,7 +591,7 @@ class NutritionViewModel @Inject constructor(
     }
 
     fun onTextAiInputChange(text: String) {
-        _uiState.update { it.copy(textAiInput = text) }
+        _uiState.update { it.copy(textAiInput = text, textAiResultItems = null, textAiErrorMessage = null) }
     }
 
     fun analyzeTextAiMeal() {
@@ -640,17 +645,22 @@ class NutritionViewModel @Inject constructor(
             val dateMillis = date.atStartOfDay(zone).toInstant().toEpochMilli()
 
             val entities = items.map { item ->
+                val finalBrand = if (!item.isGeneric && item.brand.isNotBlank() && !item.brand.equals("genérico", ignoreCase = true) && !item.brand.equals("casero", ignoreCase = true)) {
+                    item.brand
+                } else {
+                    "Genérico"
+                }
                 MealEntryEntity(
                     dateMillis = dateMillis,
                     mealType = mealType,
                     name = item.name,
-                    brand = "Casero",
+                    brand = finalBrand,
                     grams = item.grams,
                     calories = item.calories,
                     protein = item.protein,
                     carbs = item.carbs,
                     fat = item.fat,
-                    imageUrl = RealFoodImageResolver.resolve(item.name, "Casero")
+                    imageUrl = RealFoodImageResolver.resolve(item.name, finalBrand)
                 )
             }
             repository.insertMeals(entities)
@@ -660,25 +670,31 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
-    // ─── Asesor / Coach Nutricional IA ────────────────────────────────────────
+    // ─── Asesor / Coach Nutricional ──────────────────────────────────────────
 
-    fun requestNutritionAdvice() {
-        _uiState.update { it.copy(isAdviceLoading = true) }
-        viewModelScope.launch {
-            val state = _uiState.value
-            val advice = repository.getNutritionAdvice(
-                consumedCalories = state.totalCalories,
-                targetCalories = state.targetCalories,
-                burnedCalories = state.activeBurnedCalories,
-                protein = state.totalProtein,
-                targetProtein = state.targetProtein,
-                carbs = state.totalCarbs,
-                targetCarbs = state.targetCarbs,
-                fat = state.totalFat,
-                targetFat = state.targetFat,
-                goal = state.userGoal
-            )
-            _uiState.update { it.copy(nutritionAdvice = advice, isAdviceLoading = false) }
+    private var adviceJob: kotlinx.coroutines.Job? = null
+
+    fun requestNutritionAdvice(force: Boolean = false) {
+        adviceJob?.cancel()
+        adviceJob = viewModelScope.launch {
+            try {
+                val state = _uiState.value
+                val advice = repository.getNutritionAdvice(
+                    consumedCalories = state.totalCalories,
+                    targetCalories = state.targetCalories,
+                    burnedCalories = state.activeBurnedCalories,
+                    protein = state.totalProtein,
+                    targetProtein = state.targetProtein,
+                    carbs = state.totalCarbs,
+                    targetCarbs = state.targetCarbs,
+                    fat = state.totalFat,
+                    targetFat = state.targetFat,
+                    goal = state.userGoal
+                )
+                _uiState.update { it.copy(nutritionAdvice = advice, isAdviceLoading = false) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isAdviceLoading = false) }
+            }
         }
     }
 

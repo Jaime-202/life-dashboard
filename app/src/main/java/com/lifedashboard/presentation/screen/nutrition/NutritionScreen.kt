@@ -1029,7 +1029,7 @@ private fun MealItemRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                if (meal.brand.isNotBlank() && meal.brand != "Básico" && meal.brand != "Manual") {
+                if (meal.brand.isNotBlank() && meal.brand != "Básico" && meal.brand != "Manual" && meal.brand != "Genérico" && meal.brand != "Casero") {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
@@ -1957,9 +1957,37 @@ private fun DetectedItemEditor(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = item.name, style = MaterialTheme.typography.bodyMedium, color = White, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(2.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = item.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = White,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(3.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (!item.isGeneric && item.brand.isNotBlank() && !item.brand.equals("genérico", ignoreCase = true) && !item.brand.equals("casero", ignoreCase = true)) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Violet400.copy(alpha = 0.22f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = item.brand,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Violet300,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
                     Text("${item.calories.toInt()} kcal", style = MaterialTheme.typography.labelSmall, color = Amber400)
                     Text("·", color = Gray500)
                     Text("P:${item.protein.toInt()}g C:${item.carbs.toInt()}g G:${item.fat.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400)
@@ -3296,16 +3324,30 @@ private fun TextAiMealDialog(
                         Text("$totalDetectedKcal kcal", style = MaterialTheme.typography.titleMedium, color = Amber400, fontWeight = FontWeight.Bold)
                     }
 
-                    // Botón de confirmación y guardado
-                    Button(
-                        onClick = { onConfirm(detectedItems, mealType) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Emerald400),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth()
+                    // Botones de acción
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.Check, contentDescription = null, tint = Indigo900)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Añadir a $mealType", color = Indigo900, fontWeight = FontWeight.Bold)
+                        OutlinedButton(
+                            onClick = onAnalyze,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                            border = BorderStroke(1.dp, Violet400.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Recalcular", maxLines = 1)
+                        }
+                        Button(
+                            onClick = { onConfirm(detectedItems, mealType) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Emerald400),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(2f)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = Indigo900)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Añadir a $mealType", color = Indigo900, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
                     }
                 }
             }

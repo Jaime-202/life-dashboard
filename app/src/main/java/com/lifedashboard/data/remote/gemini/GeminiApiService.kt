@@ -25,55 +25,10 @@ class GeminiApiService @Inject constructor(
 
     /**
      * Genera el insight diario accionable.
-     * Si hay API key disponible intenta con Gemini 3.8 Flash (o modelos candidatos modernos).
-     * Si falla o no hay clave, genera un análisis inteligente con el motor heurístico local.
+     * Utiliza el motor heurístico local inteligente para NO consumir la cuota de la API de Gemini,
+     * reservando los 20 usos diarios exclusivamente para reconocimiento de fotos y texto de comidas.
      */
     suspend fun getDailyInsight(): String {
-        val userGoals = userPreferences.userGoals.first()
-        val configuredKey = userGoals.geminiApiKey.ifBlank {
-            BuildConfig.GEMINI_API_KEY.takeIf { it.isNotBlank() && !it.contains("PEGA_AQUI") } ?: ""
-        }
-
-        if (configuredKey.isNotBlank()) {
-            val candidateModels = GeminiModelManager.getCandidateModels(configuredKey, userGoals.geminiModel)
-            val contextJson = aggregator.buildContextJson()
-            Log.d(TAG, "Enviando contexto a Gemini (${contextJson.length} caracteres)")
-
-            val userPrompt = """
-                Datos de mis últimos 7 días:
-                $contextJson
-                
-                Analiza patrones entre sueño, pasos y entrenamiento.
-                Dame un insight accionable directo para hoy en máximo 3 frases concisas.
-            """.trimIndent()
-
-            for (modelName in candidateModels) {
-                try {
-                    val model = GenerativeModel(
-                        modelName = modelName,
-                        apiKey = configuredKey,
-                        generationConfig = generationConfig {
-                            temperature = 0.7f
-                            maxOutputTokens = 250
-                            topP = 0.9f
-                        },
-                        systemInstruction = content {
-                            text(SYSTEM_PROMPT)
-                        }
-                    )
-
-                    val response = model.generateContent(userPrompt)
-                    val text = response.text?.trim()
-                    if (!text.isNullOrBlank()) {
-                        return text
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Fallo generando insight con $modelName: ${e.message}")
-                }
-            }
-        }
-
-        // ─── Motor de Análisis Heurístico Inteligente Local ────────────────────
         return generateLocalHeuristicInsight()
     }
 

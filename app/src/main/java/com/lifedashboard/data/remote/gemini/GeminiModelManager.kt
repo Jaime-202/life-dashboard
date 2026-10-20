@@ -14,67 +14,70 @@ object GeminiModelManager {
 
     /**
      * Lista priorizada de modelos de respaldo modernos para Gemini.
-     * Si un modelo no está disponible para una clave, se prueba automáticamente el siguiente.
+     * Solo modelos probados de generación de texto y multimodal.
      */
     val FALLBACK_MODELS = listOf(
         "gemini-3.8-flash",
-        "gemini-3.8-flash-lite",
-        "gemini-3.7-flash",
-        "gemini-3.6-flash",
-        "gemini-3.5-flash",
-        "gemini-3.5-flash-lite",
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash"
+        "gemini-3.7-flash"
     )
+
+    /**
+     * Verifica que un modelo sea exclusivamente para generación de texto/contenido
+     * y no un modelo de audio (TTS), embedding o generación de imágenes directa.
+     */
+    fun isCleanTextGenerationModel(name: String): Boolean {
+        val lower = name.lowercase().trim()
+        if (!lower.contains("gemini")) return false
+        val excluded = listOf(
+            "-tts", "tts", "-image", "imagen", "-embed", "embedding",
+            "-realtime", "-live", "-audio", "3.8-flash-lite"
+        )
+        return excluded.none { lower.contains(it) }
+    }
 
     /**
      * Modelos predefinidos recomendados para selector en la interfaz de usuario.
      */
     val PRESET_MODELS = listOf(
         "gemini-3.8-flash" to "⚡ Gemini 3.8 Flash (Recomendado)",
-        "gemini-3.8-flash-lite" to "🚀 Gemini 3.8 Flash-Lite (Rápido)",
         "gemini-3.7-flash" to "✨ Gemini 3.7 Flash",
-        "gemini-3.5-flash" to "🔹 Gemini 3.5 Flash",
         "auto" to "🎯 Auto-detectar de mi cuenta"
     )
 
     /**
-     * Devuelve una lista ordenada de modelos candidatos a probar.
+     * Devuelve una lista ordenada y limpia de modelos candidatos a probar (máximo 3).
      * Si [preferredModel] está establecido (y no es 'auto'), va en primer lugar.
-     * Luego se intentan descubrir dinámicamente modelos activos vía la API de Google,
-     * y finalmente se añaden los modelos de respaldo estándar.
      */
     suspend fun getCandidateModels(apiKey: String, preferredModel: String? = null): List<String> = withContext(Dispatchers.IO) {
         val candidates = linkedSetOf<String>()
 
         val preferred = preferredModel?.trim()
-        if (!preferred.isNullOrBlank() && !preferred.equals("auto", ignoreCase = true)) {
+        if (!preferred.isNullOrBlank() && !preferred.equals("auto", ignoreCase = true) && isCleanTextGenerationModel(preferred)) {
             candidates.add(preferred)
         }
 
         // Modelo por defecto principal
         candidates.add(DEFAULT_MODEL)
 
-        // Descubrimiento dinámico de la cuenta si hay API key
+        // Descubrimiento dinámico de la cuenta si hay API key (añadimos solo los 2 mejores)
         if (apiKey.isNotBlank()) {
             val discovered = fetchAvailableModels(apiKey)
-            for (m in discovered) {
+            for (m in discovered.take(2)) {
                 candidates.add(m)
             }
         }
 
-        // Modelos de respaldo
+        // Modelos de respaldo estándar
         for (m in FALLBACK_MODELS) {
             candidates.add(m)
         }
 
-        candidates.toList()
+        candidates.filter { isCleanTextGenerationModel(it) }.take(3)
     }
 
     /**
      * Consulta la API oficial de Google AI (v1beta/models) para listar los modelos reales
-     * activados para esta clave de API específica.
+     * activados para esta clave de API específica, filtrando solo modelos de texto válidos.
      */
     suspend fun fetchAvailableModels(apiKey: String): List<String> = withContext(Dispatchers.IO) {
         val trimmed = apiKey.trim()
@@ -83,8 +86,8 @@ object GeminiModelManager {
             val url = URL("https://generativelanguage.googleapis.com/v1beta/models?key=$trimmed")
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 5000
-                readTimeout = 5000
+                connectTimeout = 4000
+                readTimeout = 4000
                 setRequestProperty("Accept", "application/json")
             }
 
@@ -106,7 +109,7 @@ object GeminiModelManager {
                         (0 until methods.length()).any { methods.optString(it) == "generateContent" }
                     } else true
 
-                    if (supportsGenerate && cleanName.contains("gemini", ignoreCase = true)) {
+                    if (supportsGenerate && isCleanTextGenerationModel(cleanName)) {
                         discovered.add(cleanName)
                     }
                 }
@@ -124,26 +127,28 @@ object GeminiModelManager {
     }
 
     /**
-     * Ordena los modelos encontrados dando preferencia a los Flash más modernos (3.8 > 3.7 > ...).
+     * Ordena los modelos encontrados dando preferencia absoluta a Gemini 3.8 Flash.
      */
     private fun prioritizeModels(models: List<String>): List<String> {
-        return models.sortedWith { a, b ->
-            fun score(name: String): Int {
-                return when {
-                    name.contains("3.8-flash", ignoreCase = true) -> 100
-                    name.contains("3.8", ignoreCase = true) -> 90
-                    name.contains("3.7-flash", ignoreCase = true) -> 80
-                    name.contains("3.7", ignoreCase = true) -> 75
-                    name.contains("3.6-flash", ignoreCase = true) -> 70
-                    name.contains("3.5-flash", ignoreCase = true) -> 65
-                    name.contains("3.5", ignoreCase = true) -> 60
-                    name.contains("flash", ignoreCase = true) -> 50
-                    name.contains("pro", ignoreCase = true) -> 40
-                    else -> 10
+        return models.filter { isCleanTextGenerationModel(it) }
+            .sortedWith { a, b ->
+                fun score(name: String): Int {
+                    val lower = name.lowercase().trim()
+                    return when {
+                        lower == "gemini-3.8-flash" -> 110
+                        lower == "gemini-3.8-flash-lite" -> 100
+                        lower.startsWith("gemini-3.8") -> 95
+                        lower == "gemini-3.7-flash" -> 85
+                        lower.startsWith("gemini-3.7") -> 80
+                        lower.startsWith("gemini-3.6") -> 70
+                        lower.startsWith("gemini-3.5") -> 60
+                        lower.contains("flash") -> 40
+                        lower.contains("pro") -> 30
+                        else -> 10
+                    }
                 }
+                score(b).compareTo(score(a))
             }
-            score(b).compareTo(score(a))
-        }
     }
 
     /**
@@ -155,8 +160,10 @@ object GeminiModelManager {
         return when {
             lower.contains("api_key_invalid") || lower.contains("invalid api key") || lower.contains("key not valid") ->
                 "Clave de API no válida. Cópiala directamente desde Google AI Studio (aistudio.google.com)."
-            lower.contains("quota") || lower.contains("resource_exhausted") || lower.contains("rate limit") ->
-                "Límite de cuota alcanzado en tu cuenta de Google AI Studio. Espera unos momentos."
+            lower.contains("high demand") || lower.contains("503") || lower.contains("spikes in demand") || lower.contains("unavailable") ->
+                "Los servidores de Google Gemini están con alta demanda puntual en este momento (503). Espera unos segundos y vuelve a probar."
+            lower.contains("quota") || lower.contains("resource_exhausted") || lower.contains("rate limit") || lower.contains("exceeded your current quota") ->
+                "Límite de cuota alcanzado en tu cuenta de Google AI Studio. Espera unos momentos o crea una clave nueva en aistudio.google.com."
             lower.contains("no longer available") -> {
                 try {
                     val sIdx = rawError.indexOf("\"message\":")

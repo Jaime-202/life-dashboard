@@ -27,6 +27,8 @@ data class DetectedFoodItem(
     val protein: Float,
     val carbs: Float,
     val fat: Float,
+    val brand: String = "Genérico",
+    val isGeneric: Boolean = true,
     val confidenceNotes: String = ""
 )
 
@@ -58,18 +60,26 @@ class FoodAiService @Inject constructor(
                     modelName = m,
                     apiKey = trimmed,
                     generationConfig = generationConfig {
-                        maxOutputTokens = 15
+                        maxOutputTokens = 1000
                         temperature = 0.1f
                     }
                 )
-                val resp = model.generateContent("Di OK")
+                val resp = model.generateContent("Responde únicamente: OK")
                 val txt = resp.text?.trim() ?: ""
                 if (txt.isNotBlank()) {
                     return@withContext Result.success("¡Clave válida! Conectado con éxito a $m")
                 }
             } catch (e: Exception) {
                 lastError = e
-                Log.w(TAG, "Prueba fallida con $m: ${e.message}")
+                val errMsg = e.message ?: ""
+                Log.w(TAG, "Prueba fallida con $m: $errMsg")
+                if (errMsg.contains("quota", ignoreCase = true) ||
+                    errMsg.contains("503") ||
+                    errMsg.contains("high demand", ignoreCase = true) ||
+                    errMsg.contains("api_key_invalid", ignoreCase = true)
+                ) {
+                    break
+                }
             }
         }
         val rawErr = lastError?.localizedMessage ?: lastError?.message ?: "No se pudo conectar con Google Gemini"
@@ -120,7 +130,7 @@ class FoodAiService @Inject constructor(
                         apiKey = apiKey,
                         generationConfig = generationConfig {
                             temperature = 0.15f
-                            maxOutputTokens = 1000
+                            maxOutputTokens = 2048
                             responseMimeType = "application/json"
                         }
                     )
@@ -135,7 +145,14 @@ class FoodAiService @Inject constructor(
                         break
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Fallo con modelo $modelName: ${e.message}")
+                    val errMsg = e.message ?: ""
+                    Log.w(TAG, "Fallo con modelo $modelName: $errMsg")
+                    if (errMsg.contains("quota", ignoreCase = true) ||
+                        errMsg.contains("503") ||
+                        errMsg.contains("high demand", ignoreCase = true)
+                    ) {
+                        break
+                    }
                 }
             }
 
@@ -173,22 +190,27 @@ class FoodAiService @Inject constructor(
 
     private fun buildVisionPrompt(userDescription: String): String {
         val extra = if (userDescription.isNotBlank()) {
-            "\nINFORMACIÓN ADICIONAL DEL USUARIO: \"$userDescription\". Prioriza estos ingredientes y guíate por ellos para calcular los gramos exactos.\n"
+            "\nINFORMACIÓN ADICIONAL DEL USUARIO: \"$userDescription\". Prioriza estos ingredientes y marcas indicadas.\n"
         } else ""
 
         return """
-            Eres un nutricionista experto y especialista en reconocimiento visual de platos de comida española y mediterránea.
+            Eres un nutricionista experto y especialista en reconocimiento visual de platos de comida española, supermercados (Mercadona/Hacendado, Carrefour, Día, Alcampo, Lidl, etc.) y productos comerciales.
             Analiza cuidadosamente la imagen adjunta.$extra
             
             Tu objetivo:
-            1. Desglosar individualmente cada componente o alimento presente en el plato.
-            2. Estimar con precisión el peso en gramos (o ml) de cada ingrediente.
-            3. Calcular con rigor: calorías (kcal), proteínas (g), carbohidratos (g) y grasas (g) reales de cada uno.
+            1. Desglosar individualmente cada componente o alimento presente en el plato o envase.
+            2. REGLA ESTRICTA DE MARCA VS GENÉRICO:
+               - Si en la foto se aprecia un producto de marca o envase comercial, o el usuario indica en su descripción que proviene de una marca/supermercado concreto (ej: "Hacendado", "Mercadona", "Carrefour", "Día", "Alcampo", "Lidl", "Danone", "Asturiana", etc.), asigna exactamente esa marca en "brand" (ej: "Hacendado", "Carrefour", "Día", "Lidl") y pon "isGeneric": false.
+               - Si el alimento es comida casera, no empaquetada, o NO se especifica marca alguna, asígnalo como genérico: pon "brand": "Genérico" y "isGeneric": true.
+            3. Estimar con precisión el peso en gramos (o ml) de cada ingrediente.
+            4. Calcular con rigor: calorías (kcal), proteínas (g), carbohidratos (g) y grasas (g) reales de cada uno.
             
             Responde ÚNICAMENTE con un array JSON válido con la siguiente estructura:
             [
               {
                 "name": "Pechuga de pollo a la plancha",
+                "brand": "Genérico",
+                "isGeneric": true,
                 "grams": 160.0,
                 "calories": 264.0,
                 "protein": 49.6,
@@ -225,19 +247,23 @@ class FoodAiService @Inject constructor(
 
         try {
             val prompt = """
-                Eres un nutricionista experto en gastronomía española y cálculo de macronutrientes.
+                Eres un nutricionista experto en gastronomía española, supermercados (Mercadona/Hacendado, Carrefour, Día, Alcampo, Lidl, etc.) y cálculo de macronutrientes.
                 El usuario ha registrado en lenguaje natural lo que ha comido: "$trimmed"
                 
                 Tu objetivo:
                 1. Extraer e identificar individualmente cada alimento, ingrediente o bebida mencionado.
-                2. Si el usuario indicó cantidades (ej: "2 huevos", "100g de pan", "un vaso de leche", "media pizza"), calcula el peso exacto.
-                3. Si no indicó cantidad, asume la ración estándar española habitual para adultos.
+                2. REGLA ESTRICTA DE MARCA VS GENÉRICO:
+                   - Si el usuario indica o menciona que un producto viene de una marca o supermercado específico (por ejemplo: "hacendado", "mercadona", "carrefour", "día", "dia", "alcampo", "lidl", "danone", "central lechera asturiana", etc.), asigna exactamente esa marca en el campo "brand" (ej: "Hacendado", "Carrefour", "Día", "Lidl") y pon "isGeneric": false.
+                   - Si el usuario NO menciona ninguna marca o supermercado para ese producto (ej: "arroz blanco", "2 huevos fritos", "pechuga de pollo"), asígnalo como genérico: pon "brand": "Genérico" y "isGeneric": true.
+                3. Si el usuario indicó cantidades (ej: "2 huevos", "100g de pan", "un vaso de leche", "media pizza"), calcula el peso exacto. Si no indicó cantidad, asume la ración estándar habitual para adultos.
                 4. Calcula con precisión médica calorías (kcal), proteínas (g), carbohidratos (g) y grasas (g).
                 
                 Responde ÚNICAMENTE con un array JSON válido:
                 [
                   {
                     "name": "Tortilla de patatas",
+                    "brand": "Genérico",
+                    "isGeneric": true,
                     "grams": 180.0,
                     "calories": 277.0,
                     "protein": 9.9,
@@ -257,7 +283,7 @@ class FoodAiService @Inject constructor(
                         apiKey = apiKey,
                         generationConfig = generationConfig {
                             temperature = 0.15f
-                            maxOutputTokens = 1000
+                            maxOutputTokens = 2048
                             responseMimeType = "application/json"
                         }
                     )
@@ -268,7 +294,14 @@ class FoodAiService @Inject constructor(
                         break
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Error en analyzeFoodText con $modelName: ${e.message}")
+                    val errMsg = e.message ?: ""
+                    Log.w(TAG, "Error en analyzeFoodText con $modelName: $errMsg")
+                    if (errMsg.contains("quota", ignoreCase = true) ||
+                        errMsg.contains("503") ||
+                        errMsg.contains("high demand", ignoreCase = true)
+                    ) {
+                        break
+                    }
                 }
             }
 
@@ -297,10 +330,10 @@ class FoodAiService @Inject constructor(
     }
 
     /**
-     * Estima e infiere con IA (Gemini o motor local) los valores nutricionales por 100g y porción
-     * de cualquier alimento o producto de supermercado buscado por el usuario.
+     * Estima e infiere con motor local los valores nutricionales por 100g y porción
+     * de cualquier alimento buscado en el catálogo sin consumir cuota de Gemini.
      */
-    suspend fun estimateFoodCatalogItem(query: String, category: FoodSourceCategory): FoodCatalogItem? = withContext(Dispatchers.IO) {
+    suspend fun estimateFoodCatalogItem(query: String, category: FoodSourceCategory): FoodCatalogItem? = withContext(Dispatchers.Default) {
         val trimmed = query.trim()
         if (trimmed.length < 2) return@withContext null
 
@@ -314,89 +347,7 @@ class FoodAiService @Inject constructor(
             FoodSourceCategory.TODOS -> "Supermercado"
         }
 
-        val userGoals = userPreferences.userGoals.first()
-        val apiKey = userGoals.geminiApiKey.ifBlank {
-            BuildConfig.GEMINI_API_KEY.takeIf { it.isNotBlank() && !it.contains("PEGA_AQUI") } ?: ""
-        }
-
-        if (apiKey.isNotBlank()) {
-            try {
-                val prompt = """
-                    Eres una base de datos nutricional de alimentos españoles y supermercados ($brandName).
-                    El usuario busca el alimento o producto: "$trimmed".
-                    Devuelve ÚNICAMENTE un objeto JSON con los valores nutricionales exactos por 100 gramos y la ración recomendada:
-                    {
-                      "name": "Nombre claro y formal del alimento en español",
-                      "brand": "$brandName",
-                      "caloriesPer100g": 150.0,
-                      "proteinPer100g": 12.0,
-                      "carbsPer100g": 18.0,
-                      "fatPer100g": 4.5,
-                      "servingSizeGrams": 150.0,
-                      "servingDescription": "1 porción (~150g)"
-                    }
-                """.trimIndent()
-
-                val candidateModels = GeminiModelManager.getCandidateModels(apiKey, userGoals.geminiModel)
-                var txt = ""
-                for (modelName in candidateModels) {
-                    try {
-                        val model = GenerativeModel(
-                            modelName = modelName,
-                            apiKey = apiKey,
-                            generationConfig = generationConfig {
-                                temperature = 0.1f
-                                maxOutputTokens = 300
-                                responseMimeType = "application/json"
-                            }
-                        )
-                        val resp = model.generateContent(prompt)
-                        val candidateTxt = resp.text?.trim() ?: ""
-                        if (candidateTxt.isNotBlank()) {
-                            txt = candidateTxt
-                            break
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Error estimando catálogo con $modelName: ${e.message}")
-                    }
-                }
-                if (txt.isNotBlank()) {
-                    var cleaned = txt.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-                    val sIdx = cleaned.indexOf('{')
-                    val eIdx = cleaned.lastIndexOf('}')
-                    if (sIdx != -1 && eIdx != -1 && eIdx > sIdx) {
-                        cleaned = cleaned.substring(sIdx, eIdx + 1)
-                        val obj = JSONObject(cleaned)
-                        val name = obj.optString("name", trimmed).trim()
-                        val kcal = obj.optDouble("caloriesPer100g", 120.0).toFloat()
-                        val prot = obj.optDouble("proteinPer100g", 5.0).toFloat()
-                        val carb = obj.optDouble("carbsPer100g", 15.0).toFloat()
-                        val fat = obj.optDouble("fatPer100g", 3.0).toFloat()
-                        val serving = obj.optDouble("servingSizeGrams", 100.0).toFloat()
-                        val servDesc = obj.optString("servingDescription", "${serving.toInt()}g")
-
-                        val imgUrl = RealFoodImageResolver.resolve(name, brandName)
-                        return@withContext FoodCatalogItem(
-                            id = "ai_${name.hashCode()}",
-                            name = name,
-                            brand = brandName,
-                            caloriesPer100g = kcal,
-                            proteinPer100g = prot,
-                            carbsPer100g = carb,
-                            fatPer100g = fat,
-                            servingSizeGrams = serving,
-                            servingDescription = servDesc,
-                            imageUrl = imgUrl,
-                            isGeneric = category == FoodSourceCategory.BASICOS
-                        )
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Fallo al estimar alimento con Gemini: ${e.message}")
-            }
-        }
-
-        // Fallback a motor local heurístico
+        // Estimación directa con el motor local sin gastar cuota de API
         val localList = parseFoodsFromTextLocally(trimmed)
         val first = localList.firstOrNull()
         if (first != null) {
@@ -455,6 +406,19 @@ class FoodAiService @Inject constructor(
                 val carbs = obj.optDouble("carbs", 0.0).toFloat()
                 val fat = obj.optDouble("fat", 0.0).toFloat()
 
+                val rawBrand = obj.optString("brand").trim()
+                val isGenericExplicit = obj.optBoolean("isGeneric", true)
+                val isGeneric = when {
+                    rawBrand.isBlank() -> true
+                    rawBrand.equals("genérico", ignoreCase = true) ||
+                    rawBrand.equals("generico", ignoreCase = true) ||
+                    rawBrand.equals("casero", ignoreCase = true) ||
+                    rawBrand.equals("básico", ignoreCase = true) ||
+                    rawBrand.equals("basico", ignoreCase = true) -> true
+                    else -> isGenericExplicit
+                }
+                val brand = if (isGeneric) "Genérico" else rawBrand.replaceFirstChar { it.uppercase() }
+
                 items.add(
                     DetectedFoodItem(
                         name = name.replaceFirstChar { it.uppercase() },
@@ -462,7 +426,9 @@ class FoodAiService @Inject constructor(
                         calories = calories,
                         protein = protein,
                         carbs = carbs,
-                        fat = fat
+                        fat = fat,
+                        brand = brand,
+                        isGeneric = isGeneric
                     )
                 )
             }
@@ -522,9 +488,50 @@ class FoodAiService @Inject constructor(
         }
 
         // Dividir la descripción por comas, "con", "y", "+", puntos
-        val rawClauses = lower.split(Regex("[,;+y\\n]+|\\bcon\\b|\\bmás\\b")).map { it.trim() }.filter { it.isNotBlank() }
+        val rawClauses = lower.split(Regex("[,;+\\n]+|\\by\\b|\\be\\b|\\bcon\\b|\\bmás\\b")).map { it.trim() }.filter { it.isNotBlank() }
+
+        // 2. Detección de marcas y supermercados específicos en el texto
+        fun detectBrandForSegment(segment: String): Pair<String, Boolean> {
+            val s = segment.lowercase(Locale.ROOT)
+            return when {
+                s.contains("hacendado") -> "Hacendado" to false
+                s.contains("mercadona") -> "Mercadona" to false
+                s.contains("carrefour") -> "Carrefour" to false
+                s.contains("alcampo") || s.contains("auchan") -> "Alcampo" to false
+                s.contains("lidl") || s.contains("milbona") -> "Lidl" to false
+                s.contains("danone") -> "Danone" to false
+                s.contains("aldi") -> "Aldi" to false
+                s.contains("eroski") -> "Eroski" to false
+                s.contains("supercor") || s.contains("corte ingles") || s.contains("corte inglés") -> "El Corte Inglés" to false
+                s.contains("central lechera") || s.contains("asturiana") -> "Central Lechera Asturiana" to false
+                Regex("\\b(del?|en)\\s+d[ií]a\\b").containsMatchIn(s) || Regex("\\bd[ií]a\\b").containsMatchIn(s) -> "Día" to false
+                else -> {
+                    // Si el usuario escribió un único alimento (una sola frase/cláusula) y en él estaba la marca
+                    if (rawClauses.size <= 1) {
+                        val full = lower
+                        when {
+                            full.contains("hacendado") -> "Hacendado" to false
+                            full.contains("mercadona") -> "Mercadona" to false
+                            full.contains("carrefour") -> "Carrefour" to false
+                            full.contains("alcampo") || full.contains("auchan") -> "Alcampo" to false
+                            full.contains("lidl") || full.contains("milbona") -> "Lidl" to false
+                            full.contains("danone") -> "Danone" to false
+                            full.contains("aldi") -> "Aldi" to false
+                            full.contains("eroski") -> "Eroski" to false
+                            full.contains("supercor") || full.contains("corte ingles") || full.contains("corte inglés") -> "El Corte Inglés" to false
+                            full.contains("central lechera") || full.contains("asturiana") -> "Central Lechera Asturiana" to false
+                            Regex("\\b(del?|en)\\s+d[ií]a\\b").containsMatchIn(full) -> "Día" to false
+                            else -> "Genérico" to true
+                        }
+                    } else {
+                        "Genérico" to true
+                    }
+                }
+            }
+        }
 
         for (clause in rawClauses) {
+            val countBefore = items.size
             when {
                 // Tortilla de patatas
                 clause.contains("tortilla de patata") || clause.contains("tortilla espanola") || clause.contains("tortilla española") -> {
@@ -735,10 +742,16 @@ class FoodAiService @Inject constructor(
                     val factor = grams / 100f
                     items.add(DetectedFoodItem("Queso fresco batido 0%", grams, 46f * factor, 8.5f * factor, 3.5f * factor, 0.1f * factor))
                 }
-                clause.contains("yogur") -> {
+                clause.contains("yogur") || clause.contains("yogurt") -> {
+                    val isGriego = clause.contains("griego")
+                    val isProteina = clause.contains("proteina") || clause.contains("proteína") || clause.contains("+protein")
                     val grams = findGramsOrMultiplier(clause, 125f)
                     val factor = grams / 100f
-                    items.add(DetectedFoodItem("Yogur natural", grams, 65f * factor, 4.5f * factor, 4.8f * factor, 3.2f * factor))
+                    when {
+                        isProteina -> items.add(DetectedFoodItem("Yogur +Proteínas", grams, 52f * factor, 10f * factor, 3f * factor, 0.1f * factor))
+                        isGriego -> items.add(DetectedFoodItem("Yogur griego natural", grams, 120f * factor, 6f * factor, 4.5f * factor, 9f * factor))
+                        else -> items.add(DetectedFoodItem("Yogur natural", grams, 65f * factor, 4.5f * factor, 4.8f * factor, 3.2f * factor))
+                    }
                 }
                 clause.contains("queso") -> {
                     val grams = findGramsOrMultiplier(clause, 50f)
@@ -780,11 +793,18 @@ class FoodAiService @Inject constructor(
                     items.add(DetectedFoodItem("Chocolate negro", grams, 570f * factor, 8.5f * factor, 25f * factor, 45f * factor))
                 }
             }
+
+            // Asignar marca o genérico a los alimentos identificados en esta cláusula
+            val (brand, isGeneric) = detectBrandForSegment(clause)
+            for (idx in countBefore until items.size) {
+                items[idx] = items[idx].copy(brand = brand, isGeneric = isGeneric)
+            }
         }
 
         // Si no reconoció alimentos específicos pero el usuario escribió texto
         if (items.isEmpty()) {
             val fallbackG = findGramsOrMultiplier(lower, 150f)
+            val (fallbackBrand, fallbackIsGen) = detectBrandForSegment(text)
             items.add(
                 DetectedFoodItem(
                     name = text.trim().take(35).replaceFirstChar { it.uppercase() },
@@ -792,7 +812,9 @@ class FoodAiService @Inject constructor(
                     calories = 180f * (fallbackG / 100f),
                     protein = 12f * (fallbackG / 100f),
                     carbs = 18f * (fallbackG / 100f),
-                    fat = 6f * (fallbackG / 100f)
+                    fat = 6f * (fallbackG / 100f),
+                    brand = fallbackBrand,
+                    isGeneric = fallbackIsGen
                 )
             )
         }
@@ -802,6 +824,11 @@ class FoodAiService @Inject constructor(
 
     /**
      * Asesor / Coach Nutricional con IA: indica si el usuario necesita comer más, menos o qué comer.
+     */
+    /**
+     * Asesor / Coach Nutricional: indica si el usuario necesita comer más, menos o qué comer.
+     * Utiliza directamente el motor local heurístico para NO gastar la cuota de la API de Gemini,
+     * reservando los usos exclusivamente para escaneo de fotos y texto libre de platos.
      */
     suspend fun generateNutritionAdvice(
         consumedCalories: Float,
@@ -814,58 +841,8 @@ class FoodAiService @Inject constructor(
         fat: Float,
         targetFat: Float,
         goal: String
-    ): String = withContext(Dispatchers.IO) {
-        val userGoals = userPreferences.userGoals.first()
-        val apiKey = userGoals.geminiApiKey.ifBlank {
-            BuildConfig.GEMINI_API_KEY.takeIf { it.isNotBlank() && !it.contains("PEGA_AQUI") } ?: ""
-        }
-
-        val remainingKcal = targetCalories - consumedCalories
+    ): String = withContext(Dispatchers.Default) {
         val proteinDebt = (targetProtein - protein).coerceAtLeast(0f)
-
-        if (apiKey.isNotBlank()) {
-            val candidateModels = GeminiModelManager.getCandidateModels(apiKey, userGoals.geminiModel)
-            for (modelName in candidateModels) {
-                try {
-                    val model = GenerativeModel(
-                        modelName = modelName,
-                        apiKey = apiKey,
-                        generationConfig = generationConfig {
-                            temperature = 0.3f
-                            maxOutputTokens = 350
-                        }
-                    )
-
-                    val prompt = """
-                        Eres el coach nutricional personal en la app Life Dashboard.
-                        Estado actual del usuario hoy:
-                        - Objetivo físico: $goal
-                        - Meta calórica diaria: ${targetCalories.toInt()} kcal
-                        - Calorías consumidas: ${consumedCalories.toInt()} kcal
-                        - Calorías restantes: ${remainingKcal.toInt()} kcal
-                        - Calorías quemadas en actividad: ${burnedCalories.toInt()} kcal
-                        - Proteínas: ${protein.toInt()}g de ${targetProtein.toInt()}g
-                        - Carbohidratos: ${carbs.toInt()}g de ${targetCarbs.toInt()}g
-                        - Grasas: ${fat.toInt()}g de ${targetFat.toInt()}g
-                        
-                        Instrucciones:
-                        1. Sé directo, empático y ultra-conciso (máximo 2 párrafos cortos en español).
-                        2. Responde directamente si hoy necesita comer más, mantenerse o frenar.
-                        3. Recomienda 2 o 3 opciones reales muy sencillas (ej: pechuga de pavo, atún al natural, queso batido 0%, ensalada, fruta) para cuadrar sus macros.
-                    """.trimIndent()
-
-                    val response = model.generateContent(prompt)
-                    val advice = response.text?.trim()
-                    if (!advice.isNullOrBlank()) {
-                        return@withContext advice
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Fallo al generar consejo con $modelName: ${e.message}")
-                }
-            }
-        }
-
-        // Motor heurístico offline si no hay API key o no hay conexión
         buildHeuristicAdvice(consumedCalories, targetCalories, proteinDebt, goal)
     }
 

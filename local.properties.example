@@ -6,7 +6,7 @@
 # sdk.dir=C\:\\Users\\tu_usuario\\AppData\\Local\\Android\\Sdk
 # sdk.dir=/Users/tu_usuario/Library/Android/sdk
 
-# Clave de API de Google Gemini (Opcional - para análisis avanzado con Gemini 2.0 Flash)
+# Clave de API de Google Gemini (Opcional - para análisis avanzado con Gemini 3.8 Flash)
 # Puedes obtener una clave 100% gratuita en: https://aistudio.google.com
 # Si no introduces ninguna clave, la app utilizará automáticamente su motor heurístico local offline.
 GEMINI_API_KEY=

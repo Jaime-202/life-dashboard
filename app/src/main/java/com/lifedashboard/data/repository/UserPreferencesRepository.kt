@@ -16,7 +16,8 @@ private val Context.dataStore by preferencesDataStore(name = "user_preferences")
 data class UserGoals(
     val stepsTarget: Int = 10000,
     val sleepTargetHours: Float = 8.0f,
-    val caloriesTarget: Float = 2200f,
+    val caloriesTarget: Float = 2200f, // Meta de ingesta calórica de comida
+    val activeCaloriesTarget: Float = 500f, // Meta de calorías activas quemadas (diario / ejercicio)
     val workoutDaysTarget: Int = 4,
     val workoutMinutesTarget: Int = 180,
     val userName: String = "Jaime",
@@ -53,6 +54,7 @@ class UserPreferencesRepository @Inject constructor(
         val STEPS_TARGET           = intPreferencesKey("steps_target")
         val SLEEP_TARGET           = floatPreferencesKey("sleep_target")
         val CALORIES_TARGET        = floatPreferencesKey("calories_target")
+        val ACTIVE_CALORIES_TARGET = floatPreferencesKey("active_calories_target")
         val WORKOUT_DAYS_TARGET    = intPreferencesKey("workout_days_target")
         val WORKOUT_MINUTES_TARGET = intPreferencesKey("workout_minutes_target")
         val USER_NAME              = stringPreferencesKey("user_name")
@@ -94,6 +96,7 @@ class UserPreferencesRepository @Inject constructor(
                 stepsTarget          = prefs[Keys.STEPS_TARGET] ?: 10000,
                 sleepTargetHours     = prefs[Keys.SLEEP_TARGET] ?: 8.0f,
                 caloriesTarget       = prefs[Keys.CALORIES_TARGET] ?: 2200f,
+                activeCaloriesTarget = prefs[Keys.ACTIVE_CALORIES_TARGET] ?: 500f,
                 workoutDaysTarget    = prefs[Keys.WORKOUT_DAYS_TARGET] ?: 4,
                 workoutMinutesTarget = prefs[Keys.WORKOUT_MINUTES_TARGET] ?: 180,
                 userName             = prefs[Keys.USER_NAME] ?: "Jaime",
@@ -133,6 +136,10 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun updateCaloriesTarget(targetCalories: Float) {
         context.dataStore.edit { prefs -> prefs[Keys.CALORIES_TARGET] = targetCalories }
+    }
+
+    suspend fun updateActiveCaloriesTarget(targetCalories: Float) {
+        context.dataStore.edit { prefs -> prefs[Keys.ACTIVE_CALORIES_TARGET] = targetCalories }
     }
 
     suspend fun updateWorkoutDaysTarget(days: Int) {

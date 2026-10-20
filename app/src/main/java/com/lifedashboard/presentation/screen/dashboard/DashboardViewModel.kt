@@ -86,13 +86,13 @@ class DashboardViewModel @Inject constructor(
                     val stepsProg = if (goals.stepsTarget > 0) (state.todaySteps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f) else 0f
                     val sleepProg = if (goals.sleepTargetHours > 0) (state.todaySleepHours / goals.sleepTargetHours).coerceIn(0f, 1f) else 0f
                     val effectiveCalories = if (state.todayCalories > 0f) state.todayCalories else (state.todaySteps * 0.04f).coerceAtLeast(0f)
-                    val calProg   = if (goals.caloriesTarget > 0) (effectiveCalories / goals.caloriesTarget).coerceIn(0f, 1f) else 0f
+                    val calProg   = if (goals.activeCaloriesTarget > 0) (effectiveCalories / goals.activeCaloriesTarget).coerceIn(0f, 1f) else 0f
 
                     state.copy(
                         userName           = goals.userName,
                         stepsTarget        = goals.stepsTarget,
                         sleepTargetHours   = goals.sleepTargetHours,
-                        caloriesTarget     = goals.caloriesTarget,
+                        caloriesTarget     = goals.activeCaloriesTarget,
                         workoutDaysTarget  = goals.workoutDaysTarget,
                         stepsProgress      = stepsProg,
                         sleepProgress      = sleepProg,
@@ -265,8 +265,12 @@ class DashboardViewModel @Inject constructor(
         if (_uiState.value.isAiLoading) return
         viewModelScope.launch {
             _uiState.update { it.copy(isAiLoading = true) }
-            val insight = geminiService.getDailyInsight()
-            _uiState.update { it.copy(aiInsight = insight, isAiLoading = false) }
+            try {
+                val insight = geminiService.getDailyInsight()
+                _uiState.update { it.copy(aiInsight = insight, isAiLoading = false) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isAiLoading = false) }
+            }
         }
     }
 
