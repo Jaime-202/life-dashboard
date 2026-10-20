@@ -92,6 +92,7 @@ data class NutritionUiState(
     // Estado de Clave Gemini y Prueba de Conexión
     val hasGeminiApiKey: Boolean = false,
     val geminiApiKey: String = "",
+    val geminiModel: String = "gemini-3.8-flash",
     val isTestingApiKey: Boolean = false,
     val apiKeyTestMessage: String? = null,
     val apiKeyTestSuccess: Boolean? = null
@@ -130,16 +131,36 @@ class NutritionViewModel @Inject constructor(
         // Observar objetivos del usuario y perfil antropométrico
         userPreferences.userGoals
             .onEach { goals ->
+                val normalizedGoal = when (goals.primaryGoal) {
+                    "GRASA" -> "PERDIDA_PESO"
+                    "MUSCULO" -> "VOLUMEN"
+                    else -> "MANTENIMIENTO"
+                }
+
+                // Si las calorías objetivo están desactualizadas o por debajo de un mínimo realista (< 1200 kcal),
+                // calcular automáticamente los valores óptimos basados en peso, altura y objetivo.
+                if (goals.caloriesTarget < 1200f) {
+                    val intake = calculateIntake(goals.weightKg, goals.heightCm, normalizedGoal)
+                    userPreferences.updateCalorieAndMacroTargets(
+                        calories = intake.calories,
+                        protein = intake.protein,
+                        carbs = intake.carbs,
+                        fat = intake.fat
+                    )
+                }
+
                 _uiState.update {
                     it.copy(
-                        targetCalories = goals.caloriesTarget,
+                        targetCalories = if (goals.caloriesTarget < 1200f) 1850f else goals.caloriesTarget,
                         targetProtein  = goals.proteinTargetGrams,
                         targetCarbs    = goals.carbsTargetGrams,
                         targetFat      = goals.fatTargetGrams,
                         userWeightKg   = goals.weightKg,
                         userHeightCm   = goals.heightCm,
+                        userGoal       = normalizedGoal,
                         hasGeminiApiKey = goals.geminiApiKey.isNotBlank(),
-                        geminiApiKey   = goals.geminiApiKey
+                        geminiApiKey   = goals.geminiApiKey,
+                        geminiModel    = goals.geminiModel
                     )
                 }
             }
@@ -374,7 +395,7 @@ class NutritionViewModel @Inject constructor(
         val tdee = bmr * 1.35f // Factor de actividad moderada habitual
 
         val targetCalories = when (goal) {
-            "PERDIDA_PESO", "GRASA" -> (tdee - 500f).coerceAtLeast(1400f)
+            "PERDIDA_PESO", "GRASA" -> (tdee - 450f).coerceAtLeast(1400f)
             "VOLUMEN", "MUSCULO" -> tdee + 300f
             else -> tdee
         }
@@ -392,6 +413,19 @@ class NutritionViewModel @Inject constructor(
             bmr = bmr,
             tdee = tdee
         )
+    }
+
+    fun recalculateFromProfile() {
+        viewModelScope.launch {
+            val goals = userPreferences.userGoals.first()
+            val normalizedGoal = when (goals.primaryGoal) {
+                "GRASA" -> "PERDIDA_PESO"
+                "MUSCULO" -> "VOLUMEN"
+                else -> "MANTENIMIENTO"
+            }
+            val intake = calculateIntake(goals.weightKg, goals.heightCm, normalizedGoal)
+            applyCalculatedIntake(intake, goals.weightKg, goals.heightCm, normalizedGoal)
+        }
     }
 
     fun applyCalculatedIntake(intake: CalculatedIntake, weightKg: Float, heightCm: Int, goal: String) {
@@ -658,14 +692,20 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
-    suspend fun testApiKey(key: String): Result<String> {
-        return repository.testApiKeyConnection(key)
+    fun updateGeminiModel(model: String) {
+        viewModelScope.launch {
+            userPreferences.updateGeminiModel(model.trim())
+        }
+    }
+
+    suspend fun testApiKey(key: String, preferredModel: String? = null): Result<String> {
+        return repository.testApiKeyConnection(key, preferredModel ?: _uiState.value.geminiModel)
     }
 
     fun testApiKeyConnection(key: String, onComplete: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             _uiState.update { it.copy(isTestingApiKey = true, apiKeyTestMessage = null, apiKeyTestSuccess = null) }
-            val result = repository.testApiKeyConnection(key)
+            val result = repository.testApiKeyConnection(key, _uiState.value.geminiModel)
             if (result.isSuccess) {
                 val msg = result.getOrNull() ?: "Conexión exitosa"
                 _uiState.update { it.copy(isTestingApiKey = false, apiKeyTestMessage = msg, apiKeyTestSuccess = true) }

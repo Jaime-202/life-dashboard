@@ -241,6 +241,14 @@ fun NutritionScreen(
             currentTargetProtein = state.targetProtein,
             currentTargetCarbs = state.targetCarbs,
             currentTargetFat = state.targetFat,
+            userHeightCm = state.userHeightCm,
+            userWeightKg = state.userWeightKg,
+            userGoal = state.userGoal,
+            onRecalculateFromProfile = {
+                viewModel.recalculateFromProfile()
+                showCustomTargetsDialog = false
+                Toast.makeText(context, "Objetivos recalculados según tu perfil", Toast.LENGTH_SHORT).show()
+            },
             onSaveTargets = { cal, p, c, f ->
                 viewModel.updateCustomTargets(cal, p, c, f)
                 showCustomTargetsDialog = false
@@ -282,12 +290,14 @@ fun NutritionScreen(
     if (showApiKeyModal) {
         NutritionApiKeyDialog(
             currentKey = state.geminiApiKey,
+            currentModel = state.geminiModel,
             onDismiss  = { showApiKeyModal = false },
-            onTest     = { key -> viewModel.testApiKey(key) },
-            onSave     = { newKey ->
+            onTest     = { key, model -> viewModel.testApiKey(key, model) },
+            onSave     = { newKey, newModel ->
                 viewModel.updateGeminiApiKey(newKey)
+                viewModel.updateGeminiModel(newModel)
                 showApiKeyModal = false
-                Toast.makeText(context, "Clave de Gemini guardada correctamente", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Clave y modelo ($newModel) guardados", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -501,7 +511,7 @@ private fun NutritionHeader(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = if (hasGeminiApiKey) "Gemini 2.0 Flash · Activo" else "Modo Local · Gemini IA Gratis",
+                        text = if (hasGeminiApiKey) "Gemini 3.8 Flash · Activo" else "Modo Local · Activar Gemini 3.8 IA",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (hasGeminiApiKey) Violet200 else Amber400,
                         fontWeight = FontWeight.SemiBold,
@@ -537,20 +547,10 @@ private fun NutritionHeroCard(
         label = "calories_progress"
     )
 
-    // Cálculo del reparto calórico proporcional de macros
-    val proteinKcal = state.totalProtein * 4f
-    val carbsKcal = state.totalCarbs * 4f
-    val fatKcal = state.totalFat * 9f
-    val totalMacrosKcal = (proteinKcal + carbsKcal + fatKcal).coerceAtLeast(1f)
-
-    val proteinPct = ((proteinKcal / totalMacrosKcal) * 100).toInt()
-    val carbsPct = ((carbsKcal / totalMacrosKcal) * 100).toInt()
-    val fatPct = (100 - proteinPct - carbsPct).coerceAtLeast(0)
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(26.dp))
+            .clip(RoundedCornerShape(22.dp))
             .background(
                 Brush.linearGradient(
                     listOf(
@@ -560,159 +560,92 @@ private fun NutritionHeroCard(
                     )
                 )
             )
-            .border(1.dp, Violet400.copy(alpha = 0.35f), RoundedCornerShape(26.dp))
-            .padding(18.dp)
+            .border(1.dp, Violet400.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
+            .padding(14.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            // ─── Header: Título & Botones de Metas y Calculadora ───
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // ─── Fila 1: Resumen de Calorías y Botones Compactos de Metas ───
             Row(
                 verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier              = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Amber400.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Amber400, modifier = Modifier.size(20.dp))
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Column {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text  = "Balance Calórico",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = White
+                            text = if (remaining >= 0) "$remaining" else "+${-remaining}",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (remaining >= 0) Emerald400 else Rose400
                         )
+                        Spacer(Modifier.width(6.dp))
                         Text(
-                            text = "Meta diaria: ${state.targetCalories.toInt()} kcal",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Gray400
+                            text = if (remaining >= 0) "kcal restantes" else "kcal superadas",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (remaining >= 0) Emerald400 else Rose400,
+                            fontWeight = FontWeight.Bold
                         )
                     }
+                    Text(
+                        text = "${state.totalCalories.toInt()} de ${state.targetCalories.toInt()} kcal · ${state.activeBurnedCalories.toInt()} quemadas",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gray400,
+                        fontSize = 11.sp
+                    )
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Violet400.copy(alpha = 0.2f))
-                            .border(1.dp, Violet400.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Violet400.copy(alpha = 0.18f))
+                            .border(1.dp, Violet400.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
                             .clickable(onClick = onOpenCustomTargets)
-                            .padding(horizontal = 9.dp, vertical = 6.dp)
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Tune, contentDescription = null, tint = Violet300, modifier = Modifier.size(13.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Mis Metas", style = MaterialTheme.typography.labelSmall, color = Violet300, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.Tune, contentDescription = null, tint = Violet300, modifier = Modifier.size(12.dp))
+                            Spacer(Modifier.width(3.dp))
+                            Text("Metas", style = MaterialTheme.typography.labelSmall, color = Violet300, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         }
                     }
 
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(10.dp))
                             .background(Indigo700)
-                            .clickable(onClick = onOpenCalculator)
-                            .padding(horizontal = 9.dp, vertical = 6.dp)
+                            .clickable(onClick = onOpenCalculator),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Calculate, contentDescription = null, tint = Gray300, modifier = Modifier.size(13.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Calcular", style = MaterialTheme.typography.labelSmall, color = Gray300, fontWeight = FontWeight.Bold)
-                        }
+                        Icon(Icons.Default.Calculate, contentDescription = "Calcular según perfil", tint = Gray300, modifier = Modifier.size(15.dp))
                     }
                 }
             }
 
-            // ─── Calorías Restantes (Gran Marcador Central) ───
+            // ─── Fila 2: Barra Fina de Progreso Calórico ───
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Indigo900.copy(alpha = 0.65f))
-                    .padding(vertical = 14.dp, horizontal = 16.dp)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Indigo700)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = if (remaining >= 0) "$remaining" else "+${-remaining}",
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (remaining >= 0) Emerald400 else Rose400
-                    )
-                    Text(
-                        text = if (remaining >= 0) "kcal restantes para tu meta de hoy" else "kcal superadas sobre el objetivo",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (remaining >= 0) Emerald400.copy(alpha = 0.9f) else Rose400,
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-
-                    // Barra animada de progreso de calorías
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(10.dp)
-                            .clip(RoundedCornerShape(5.dp))
-                            .background(Indigo700)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(animatedCaloriesProgress)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(5.dp))
-                                .background(Brush.horizontalGradient(listOf(Violet400, Cyan400)))
-                        )
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    // 3 Métricas en píldoras: Consumidas, Objetivo, Quemadas
-                    Row(
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        PillMetric(label = "Consumidas", value = "${state.totalCalories.toInt()} kcal", color = White)
-                        PillMetric(label = "Objetivo", value = "${state.targetCalories.toInt()} kcal", color = Gray300)
-                        PillMetric(label = "Quemadas", value = "${state.activeBurnedCalories.toInt()} kcal", color = Cyan400)
-                    }
-                }
-            }
-
-            // ─── Desglose Visual de Macronutrientes (Anillos Circulares Dedicados) ───
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "Macronutrientes",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Gray300,
-                    fontWeight = FontWeight.Bold
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(animatedCaloriesProgress)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Brush.horizontalGradient(listOf(Violet400, Cyan400)))
                 )
-                if (state.totalCalories > 0) {
-                    Text(
-                        text = "Reparto: P $proteinPct% · C $carbsPct% · G $fatPct%",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Gray400,
-                        fontSize = 10.sp
-                    )
-                }
             }
 
+            // ─── Fila 3: 3 Tarjetas Compactas de Macronutrientes ───
             Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                MacroRingCard(
+                CompactMacroCard(
                     title = "Proteína",
                     emoji = "🥩",
                     currentVal = state.totalProtein,
@@ -722,7 +655,7 @@ private fun NutritionHeroCard(
                     trackColor = RingTrack,
                     modifier = Modifier.weight(1f)
                 )
-                MacroRingCard(
+                CompactMacroCard(
                     title = "Carbos",
                     emoji = "🍞",
                     currentVal = state.totalCarbs,
@@ -732,7 +665,7 @@ private fun NutritionHeroCard(
                     trackColor = RingTrack,
                     modifier = Modifier.weight(1f)
                 )
-                MacroRingCard(
+                CompactMacroCard(
                     title = "Grasas",
                     emoji = "🥑",
                     currentVal = state.totalFat,
@@ -743,67 +676,12 @@ private fun NutritionHeroCard(
                     modifier = Modifier.weight(1f)
                 )
             }
-
-            // ─── Barra Proporcional de Reparto Calórico de Macros ───
-            if (state.totalCalories > 0) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(7.dp)
-                            .clip(RoundedCornerShape(3.5.dp))
-                    ) {
-                        if (proteinPct > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .weight(proteinPct.toFloat())
-                                    .fillMaxHeight()
-                                    .background(Violet400)
-                            )
-                        }
-                        if (carbsPct > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .weight(carbsPct.toFloat())
-                                    .fillMaxHeight()
-                                    .background(Cyan400)
-                            )
-                        }
-                        if (fatPct > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .weight(fatPct.toFloat())
-                                    .fillMaxHeight()
-                                    .background(Amber400)
-                            )
-                        }
-                    }
-
-                    Row(
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("🥩 $proteinPct% Proteína", style = MaterialTheme.typography.labelSmall, color = Violet300, fontSize = 10.sp)
-                        Text("🍞 $carbsPct% Carbos", style = MaterialTheme.typography.labelSmall, color = Cyan400, fontSize = 10.sp)
-                        Text("🥑 $fatPct% Grasas", style = MaterialTheme.typography.labelSmall, color = Amber400, fontSize = 10.sp)
-                    }
-                }
-            }
         }
     }
 }
 
 @Composable
-private fun PillMetric(label: String, value: String, color: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 10.sp)
-        Spacer(Modifier.height(2.dp))
-        Text(text = value, style = MaterialTheme.typography.bodySmall, color = color, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-    }
-}
-
-@Composable
-private fun MacroRingCard(
+private fun CompactMacroCard(
     title: String,
     emoji: String,
     currentVal: Float,
@@ -816,24 +694,24 @@ private fun MacroRingCard(
     val animatedProgress by animateFloatAsState(
         targetValue = progress,
         animationSpec = tween(900, easing = FastOutSlowInEasing),
-        label = "ring_progress"
+        label = "macro_progress"
     )
     val remainingGrams = (targetVal - currentVal).coerceAtLeast(0f).toInt()
     val isComplete = currentVal >= targetVal && targetVal > 0f
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(Indigo900.copy(alpha = 0.75f))
-            .border(1.dp, color.copy(alpha = 0.28f), RoundedCornerShape(18.dp))
-            .padding(vertical = 12.dp, horizontal = 4.dp)
+            .border(1.dp, color.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 6.dp, vertical = 8.dp)
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Título con emoji
+            // Fila de Encabezado: Emoji + Título
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
@@ -851,14 +729,13 @@ private fun MacroRingCard(
                 )
             }
 
-            // Anillo Circular Canvas
+            // Anillo Canvas circular de 34dp con % animado
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.size(54.dp)
+                modifier = Modifier.size(34.dp)
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
-                    val strokeW = 5.dp.toPx()
-                    // Pista de fondo
+                    val strokeW = 3.5.dp.toPx()
                     drawArc(
                         color = trackColor,
                         startAngle = -90f,
@@ -866,7 +743,6 @@ private fun MacroRingCard(
                         useCenter = false,
                         style = Stroke(width = strokeW, cap = StrokeCap.Round)
                     )
-                    // Arco de progreso
                     drawArc(
                         color = color,
                         startAngle = -90f,
@@ -875,52 +751,43 @@ private fun MacroRingCard(
                         style = Stroke(width = strokeW, cap = StrokeCap.Round)
                     )
                 }
-
                 Text(
                     text = "${(progress * 100).toInt()}%",
                     style = MaterialTheme.typography.labelSmall,
                     color = White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
+                    fontSize = 9.sp
                 )
             }
 
-            // Gramos consumidos y meta
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        text = "${currentVal.toInt()}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = White,
-                        fontSize = 14.sp
-                    )
-                    Text(
-                        text = "/${targetVal.toInt()}g",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Gray400,
-                        fontSize = 10.sp
-                    )
-                }
-
-                Spacer(Modifier.height(3.dp))
-
-                // Píldora de estado
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isComplete) Emerald400.copy(alpha = 0.2f) else color.copy(alpha = 0.15f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = if (isComplete) "✓ Meta" else "${remainingGrams}g rest.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isComplete) Emerald400 else color,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+            // Gramos: ${current} / ${target}g
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "${currentVal.toInt()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = White,
+                    fontSize = 12.sp
+                )
+                Text(
+                    text = "/${targetVal.toInt()}g",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Gray400,
+                    fontSize = 9.sp
+                )
             }
+
+            // Estado restante
+            Text(
+                text = if (isComplete) "✓ Listo" else "${remainingGrams}g rest.",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isComplete) Emerald400 else Gray400,
+                fontSize = 9.sp,
+                maxLines = 1
+            )
         }
     }
 }
@@ -1578,6 +1445,10 @@ private fun CustomMacroTargetsDialog(
     currentTargetProtein: Float,
     currentTargetCarbs: Float,
     currentTargetFat: Float,
+    userHeightCm: Int,
+    userWeightKg: Float,
+    userGoal: String,
+    onRecalculateFromProfile: () -> Unit,
     onSaveTargets: (calories: Float, protein: Float, carbs: Float, fat: Float) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1591,6 +1462,12 @@ private fun CustomMacroTargetsDialog(
     val c = carbsInput.toFloatOrNull() ?: currentTargetCarbs
     val f = fatInput.toFloatOrNull() ?: currentTargetFat
     val macroKcalSum = (p * 4f) + (c * 4f) + (f * 9f)
+
+    val goalLabel = when (userGoal) {
+        "PERDIDA_PESO", "GRASA" -> "Perder grasa"
+        "VOLUMEN", "MUSCULO" -> "Ganar músculo"
+        else -> "Mantenimiento"
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Box(
@@ -1627,8 +1504,71 @@ private fun CustomMacroTargetsDialog(
                     }
                 }
 
+                // ⚡ Botón de 1-tap para auto-calcular según perfil físico
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Violet400.copy(alpha = 0.15f))
+                        .border(1.dp, Violet400.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                        .clickable {
+                            val validW = if (userWeightKg > 30f) userWeightKg else 75f
+                            val validH = if (userHeightCm > 100) userHeightCm else 175
+                            val bmr = (10f * validW) + (6.25f * validH) - (5f * 25f) + 5f
+                            val tdee = bmr * 1.35f
+                            val calcKcal = when (userGoal) {
+                                "PERDIDA_PESO", "GRASA" -> (tdee - 450f).coerceAtLeast(1400f)
+                                "VOLUMEN", "MUSCULO" -> tdee + 300f
+                                else -> tdee
+                            }
+                            val calculatedP = (validW * 2.0f).coerceIn(90f, 240f)
+                            val calculatedF = (validW * 0.85f).coerceIn(40f, 110f)
+                            val rem = calcKcal - (calculatedP * 4f + calculatedF * 9f)
+                            val calculatedC = (rem / 4f).coerceAtLeast(50f)
+
+                            kcalInput = "${calcKcal.toInt()}"
+                            proteinInput = "${calculatedP.toInt()}"
+                            carbsInput = "${calculatedC.toInt()}"
+                            fatInput = "${calculatedF.toInt()}"
+                        }
+                        .padding(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Violet400.copy(alpha = 0.25f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Bolt, contentDescription = null, tint = Violet300, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Auto-calcular con mi perfil",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = White
+                            )
+                            Text(
+                                text = "${userHeightCm} cm · ${userWeightKg.toInt()} kg · $goalLabel",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Violet200,
+                                fontSize = 10.sp
+                            )
+                        }
+                        Text(
+                            text = "Rellenar",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Violet300,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
                 Text(
-                    text = "Escribe directamente tus metas diarias de calorías y macronutrientes:",
+                    text = "O escribe directamente tus metas diarias de calorías y macronutrientes:",
                     style = MaterialTheme.typography.bodySmall,
                     color = Gray300
                 )
@@ -1849,7 +1789,7 @@ private fun PhotoAiDialog(
                             Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = if (hasGeminiApiKey) Violet300 else Amber400, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = if (hasGeminiApiKey) "Gemini 2.0 Flash Vision Activo" else "Modo Básico · Toca para vincular tu Gemini API Key gratis",
+                                text = if (hasGeminiApiKey) "Gemini 3.8 Flash Vision Activo" else "Modo Básico · Toca para vincular tu Gemini API Key gratis",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (hasGeminiApiKey) Violet200 else Amber400,
                                 fontWeight = FontWeight.SemiBold,
@@ -2487,7 +2427,7 @@ private fun ScannedFoodDialog(
                     )
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                     ) {
                         MealSectionType.entries.forEach { section ->
                             val isSel = section.key == selectedMeal
@@ -3186,7 +3126,7 @@ private fun TextAiMealDialog(
                             Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = if (hasGeminiApiKey) Violet300 else Amber400, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = if (hasGeminiApiKey) "Gemini 2.0 Flash Conectado · IA Activa" else "Motor Local Básico · Toca para vincular tu Gemini API Key gratis",
+                                text = if (hasGeminiApiKey) "Gemini 3.8 Flash Conectado · IA Activa" else "Motor Local Básico · Toca para vincular tu Gemini API Key gratis",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (hasGeminiApiKey) Violet200 else Amber400,
                                 fontWeight = FontWeight.SemiBold,
@@ -3297,7 +3237,7 @@ private fun TextAiMealDialog(
                     ) {
                         CircularProgressIndicator(color = Violet400, strokeWidth = 3.dp)
                         Text(
-                            text = if (hasGeminiApiKey) "Gemini 2.0 Flash está calculando alimentos, porciones y calorías..." else "Analizando alimentos y macros con el motor local...",
+                            text = if (hasGeminiApiKey) "Gemini 3.8 Flash está calculando alimentos, porciones y calorías..." else "Analizando alimentos y macros con el motor local...",
                             style = MaterialTheme.typography.bodySmall,
                             color = Violet300,
                             textAlign = TextAlign.Center
@@ -3378,16 +3318,22 @@ private fun TextAiMealDialog(
 @Composable
 private fun NutritionApiKeyDialog(
     currentKey: String,
+    currentModel: String = "gemini-3.8-flash",
     onDismiss: () -> Unit,
-    onTest: (suspend (String) -> Result<String>),
-    onSave: (String) -> Unit
+    onTest: (suspend (String, String) -> Result<String>),
+    onSave: (String, String) -> Unit
 ) {
     var keyInput by remember { mutableStateOf(currentKey) }
+    var selectedModel by remember { mutableStateOf(if (currentModel.isBlank()) "gemini-3.8-flash" else currentModel) }
+    var customModelInput by remember { mutableStateOf(if (currentModel !in listOf("gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.7-flash", "auto")) currentModel else "") }
+    var isCustom by remember { mutableStateOf(currentModel !in listOf("gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.7-flash", "auto") && currentModel.isNotBlank()) }
     var isTesting by remember { mutableStateOf(false) }
     var testResultText by remember { mutableStateOf<String?>(null) }
     var testIsSuccess by remember { mutableStateOf<Boolean?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    val activeModelToUse = if (isCustom && customModelInput.isNotBlank()) customModelInput.trim() else selectedModel
 
     Dialog(onDismissRequest = onDismiss) {
         Box(
@@ -3421,7 +3367,7 @@ private fun NutritionApiKeyDialog(
                 }
 
                 Text(
-                    text = "Consigue una clave gratis en Google AI Studio (aistudio.google.com). Con tu clave, la IA visual y de texto de Gemini 2.0 Flash analizará fotos y platos con máxima precisión.",
+                    text = "Consigue una clave gratis en Google AI Studio (aistudio.google.com). Compatible con Gemini 3.8 Flash, con selección de modelos y auto-detección dinámica para modelos futuros.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Gray300
                 )
@@ -3464,6 +3410,87 @@ private fun NutritionApiKeyDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Selector de Modelo Gemini (Gemini 3.8 Flash, 3.8 Lite, 3.7, Auto, Otro)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Modelo de IA Gemini:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gray300,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                    ) {
+                        listOf(
+                            "gemini-3.8-flash" to "⚡ 3.8 Flash",
+                            "gemini-3.8-flash-lite" to "🚀 3.8 Lite",
+                            "gemini-3.7-flash" to "✨ 3.7",
+                            "auto" to "🎯 Auto"
+                        ).forEach { (modelKey, label) ->
+                            val isSelected = !isCustom && selectedModel == modelKey
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) Violet400.copy(alpha = 0.25f) else Indigo900.copy(alpha = 0.6f))
+                                    .border(1.dp, if (isSelected) Violet400 else Indigo700, RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        isCustom = false
+                                        selectedModel = modelKey
+                                        testResultText = null
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 5.dp)
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 11.sp,
+                                    color = if (isSelected) Violet200 else Gray400,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isCustom) Violet400.copy(alpha = 0.25f) else Indigo900.copy(alpha = 0.6f))
+                                .border(1.dp, if (isCustom) Violet400 else Indigo700, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    isCustom = true
+                                    testResultText = null
+                                }
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = "✍️ Otro",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 11.sp,
+                                color = if (isCustom) Violet200 else Gray400,
+                                fontWeight = if (isCustom) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+
+                if (isCustom) {
+                    OutlinedTextField(
+                        value = customModelInput,
+                        onValueChange = {
+                            customModelInput = it
+                            testResultText = null
+                        },
+                        label = { Text("Nombre del modelo (ej: gemini-3.9-flash)", color = Gray400, fontSize = 11.sp) },
+                        placeholder = { Text("gemini-3.8-flash", color = Gray500) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Cyan400, unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White, unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -3478,7 +3505,7 @@ private fun NutritionApiKeyDialog(
                             isTesting = true
                             testResultText = null
                             coroutineScope.launch {
-                                val res = onTest(keyInput.trim())
+                                val res = onTest(keyInput.trim(), activeModelToUse)
                                 isTesting = false
                                 if (res.isSuccess) {
                                     testIsSuccess = true
@@ -3552,7 +3579,7 @@ private fun NutritionApiKeyDialog(
                     }
 
                     Button(
-                        onClick = { onSave(keyInput) },
+                        onClick = { onSave(keyInput, activeModelToUse) },
                         colors = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f)

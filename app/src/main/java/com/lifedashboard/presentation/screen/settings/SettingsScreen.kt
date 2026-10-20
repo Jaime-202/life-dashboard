@@ -84,6 +84,7 @@ data class SettingsState(
     val aiStyle: String = "CIENTIFICO",
     val syncFrequency: String = "30_MIN",
     val geminiApiKey: String = "",
+    val geminiModel: String = "gemini-3.8-flash",
     val stepsTarget: Int = 10000,
     val sleepTargetHours: Float = 8.0f,
     val caloriesTarget: Float = 2200f,
@@ -138,6 +139,7 @@ class SettingsViewModel @Inject constructor(
                     aiStyle              = goals.aiStyle,
                     syncFrequency        = goals.syncFrequency,
                     geminiApiKey         = goals.geminiApiKey,
+                    geminiModel          = goals.geminiModel,
                     stepsTarget          = goals.stepsTarget,
                     sleepTargetHours     = goals.sleepTargetHours,
                     caloriesTarget       = goals.caloriesTarget,
@@ -200,12 +202,36 @@ class SettingsViewModel @Inject constructor(
                 note = note?.takeIf { it.isNotBlank() }
             )
             weightDao.upsert(entry)
+            val currentGoal = _state.value.primaryGoal
+            val currentHeight = _state.value.heightCm
             userPreferences.updateFitnessProfile(
                 level = _state.value.fitnessLevel,
-                goal = _state.value.primaryGoal,
+                goal = currentGoal,
                 weight = weight,
-                height = _state.value.heightCm
+                height = currentHeight
             )
+
+            // Recalcular calorías y macros automáticamente basados en el nuevo peso
+            val validHeight = if (currentHeight > 100) currentHeight else 175
+            val bmr = (10f * weight) + (6.25f * validHeight) - (5f * 25f) + 5f
+            val tdee = bmr * 1.35f
+            val targetCalories = when (currentGoal) {
+                "PERDIDA_PESO", "GRASA" -> (tdee - 450f).coerceAtLeast(1400f)
+                "VOLUMEN", "MUSCULO" -> tdee + 300f
+                else -> tdee
+            }
+            val protein = (weight * 2.0f).coerceIn(90f, 240f)
+            val fat = (weight * 0.85f).coerceIn(40f, 110f)
+            val remainingKcal = targetCalories - (protein * 4f + fat * 9f)
+            val carbs = (remainingKcal / 4f).coerceAtLeast(50f)
+
+            userPreferences.updateCalorieAndMacroTargets(
+                calories = targetCalories,
+                protein = protein,
+                carbs = carbs,
+                fat = fat
+            )
+            com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
         }
     }
 
@@ -219,6 +245,29 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             if (name.isNotBlank()) userPreferences.updateUserName(name.trim())
             userPreferences.updateFitnessProfile(level, goal, weight, height)
+
+            // Cálculo automático de calorías y macronutrientes según Mifflin-St Jeor y objetivo (pérdida grasa / volumen / mant.)
+            val validWeight = if (weight > 30f) weight else 75f
+            val validHeight = if (height > 100) height else 175
+            val bmr = (10f * validWeight) + (6.25f * validHeight) - (5f * 25f) + 5f
+            val tdee = bmr * 1.35f
+            val targetCalories = when (goal) {
+                "PERDIDA_PESO", "GRASA" -> (tdee - 450f).coerceAtLeast(1400f)
+                "VOLUMEN", "MUSCULO" -> tdee + 300f
+                else -> tdee
+            }
+            val protein = (validWeight * 2.0f).coerceIn(90f, 240f)
+            val fat = (validWeight * 0.85f).coerceIn(40f, 110f)
+            val remainingKcal = targetCalories - (protein * 4f + fat * 9f)
+            val carbs = (remainingKcal / 4f).coerceAtLeast(50f)
+
+            userPreferences.updateCalorieAndMacroTargets(
+                calories = targetCalories,
+                protein = protein,
+                carbs = carbs,
+                fat = fat
+            )
+            com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
         }
     }
 
@@ -226,8 +275,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { userPreferences.updateGeminiApiKey(apiKey.trim()) }
     }
 
-    suspend fun testApiKey(apiKey: String): Result<String> {
-        return foodAiService.testApiKeyConnection(apiKey)
+    fun updateGeminiModel(model: String) {
+        viewModelScope.launch { userPreferences.updateGeminiModel(model.trim()) }
+    }
+
+    suspend fun testApiKey(apiKey: String, preferredModel: String? = null): Result<String> {
+        return foodAiService.testApiKeyConnection(apiKey, preferredModel ?: _state.value.geminiModel)
     }
 
     fun updateStepsTarget(target: Int) {
@@ -703,8 +756,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             SettingsItem(
                 icon      = Icons.Default.AutoAwesome,
                 iconColor = Violet400,
-                title     = "Motor Gemini 2.0 Flash",
-                subtitle  = if (state.geminiApiKey.isNotBlank()) "Clave personalizada activa (Google AI Studio)"
+                title     = "Motor IA: ${if (state.geminiModel.isNotBlank()) state.geminiModel else "gemini-3.8-flash"}",
+                subtitle  = if (state.geminiApiKey.isNotBlank()) "Clave personalizada activa · Modelo: ${state.geminiModel}"
                             else "Motor Heurístico Local inteligente (100% Offline y Gratis)",
                 trailing  = {
                     OutlinedButton(
@@ -905,12 +958,14 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     if (showApiKeyModal) {
         EditApiKeyModal(
             currentKey = state.geminiApiKey,
+            currentModel = state.geminiModel,
             onDismiss  = { showApiKeyModal = false },
-            onTest     = { key -> viewModel.testApiKey(key) },
-            onSave     = { newKey ->
+            onTest     = { key, model -> viewModel.testApiKey(key, model) },
+            onSave     = { newKey, newModel ->
                 viewModel.updateGeminiApiKey(newKey)
+                viewModel.updateGeminiModel(newModel)
                 showApiKeyModal = false
-                Toast.makeText(context, "Clave de Gemini guardada correctamente", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Clave y modelo ($newModel) guardados", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -2076,16 +2131,22 @@ private fun EditWorkoutGoalModal(currentDays: Int, currentMinutes: Int, onDismis
 @Composable
 private fun EditApiKeyModal(
     currentKey: String,
+    currentModel: String = "gemini-3.8-flash",
     onDismiss: () -> Unit,
-    onTest: (suspend (String) -> Result<String>)? = null,
-    onSave: (String) -> Unit
+    onTest: (suspend (String, String) -> Result<String>)? = null,
+    onSave: (String, String) -> Unit
 ) {
     var keyInput by remember { mutableStateOf(currentKey) }
+    var selectedModel by remember { mutableStateOf(if (currentModel.isBlank()) "gemini-3.8-flash" else currentModel) }
+    var customModelInput by remember { mutableStateOf(if (currentModel !in listOf("gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.7-flash", "auto")) currentModel else "") }
+    var isCustom by remember { mutableStateOf(currentModel !in listOf("gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.7-flash", "auto") && currentModel.isNotBlank()) }
     var isTesting by remember { mutableStateOf(false) }
     var testResultText by remember { mutableStateOf<String?>(null) }
     var testIsSuccess by remember { mutableStateOf<Boolean?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    val activeModelToUse = if (isCustom && customModelInput.isNotBlank()) customModelInput.trim() else selectedModel
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2101,7 +2162,7 @@ private fun EditApiKeyModal(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text  = "Consigue una clave gratis en Google AI Studio (aistudio.google.com). Con tu clave, la IA de Gemini 2.0 Flash analizará tus fotos de platos y descripciones con máxima precisión.",
+                    text  = "Consigue una clave gratis en Google AI Studio (aistudio.google.com). Compatible con Gemini 3.8 Flash, con selección de modelos y auto-detección dinámica para modelos futuros.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Gray300
                 )
@@ -2144,6 +2205,87 @@ private fun EditApiKeyModal(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Selector de Modelo Gemini (Gemini 3.8 Flash, 3.8 Lite, 3.7, Auto, Otro)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Modelo de IA Gemini:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gray300,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                    ) {
+                        listOf(
+                            "gemini-3.8-flash" to "⚡ 3.8 Flash",
+                            "gemini-3.8-flash-lite" to "🚀 3.8 Lite",
+                            "gemini-3.7-flash" to "✨ 3.7",
+                            "auto" to "🎯 Auto"
+                        ).forEach { (modelKey, label) ->
+                            val isSelected = !isCustom && selectedModel == modelKey
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) Violet400.copy(alpha = 0.25f) else Indigo900.copy(alpha = 0.6f))
+                                    .border(1.dp, if (isSelected) Violet400 else Indigo700, RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        isCustom = false
+                                        selectedModel = modelKey
+                                        testResultText = null
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 5.dp)
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 11.sp,
+                                    color = if (isSelected) Violet200 else Gray400,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isCustom) Violet400.copy(alpha = 0.25f) else Indigo900.copy(alpha = 0.6f))
+                                .border(1.dp, if (isCustom) Violet400 else Indigo700, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    isCustom = true
+                                    testResultText = null
+                                }
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = "✍️ Otro",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 11.sp,
+                                color = if (isCustom) Violet200 else Gray400,
+                                fontWeight = if (isCustom) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+
+                if (isCustom) {
+                    OutlinedTextField(
+                        value = customModelInput,
+                        onValueChange = {
+                            customModelInput = it
+                            testResultText = null
+                        },
+                        label = { Text("Nombre del modelo (ej: gemini-3.9-flash)", color = Gray400, fontSize = 11.sp) },
+                        placeholder = { Text("gemini-3.8-flash", color = Gray500) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Cyan400, unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White, unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
                 if (onTest != null) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -2159,7 +2301,7 @@ private fun EditApiKeyModal(
                                 isTesting = true
                                 testResultText = null
                                 coroutineScope.launch {
-                                    val res = onTest(keyInput.trim())
+                                    val res = onTest(keyInput.trim(), activeModelToUse)
                                     isTesting = false
                                     if (res.isSuccess) {
                                         testIsSuccess = true
@@ -2223,7 +2365,7 @@ private fun EditApiKeyModal(
         },
         confirmButton = {
             Button(
-                onClick = { onSave(keyInput) },
+                onClick = { onSave(keyInput, activeModelToUse) },
                 colors = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900),
                 shape = RoundedCornerShape(12.dp)
             ) {

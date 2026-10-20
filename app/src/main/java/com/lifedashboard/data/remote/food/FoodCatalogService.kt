@@ -475,7 +475,7 @@ class FoodCatalogService @Inject constructor(
             Log.w(TAG, "Error cargando mercadona_catalog.json: ${e.message}")
         }
 
-        // 2. Supermarkets Catalog (Día, Supercor, Carrefour)
+        // 2. Supermarkets Catalog (Día, Supercor, Carrefour, Alcampo)
         try {
             val jsonString = context.assets.open("supermarkets_catalog.json").bufferedReader().use { it.readText() }
             val jsonArray = JSONArray(jsonString)
@@ -500,6 +500,33 @@ class FoodCatalogService @Inject constructor(
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error cargando supermarkets_catalog.json: ${e.message}")
+        }
+
+        // 3. Basics / Generic Foods Catalog (Pollo, Ternera, Huevos, Arroz, Frutas, Verduras)
+        try {
+            val jsonString = context.assets.open("basics_catalog.json").bufferedReader().use { it.readText() }
+            val jsonArray = JSONArray(jsonString)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(
+                    FoodCatalogItem(
+                        id = obj.getString("id"),
+                        name = obj.getString("name"),
+                        brand = obj.optString("brand", "Básico"),
+                        caloriesPer100g = obj.getDouble("caloriesPer100g").toFloat(),
+                        proteinPer100g = obj.getDouble("proteinPer100g").toFloat(),
+                        carbsPer100g = obj.getDouble("carbsPer100g").toFloat(),
+                        fatPer100g = obj.getDouble("fatPer100g").toFloat(),
+                        servingSizeGrams = obj.optDouble("servingSizeGrams", 100.0).toFloat(),
+                        servingDescription = obj.optString("servingDescription", "100g"),
+                        imageUrl = obj.optString("imageUrl", "").takeIf { it.isNotBlank() },
+                        barcode = obj.optString("barcode", "").takeIf { it.isNotBlank() },
+                        isGeneric = true
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error cargando basics_catalog.json: ${e.message}")
         }
 
         assetFoods = list
@@ -652,21 +679,36 @@ class FoodCatalogService @Inject constructor(
         return when (category) {
             FoodSourceCategory.TODOS -> items
             FoodSourceCategory.MERCADONA -> items.filter {
-                it.brand.contains("mercadona", ignoreCase = true) ||
-                it.brand.contains("hacendado", ignoreCase = true) ||
-                it.name.contains("hacendado", ignoreCase = true)
+                val b = normalize(it.brand)
+                val n = normalize(it.name)
+                b.contains("mercadona") || b.contains("hacendado") || n.contains("hacendado")
             }
-            FoodSourceCategory.CARREFOUR -> items.filter { it.brand.contains("carrefour", ignoreCase = true) || it.name.contains("carrefour", ignoreCase = true) }
-            FoodSourceCategory.DIA -> items.filter { it.brand.contains("dia", ignoreCase = true) || it.brand.contains("día", ignoreCase = true) || it.name.contains("día", ignoreCase = true) || it.name.contains("dia", ignoreCase = true) }
-            FoodSourceCategory.ALCAMPO -> items.filter { it.brand.contains("alcampo", ignoreCase = true) || it.brand.contains("auchan", ignoreCase = true) || it.name.contains("alcampo", ignoreCase = true) }
+            FoodSourceCategory.CARREFOUR -> items.filter {
+                val b = normalize(it.brand)
+                val n = normalize(it.name)
+                b.contains("carrefour") || n.contains("carrefour")
+            }
+            FoodSourceCategory.DIA -> items.filter {
+                val b = normalize(it.brand)
+                val n = normalize(it.name)
+                b.contains("dia") || n.contains("dia")
+            }
+            FoodSourceCategory.ALCAMPO -> items.filter {
+                val b = normalize(it.brand)
+                val n = normalize(it.name)
+                b.contains("alcampo") || b.contains("auchan") || n.contains("alcampo")
+            }
             FoodSourceCategory.SUPERCOR -> items.filter {
-                it.brand.contains("supercor", ignoreCase = true) ||
-                it.brand.contains("corte", ignoreCase = true) ||
-                it.brand.contains("hipercor", ignoreCase = true) ||
-                it.name.contains("supercor", ignoreCase = true) ||
-                it.name.contains("corte", ignoreCase = true)
+                val b = normalize(it.brand)
+                val n = normalize(it.name)
+                b.contains("supercor") || b.contains("corte") || b.contains("hipercor") ||
+                n.contains("supercor") || n.contains("corte")
             }
-            FoodSourceCategory.BASICOS -> items.filter { it.isGeneric }
+            FoodSourceCategory.BASICOS -> items.filter {
+                it.isGeneric ||
+                normalize(it.brand).contains("basico") ||
+                normalize(it.brand).contains("generico")
+            }
         }
     }
 

@@ -25,7 +25,7 @@ class GeminiApiService @Inject constructor(
 
     /**
      * Genera el insight diario accionable.
-     * Si hay API key disponible intenta con Gemini 2.0 Flash.
+     * Si hay API key disponible intenta con Gemini 3.8 Flash (o modelos candidatos modernos).
      * Si falla o no hay clave, genera un análisis inteligente con el motor heurístico local.
      */
     suspend fun getDailyInsight(): String {
@@ -35,38 +35,41 @@ class GeminiApiService @Inject constructor(
         }
 
         if (configuredKey.isNotBlank()) {
-            try {
-                val model = GenerativeModel(
-                    modelName = "gemini-2.0-flash",
-                    apiKey = configuredKey,
-                    generationConfig = generationConfig {
-                        temperature = 0.7f
-                        maxOutputTokens = 250
-                        topP = 0.9f
-                    },
-                    systemInstruction = content {
-                        text(SYSTEM_PROMPT)
+            val candidateModels = GeminiModelManager.getCandidateModels(configuredKey, userGoals.geminiModel)
+            val contextJson = aggregator.buildContextJson()
+            Log.d(TAG, "Enviando contexto a Gemini (${contextJson.length} caracteres)")
+
+            val userPrompt = """
+                Datos de mis últimos 7 días:
+                $contextJson
+                
+                Analiza patrones entre sueño, pasos y entrenamiento.
+                Dame un insight accionable directo para hoy en máximo 3 frases concisas.
+            """.trimIndent()
+
+            for (modelName in candidateModels) {
+                try {
+                    val model = GenerativeModel(
+                        modelName = modelName,
+                        apiKey = configuredKey,
+                        generationConfig = generationConfig {
+                            temperature = 0.7f
+                            maxOutputTokens = 250
+                            topP = 0.9f
+                        },
+                        systemInstruction = content {
+                            text(SYSTEM_PROMPT)
+                        }
+                    )
+
+                    val response = model.generateContent(userPrompt)
+                    val text = response.text?.trim()
+                    if (!text.isNullOrBlank()) {
+                        return text
                     }
-                )
-
-                val contextJson = aggregator.buildContextJson()
-                Log.d(TAG, "Enviando contexto a Gemini (${contextJson.length} caracteres)")
-
-                val userPrompt = """
-                    Datos de mis últimos 7 días:
-                    $contextJson
-                    
-                    Analiza patrones entre sueño, pasos y entrenamiento.
-                    Dame un insight accionable directo para hoy en máximo 3 frases concisas.
-                """.trimIndent()
-
-                val response = model.generateContent(userPrompt)
-                val text = response.text?.trim()
-                if (!text.isNullOrBlank()) {
-                    return text
+                } catch (e: Exception) {
+                    Log.w(TAG, "Fallo generando insight con $modelName: ${e.message}")
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Gemini API falló, activando motor de análisis heurístico local", e)
             }
         }
 

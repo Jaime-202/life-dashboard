@@ -6,6 +6,7 @@ import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.generationConfig
 import com.lifedashboard.BuildConfig
+import com.lifedashboard.data.remote.gemini.GeminiModelManager
 import com.lifedashboard.data.repository.UserPreferencesRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -41,13 +42,14 @@ class FoodAiService @Inject constructor(
 
     /**
      * Prueba la validez de una clave API de Google Gemini realizando una consulta mínima de prueba.
+     * Prueba de forma inteligente los modelos más modernos (Gemini 3.8 Flash, etc.) y descubre modelos de la cuenta.
      */
-    suspend fun testApiKeyConnection(key: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun testApiKeyConnection(key: String, preferredModel: String? = null): Result<String> = withContext(Dispatchers.IO) {
         val trimmed = key.trim()
         if (trimmed.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("La clave API no puede estar vacía."))
         }
-        val candidateModels = listOf("gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash")
+        val candidateModels = GeminiModelManager.getCandidateModels(trimmed, preferredModel)
         var lastError: Exception? = null
 
         for (m in candidateModels) {
@@ -70,14 +72,8 @@ class FoodAiService @Inject constructor(
                 Log.w(TAG, "Prueba fallida con $m: ${e.message}")
             }
         }
-        val err = lastError?.localizedMessage ?: "No se pudo conectar con Google Gemini"
-        val errorExplanation = when {
-            err.contains("API_KEY_INVALID", ignoreCase = true) || err.contains("invalid api key", ignoreCase = true) ->
-                "Clave de API no válida. Cópiala directamente desde aistudio.google.com"
-            err.contains("quota", ignoreCase = true) || err.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ->
-                "Límite de cuota alcanzado en tu cuenta de Google AI Studio."
-            else -> err
-        }
+        val rawErr = lastError?.localizedMessage ?: lastError?.message ?: "No se pudo conectar con Google Gemini"
+        val errorExplanation = GeminiModelManager.extractCleanErrorMessage(rawErr)
         Result.failure(Exception(errorExplanation))
     }
 
@@ -113,11 +109,11 @@ class FoodAiService @Inject constructor(
             val scaledBitmap = scaleBitmapIfNeeded(bitmap, maxDimension = 768)
             val prompt = buildVisionPrompt(userDescription)
 
-            // Estrategia de modelos: Gemini 2.0 Flash con fallback a Gemini 1.5 Flash
-            val modelNames = listOf("gemini-2.0-flash", "gemini-1.5-flash")
+            // Estrategia de modelos: selección inteligente (Gemini 3.8 Flash por defecto con fallbacks automáticos)
+            val candidateModels = GeminiModelManager.getCandidateModels(apiKey, userGoals.geminiModel)
             var responseText = ""
 
-            for (modelName in modelNames) {
+            for (modelName in candidateModels) {
                 try {
                     val model = GenerativeModel(
                         modelName = modelName,
@@ -251,10 +247,10 @@ class FoodAiService @Inject constructor(
                 ]
             """.trimIndent()
 
-            val modelNames = listOf("gemini-2.0-flash", "gemini-1.5-flash")
+            val candidateModels = GeminiModelManager.getCandidateModels(apiKey, userGoals.geminiModel)
             var responseText = ""
 
-            for (modelName in modelNames) {
+            for (modelName in candidateModels) {
                 try {
                     val model = GenerativeModel(
                         modelName = modelName,
@@ -341,17 +337,29 @@ class FoodAiService @Inject constructor(
                     }
                 """.trimIndent()
 
-                val model = GenerativeModel(
-                    modelName = "gemini-2.0-flash",
-                    apiKey = apiKey,
-                    generationConfig = generationConfig {
-                        temperature = 0.1f
-                        maxOutputTokens = 300
-                        responseMimeType = "application/json"
+                val candidateModels = GeminiModelManager.getCandidateModels(apiKey, userGoals.geminiModel)
+                var txt = ""
+                for (modelName in candidateModels) {
+                    try {
+                        val model = GenerativeModel(
+                            modelName = modelName,
+                            apiKey = apiKey,
+                            generationConfig = generationConfig {
+                                temperature = 0.1f
+                                maxOutputTokens = 300
+                                responseMimeType = "application/json"
+                            }
+                        )
+                        val resp = model.generateContent(prompt)
+                        val candidateTxt = resp.text?.trim() ?: ""
+                        if (candidateTxt.isNotBlank()) {
+                            txt = candidateTxt
+                            break
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error estimando catálogo con $modelName: ${e.message}")
                     }
-                )
-                val resp = model.generateContent(prompt)
-                val txt = resp.text?.trim() ?: ""
+                }
                 if (txt.isNotBlank()) {
                     var cleaned = txt.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
                     val sIdx = cleaned.indexOf('{')
@@ -816,8 +824,8 @@ class FoodAiService @Inject constructor(
         val proteinDebt = (targetProtein - protein).coerceAtLeast(0f)
 
         if (apiKey.isNotBlank()) {
-            val modelNames = listOf("gemini-2.0-flash", "gemini-1.5-flash")
-            for (modelName in modelNames) {
+            val candidateModels = GeminiModelManager.getCandidateModels(apiKey, userGoals.geminiModel)
+            for (modelName in candidateModels) {
                 try {
                     val model = GenerativeModel(
                         modelName = modelName,

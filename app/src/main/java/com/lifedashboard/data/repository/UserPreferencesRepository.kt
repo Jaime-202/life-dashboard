@@ -35,6 +35,7 @@ data class UserGoals(
     val syncFrequency: String = "30_MIN",          // "15_MIN" | "30_MIN" | "60_MIN" | "MANUAL"
     val themeMode: String = "OSCURO",
     val geminiApiKey: String = "",
+    val geminiModel: String = "gemini-3.8-flash",
     val bedtimeReminderEnabled: Boolean = true,
     val wakeUpHour: Int = 8,
     val wakeUpMinute: Int = 30,
@@ -70,6 +71,7 @@ class UserPreferencesRepository @Inject constructor(
         val SYNC_FREQUENCY         = stringPreferencesKey("sync_frequency")
         val THEME_MODE             = stringPreferencesKey("theme_mode")
         val GEMINI_API_KEY         = stringPreferencesKey("gemini_api_key")
+        val GEMINI_MODEL           = stringPreferencesKey("gemini_model")
         val BEDTIME_REMINDER       = booleanPreferencesKey("bedtime_reminder_enabled")
         val WAKE_UP_HOUR           = intPreferencesKey("wake_up_hour")
         val WAKE_UP_MINUTE         = intPreferencesKey("wake_up_minute")
@@ -110,6 +112,7 @@ class UserPreferencesRepository @Inject constructor(
                 syncFrequency        = prefs[Keys.SYNC_FREQUENCY] ?: "30_MIN",
                 themeMode            = prefs[Keys.THEME_MODE] ?: "OSCURO",
                 geminiApiKey         = prefs[Keys.GEMINI_API_KEY] ?: "",
+                geminiModel          = prefs[Keys.GEMINI_MODEL]?.takeIf { it.isNotBlank() } ?: "gemini-3.8-flash",
                 bedtimeReminderEnabled = prefs[Keys.BEDTIME_REMINDER] ?: true,
                 wakeUpHour           = prefs[Keys.WAKE_UP_HOUR] ?: 8,
                 wakeUpMinute         = prefs[Keys.WAKE_UP_MINUTE] ?: 30,
@@ -195,6 +198,10 @@ class UserPreferencesRepository @Inject constructor(
 
     suspend fun updateGeminiApiKey(apiKey: String) {
         context.dataStore.edit { prefs -> prefs[Keys.GEMINI_API_KEY] = apiKey.trim() }
+    }
+
+    suspend fun updateGeminiModel(model: String) {
+        context.dataStore.edit { prefs -> prefs[Keys.GEMINI_MODEL] = model.trim() }
     }
 
     suspend fun updateBedtimeReminder(enabled: Boolean) {
