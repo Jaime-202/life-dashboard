@@ -87,4 +87,8 @@ class NutritionRepository @Inject constructor(
             goal = goal
         )
     }
+
+    suspend fun testApiKeyConnection(key: String): Result<String> {
+        return aiService.testApiKeyConnection(key)
+    }
 }

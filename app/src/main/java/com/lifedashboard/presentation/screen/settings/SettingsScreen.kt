@@ -107,6 +107,7 @@ class SettingsViewModel @Inject constructor(
     private val calendarRepository: CalendarRepository,
     private val userPreferences: UserPreferencesRepository,
     private val weightDao: WeightDao,
+    private val foodAiService: com.lifedashboard.data.remote.food.FoodAiService,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) : ViewModel() {
     private val _state = MutableStateFlow(SettingsState())
@@ -223,6 +224,10 @@ class SettingsViewModel @Inject constructor(
 
     fun updateGeminiApiKey(apiKey: String) {
         viewModelScope.launch { userPreferences.updateGeminiApiKey(apiKey.trim()) }
+    }
+
+    suspend fun testApiKey(apiKey: String): Result<String> {
+        return foodAiService.testApiKeyConnection(apiKey)
     }
 
     fun updateStepsTarget(target: Int) {
@@ -901,6 +906,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         EditApiKeyModal(
             currentKey = state.geminiApiKey,
             onDismiss  = { showApiKeyModal = false },
+            onTest     = { key -> viewModel.testApiKey(key) },
             onSave     = { newKey ->
                 viewModel.updateGeminiApiKey(newKey)
                 showApiKeyModal = false
@@ -2068,8 +2074,18 @@ private fun EditWorkoutGoalModal(currentDays: Int, currentMinutes: Int, onDismis
 }
 
 @Composable
-private fun EditApiKeyModal(currentKey: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+private fun EditApiKeyModal(
+    currentKey: String,
+    onDismiss: () -> Unit,
+    onTest: (suspend (String) -> Result<String>)? = null,
+    onSave: (String) -> Unit
+) {
     var keyInput by remember { mutableStateOf(currentKey) }
+    var isTesting by remember { mutableStateOf(false) }
+    var testResultText by remember { mutableStateOf<String?>(null) }
+    var testIsSuccess by remember { mutableStateOf<Boolean?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2085,29 +2101,140 @@ private fun EditApiKeyModal(currentKey: String, onDismiss: () -> Unit, onSave: (
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text  = "Consigue una clave gratis en Google AI Studio (aistudio.google.com). Si la dejas en blanco, la app usará el motor de análisis local sin conexión.",
+                    text  = "Consigue una clave gratis en Google AI Studio (aistudio.google.com). Con tu clave, la IA de Gemini 2.0 Flash analizará tus fotos de platos y descripciones con máxima precisión.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Gray300
                 )
+
+                OutlinedButton(
+                    onClick = {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/app/apikey"))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Abre aistudio.google.com en tu navegador", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan400),
+                    border = BorderStroke(1.dp, Cyan400.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Obtener Clave Gratis en Google AI Studio", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+
                 OutlinedTextField(
                     value         = keyInput,
-                    onValueChange = { keyInput = it },
-                    label         = { Text("Clave API") },
+                    onValueChange = {
+                        keyInput = it
+                        testResultText = null
+                        testIsSuccess = null
+                    },
+                    label         = { Text("Clave API de Gemini", color = Gray400) },
+                    placeholder   = { Text("AIzaSy...", color = Gray500) },
                     singleLine    = true,
                     colors        = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Violet400, unfocusedBorderColor = Indigo600,
                         focusedTextColor = White, unfocusedTextColor = White
                     ),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                if (onTest != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Button(
+                            onClick = {
+                                if (keyInput.isBlank()) {
+                                    Toast.makeText(context, "Escribe o pega una clave primero", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                isTesting = true
+                                testResultText = null
+                                coroutineScope.launch {
+                                    val res = onTest(keyInput.trim())
+                                    isTesting = false
+                                    if (res.isSuccess) {
+                                        testIsSuccess = true
+                                        testResultText = res.getOrNull() ?: "Conexión exitosa"
+                                    } else {
+                                        testIsSuccess = false
+                                        testResultText = res.exceptionOrNull()?.message ?: "Error al conectar"
+                                    }
+                                }
+                            },
+                            enabled = !isTesting && keyInput.isNotBlank(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Indigo700, contentColor = White),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            if (isTesting) {
+                                CircularProgressIndicator(color = Violet300, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Comprobando...", style = MaterialTheme.typography.labelSmall)
+                            } else {
+                                Icon(Icons.Default.CheckCircleOutline, contentDescription = null, modifier = Modifier.size(14.dp), tint = Violet300)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Probar Clave", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+
+                        if (keyInput.isNotBlank()) {
+                            TextButton(
+                                onClick = {
+                                    keyInput = ""
+                                    testResultText = null
+                                    testIsSuccess = null
+                                },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text("Borrar", style = MaterialTheme.typography.labelSmall, color = Rose400)
+                            }
+                        }
+                    }
+                }
+
+                testResultText?.let { msg ->
+                    val isSuccess = testIsSuccess == true
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isSuccess) Emerald400.copy(alpha = 0.2f) else Rose400.copy(alpha = 0.2f))
+                            .border(1.dp, if (isSuccess) Emerald400.copy(alpha = 0.5f) else Rose400.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                            .padding(8.dp)
+                    ) {
+                        Text(
+                            text = (if (isSuccess) "✅ " else "❌ ") + msg,
+                            color = if (isSuccess) Emerald400 else Rose400,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(keyInput) }, colors = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)) {
+            Button(
+                onClick = { onSave(keyInput) },
+                colors = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900),
+                shape = RoundedCornerShape(12.dp)
+            ) {
                 Text("Guardar", fontWeight = FontWeight.Bold)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = Gray400) } }
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = Gray400)
+            }
+        }
     )
 }
 

@@ -87,7 +87,14 @@ data class NutritionUiState(
     val scannedFoodItem: FoodCatalogItem? = null,
     val scannedBarcode: String? = null,
     val isScanningBarcode: Boolean = false,
-    val scannedUnknownBarcode: String? = null
+    val scannedUnknownBarcode: String? = null,
+
+    // Estado de Clave Gemini y Prueba de Conexión
+    val hasGeminiApiKey: Boolean = false,
+    val geminiApiKey: String = "",
+    val isTestingApiKey: Boolean = false,
+    val apiKeyTestMessage: String? = null,
+    val apiKeyTestSuccess: Boolean? = null
 ) {
     val totalCalories: Float get() = meals.sumOf { it.calories.toDouble() }.toFloat()
     val totalProtein: Float get() = meals.sumOf { it.protein.toDouble() }.toFloat()
@@ -130,7 +137,9 @@ class NutritionViewModel @Inject constructor(
                         targetCarbs    = goals.carbsTargetGrams,
                         targetFat      = goals.fatTargetGrams,
                         userWeightKg   = goals.weightKg,
-                        userHeightCm   = goals.heightCm
+                        userHeightCm   = goals.heightCm,
+                        hasGeminiApiKey = goals.geminiApiKey.isNotBlank(),
+                        geminiApiKey   = goals.geminiApiKey
                     )
                 }
             }
@@ -636,6 +645,36 @@ class NutritionViewModel @Inject constructor(
                 goal = state.userGoal
             )
             _uiState.update { it.copy(nutritionAdvice = advice, isAdviceLoading = false) }
+        }
+    }
+
+    // ─── Gestión de Clave Gemini y Prueba de Conexión ─────────────────────────
+
+    fun updateGeminiApiKey(apiKey: String) {
+        viewModelScope.launch {
+            userPreferences.updateGeminiApiKey(apiKey.trim())
+            delay(200)
+            requestNutritionAdvice()
+        }
+    }
+
+    suspend fun testApiKey(key: String): Result<String> {
+        return repository.testApiKeyConnection(key)
+    }
+
+    fun testApiKeyConnection(key: String, onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isTestingApiKey = true, apiKeyTestMessage = null, apiKeyTestSuccess = null) }
+            val result = repository.testApiKeyConnection(key)
+            if (result.isSuccess) {
+                val msg = result.getOrNull() ?: "Conexión exitosa"
+                _uiState.update { it.copy(isTestingApiKey = false, apiKeyTestMessage = msg, apiKeyTestSuccess = true) }
+                onComplete(true, msg)
+            } else {
+                val err = result.exceptionOrNull()?.message ?: "Error al conectar con Gemini"
+                _uiState.update { it.copy(isTestingApiKey = false, apiKeyTestMessage = err, apiKeyTestSuccess = false) }
+                onComplete(false, err)
+            }
         }
     }
 }

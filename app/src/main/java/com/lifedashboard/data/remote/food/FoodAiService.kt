@@ -40,6 +40,48 @@ class FoodAiService @Inject constructor(
 ) {
 
     /**
+     * Prueba la validez de una clave API de Google Gemini realizando una consulta mínima de prueba.
+     */
+    suspend fun testApiKeyConnection(key: String): Result<String> = withContext(Dispatchers.IO) {
+        val trimmed = key.trim()
+        if (trimmed.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("La clave API no puede estar vacía."))
+        }
+        val candidateModels = listOf("gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash")
+        var lastError: Exception? = null
+
+        for (m in candidateModels) {
+            try {
+                val model = GenerativeModel(
+                    modelName = m,
+                    apiKey = trimmed,
+                    generationConfig = generationConfig {
+                        maxOutputTokens = 15
+                        temperature = 0.1f
+                    }
+                )
+                val resp = model.generateContent("Di OK")
+                val txt = resp.text?.trim() ?: ""
+                if (txt.isNotBlank()) {
+                    return@withContext Result.success("¡Clave válida! Conectado con éxito a $m")
+                }
+            } catch (e: Exception) {
+                lastError = e
+                Log.w(TAG, "Prueba fallida con $m: ${e.message}")
+            }
+        }
+        val err = lastError?.localizedMessage ?: "No se pudo conectar con Google Gemini"
+        val errorExplanation = when {
+            err.contains("API_KEY_INVALID", ignoreCase = true) || err.contains("invalid api key", ignoreCase = true) ->
+                "Clave de API no válida. Cópiala directamente desde aistudio.google.com"
+            err.contains("quota", ignoreCase = true) || err.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ->
+                "Límite de cuota alcanzado en tu cuenta de Google AI Studio."
+            else -> err
+        }
+        Result.failure(Exception(errorExplanation))
+    }
+
+    /**
      * Analiza una fotografía de comida junto a una descripción opcional del usuario
      * para identificar platos, estimar gramos y desglosar macronutrientes.
      */

@@ -1,5 +1,6 @@
 package com.lifedashboard.presentation.screen.nutrition
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -28,7 +29,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -49,6 +52,7 @@ import com.lifedashboard.data.remote.food.FoodCatalogItem
 import com.lifedashboard.data.remote.food.FoodSourceCategory
 import com.lifedashboard.data.remote.food.RealFoodImageResolver
 import com.lifedashboard.presentation.theme.*
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -67,6 +71,7 @@ fun NutritionScreen(
     var editingMealItem by remember { mutableStateOf<MealEntryEntity?>(null) }
     var showQuickAddDialog by remember { mutableStateOf(false) }
     var showCustomTargetsDialog by remember { mutableStateOf(false) }
+    var showApiKeyModal by remember { mutableStateOf(false) }
 
     // Launchers para tomar foto con la cámara y seleccionar de la galería
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -120,6 +125,8 @@ fun NutritionScreen(
             detectedItems = state.aiResultItems,
             errorMessage = state.aiErrorMessage,
             explanation = state.aiExplanation,
+            hasGeminiApiKey = state.hasGeminiApiKey,
+            onOpenApiKeyDialog = { showApiKeyModal = true },
             onDescriptionChange = { viewModel.onStagedDescriptionChange(it) },
             onAnalyze = { viewModel.analyzeStagedPhoto() },
             onItemChange = { idx, item -> viewModel.updateAiResultItem(idx, item) },
@@ -138,6 +145,18 @@ fun NutritionScreen(
             detectedItems = state.textAiResultItems,
             errorMessage = state.textAiErrorMessage,
             explanation = state.textAiExplanation,
+            hasGeminiApiKey = state.hasGeminiApiKey,
+            onOpenApiKeyDialog = { showApiKeyModal = true },
+            onTakePhoto = {
+                viewModel.closeTextAiDialog()
+                selectedMealTypeForAdd = state.textAiMealType
+                cameraLauncher.launch(null)
+            },
+            onPickGallery = {
+                viewModel.closeTextAiDialog()
+                selectedMealTypeForAdd = state.textAiMealType
+                galleryLauncher.launch("image/*")
+            },
             onInputChange = { viewModel.onTextAiInputChange(it) },
             onAnalyze = { viewModel.analyzeTextAiMeal() },
             onItemChange = { idx, item -> viewModel.updateTextAiResultItem(idx, item) },
@@ -259,6 +278,20 @@ fun NutritionScreen(
         )
     }
 
+    // Diálogo para configurar clave de Gemini API directamente desde Comida
+    if (showApiKeyModal) {
+        NutritionApiKeyDialog(
+            currentKey = state.geminiApiKey,
+            onDismiss  = { showApiKeyModal = false },
+            onTest     = { key -> viewModel.testApiKey(key) },
+            onSave     = { newKey ->
+                viewModel.updateGeminiApiKey(newKey)
+                showApiKeyModal = false
+                Toast.makeText(context, "Clave de Gemini guardada correctamente", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -269,13 +302,15 @@ fun NutritionScreen(
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // ─── Header con selector de fecha ─────────────────────────────
+            // ─── Header con selector de fecha y estado de IA ─────────────
             item {
                 NutritionHeader(
                     selectedDate = state.selectedDate,
+                    hasGeminiApiKey = state.hasGeminiApiKey,
                     onPreviousDay = { viewModel.selectDate(state.selectedDate.minusDays(1)) },
                     onNextDay = { viewModel.selectDate(state.selectedDate.plusDays(1)) },
-                    onTodayClick = { viewModel.selectDate(LocalDate.now()) }
+                    onTodayClick = { viewModel.selectDate(LocalDate.now()) },
+                    onApiKeyClick = { showApiKeyModal = true }
                 )
             }
 
@@ -309,16 +344,9 @@ fun NutritionScreen(
                     onScanBarcodeClick = {
                         launchBarcodeScanner(section.key)
                     },
-                    onTextAiClick = {
+                    onAiClick = {
+                        selectedMealTypeForAdd = section.key
                         viewModel.openTextAiDialog(section.key)
-                    },
-                    onCameraClick = {
-                        selectedMealTypeForAdd = section.key
-                        cameraLauncher.launch(null)
-                    },
-                    onGalleryClick = {
-                        selectedMealTypeForAdd = section.key
-                        galleryLauncher.launch("image/*")
                     },
                     onQuickAddClick = {
                         selectedMealTypeForAdd = section.key
@@ -340,14 +368,16 @@ fun NutritionScreen(
     }
 }
 
-// ─── Header con selector de fecha ─────────────────────────────────────────────
+// ─── Header con selector de fecha y estado de IA ─────────────────────────────
 
 @Composable
 private fun NutritionHeader(
     selectedDate: LocalDate,
+    hasGeminiApiKey: Boolean,
     onPreviousDay: () -> Unit,
     onNextDay: () -> Unit,
-    onTodayClick: () -> Unit
+    onTodayClick: () -> Unit,
+    onApiKeyClick: () -> Unit
 ) {
     val today = LocalDate.now()
     val isToday = selectedDate == today
@@ -363,84 +393,136 @@ private fun NutritionHeader(
         DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es"))
     ).replaceFirstChar { it.uppercase() }
 
-    Row(
-        verticalAlignment     = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-        modifier              = Modifier
+    Column(
+        modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 36.dp)
+            .padding(top = 36.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text       = "Comida & Nutrición",
-                style      = MaterialTheme.typography.headlineSmall,
-                color      = White,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text  = fullDateStr,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Gray400
-            )
-        }
-
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier              = Modifier.fillMaxWidth()
         ) {
-            if (!isToday) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Violet400.copy(alpha = 0.2f))
-                        .clickable(onClick = onTodayClick)
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
-                ) {
-                    Text("↻ Hoy", style = MaterialTheme.typography.labelSmall, color = Violet300, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.width(2.dp))
-            }
-
-            IconButton(
-                onClick  = onPreviousDay,
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(Indigo800)
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Día anterior", tint = White, modifier = Modifier.size(16.dp))
-            }
-
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Indigo800)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = dayPillText,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isToday) Cyan400 else White,
+                    text       = "Comida & Nutrición",
+                    style      = MaterialTheme.typography.headlineSmall,
+                    color      = White,
                     fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text  = fullDateStr,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Gray400
                 )
             }
 
-            IconButton(
-                onClick  = onNextDay,
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(Indigo800)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Día siguiente", tint = White, modifier = Modifier.size(16.dp))
+                if (!isToday) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Violet400.copy(alpha = 0.2f))
+                            .clickable(onClick = onTodayClick)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text("↻ Hoy", style = MaterialTheme.typography.labelSmall, color = Violet300, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(2.dp))
+                }
+
+                IconButton(
+                    onClick  = onPreviousDay,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(Indigo800)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Día anterior", tint = White, modifier = Modifier.size(16.dp))
+                }
+
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Indigo800)
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = dayPillText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isToday) Cyan400 else White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                IconButton(
+                    onClick  = onNextDay,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(Indigo800)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Día siguiente", tint = White, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+
+        // Píldora interactiva de Estado de la Inteligencia Artificial (Google Gemini)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(if (hasGeminiApiKey) Violet400.copy(alpha = 0.12f) else Indigo800.copy(alpha = 0.7f))
+                .border(
+                    1.dp,
+                    if (hasGeminiApiKey) Violet400.copy(alpha = 0.35f) else Amber400.copy(alpha = 0.35f),
+                    RoundedCornerShape(12.dp)
+                )
+                .clickable(onClick = onApiKeyClick)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Icon(
+                        imageVector = if (hasGeminiApiKey) Icons.Default.AutoAwesome else Icons.Default.Key,
+                        contentDescription = null,
+                        tint = if (hasGeminiApiKey) Violet300 else Amber400,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = if (hasGeminiApiKey) "Gemini 2.0 Flash · Activo" else "Modo Local · Gemini IA Gratis",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (hasGeminiApiKey) Violet200 else Amber400,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = if (hasGeminiApiKey) "Configurar" else "Activar",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (hasGeminiApiKey) Violet300 else Amber400,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp
+                )
             }
         }
     }
 }
 
-// ─── Hero Card de Macros y Balance Calórico ───────────────────────────────────
+// ─── Hero Card de Macros y Balance Calórico Rediseñado ────────────────────────
 
 @Composable
 private fun NutritionHeroCard(
@@ -455,260 +537,395 @@ private fun NutritionHeroCard(
         label = "calories_progress"
     )
 
+    // Cálculo del reparto calórico proporcional de macros
+    val proteinKcal = state.totalProtein * 4f
+    val carbsKcal = state.totalCarbs * 4f
+    val fatKcal = state.totalFat * 9f
+    val totalMacrosKcal = (proteinKcal + carbsKcal + fatKcal).coerceAtLeast(1f)
+
+    val proteinPct = ((proteinKcal / totalMacrosKcal) * 100).toInt()
+    val carbsPct = ((carbsKcal / totalMacrosKcal) * 100).toInt()
+    val fatPct = (100 - proteinPct - carbsPct).coerceAtLeast(0)
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(Indigo800)
-            .border(1.dp, Indigo700, RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(26.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Indigo800,
+                        Color(0xFF221650),
+                        Indigo900
+                    )
+                )
+            )
+            .border(1.dp, Violet400.copy(alpha = 0.35f), RoundedCornerShape(26.dp))
             .padding(18.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            // Cabecera con título y botones de objetivos / calculadora
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            // ─── Header: Título & Botones de Metas y Calculadora ───
             Row(
                 verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier              = Modifier.fillMaxWidth()
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Amber400, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text  = "Balance Calórico",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = White
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Amber400.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = Amber400, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text  = "Balance Calórico",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = White
+                        )
+                        Text(
+                            text = "Meta diaria: ${state.targetCalories.toInt()} kcal",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Gray400
+                        )
+                    }
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    // Botón para escribir objetivos personalizados manualmente
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
                             .background(Violet400.copy(alpha = 0.2f))
-                            .border(1.dp, Violet400.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                            .border(1.dp, Violet400.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
                             .clickable(onClick = onOpenCustomTargets)
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .padding(horizontal = 9.dp, vertical = 6.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Edit, contentDescription = null, tint = Violet300, modifier = Modifier.size(13.dp))
+                            Icon(Icons.Default.Tune, contentDescription = null, tint = Violet300, modifier = Modifier.size(13.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text(
-                                text = "Mis Metas",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Violet300,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Text("Mis Metas", style = MaterialTheme.typography.labelSmall, color = Violet300, fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    // Botón para calcular científicamente con Mifflin-St Jeor
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
                             .background(Indigo700)
                             .clickable(onClick = onOpenCalculator)
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .padding(horizontal = 9.dp, vertical = 6.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Calculate, contentDescription = null, tint = Gray300, modifier = Modifier.size(13.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text(
-                                text = "Calcular",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Gray300,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Text("Calcular", style = MaterialTheme.typography.labelSmall, color = Gray300, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
 
-            // 3 Columnas métricas: Consumidas, Quemadas y Restantes / Superado
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
+            // ─── Calorías Restantes (Gran Marcador Central) ───
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Indigo900.copy(alpha = 0.65f))
+                    .padding(vertical = 14.dp, horizontal = 16.dp)
             ) {
-                CalorieMetricBox(
-                    label = "Consumidas",
-                    value = "${state.totalCalories.toInt()} kcal",
-                    color = White,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(8.dp))
-                CalorieMetricBox(
-                    label = "Quemadas",
-                    value = "${state.activeBurnedCalories.toInt()} kcal",
-                    color = Cyan400,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(8.dp))
-                CalorieMetricBox(
-                    label = if (remaining >= 0) "Restantes" else "Superado",
-                    value = "${if (remaining >= 0) remaining else -remaining} kcal",
-                    color = if (remaining >= 0) Emerald400 else Rose400,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            // Barra de progreso hacia la meta diaria
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Objetivo de ingesta:",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Gray400
+                        text = if (remaining >= 0) "$remaining" else "+${-remaining}",
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (remaining >= 0) Emerald400 else Rose400
                     )
                     Text(
-                        text = "${state.totalCalories.toInt()} / ${state.targetCalories.toInt()} kcal (${(state.caloriesProgress * 100).toInt()}%)",
+                        text = if (remaining >= 0) "kcal restantes para tu meta de hoy" else "kcal superadas sobre el objetivo",
                         style = MaterialTheme.typography.labelSmall,
-                        color = White,
-                        fontWeight = FontWeight.Bold
+                        color = if (remaining >= 0) Emerald400.copy(alpha = 0.9f) else Rose400,
+                        fontWeight = FontWeight.Medium
                     )
-                }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(10.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(Indigo700)
-                ) {
+                    Spacer(Modifier.height(12.dp))
+
+                    // Barra animada de progreso de calorías
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(animatedCaloriesProgress)
-                            .fillMaxHeight()
+                            .fillMaxWidth()
+                            .height(10.dp)
                             .clip(RoundedCornerShape(5.dp))
-                            .background(Brush.horizontalGradient(listOf(Violet400, Cyan400)))
-                    )
+                            .background(Indigo700)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(animatedCaloriesProgress)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(Brush.horizontalGradient(listOf(Violet400, Cyan400)))
+                        )
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // 3 Métricas en píldoras: Consumidas, Objetivo, Quemadas
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        PillMetric(label = "Consumidas", value = "${state.totalCalories.toInt()} kcal", color = White)
+                        PillMetric(label = "Objetivo", value = "${state.targetCalories.toInt()} kcal", color = Gray300)
+                        PillMetric(label = "Quemadas", value = "${state.activeBurnedCalories.toInt()} kcal", color = Cyan400)
+                    }
                 }
             }
 
-            HorizontalDivider(color = Indigo700, thickness = 1.dp)
-
-            // Desglose de 3 Macronutrientes Principales con gramos restantes
+            // ─── Desglose Visual de Macronutrientes (Anillos Circulares Dedicados) ───
             Row(
+                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                MacroColumnItem(
-                    label       = "Proteínas",
-                    currentVal  = state.totalProtein,
-                    targetVal   = state.targetProtein,
-                    progress    = state.proteinProgress,
-                    color       = Violet400,
-                    modifier    = Modifier.weight(1f)
+                Text(
+                    text = "Macronutrientes",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Gray300,
+                    fontWeight = FontWeight.Bold
                 )
-                MacroColumnItem(
-                    label       = "Carbohidratos",
-                    currentVal  = state.totalCarbs,
-                    targetVal   = state.targetCarbs,
-                    progress    = state.carbsProgress,
-                    color       = Cyan400,
-                    modifier    = Modifier.weight(1f)
+                if (state.totalCalories > 0) {
+                    Text(
+                        text = "Reparto: P $proteinPct% · C $carbsPct% · G $fatPct%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gray400,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                MacroRingCard(
+                    title = "Proteína",
+                    emoji = "🥩",
+                    currentVal = state.totalProtein,
+                    targetVal = state.targetProtein,
+                    progress = state.proteinProgress,
+                    color = Violet400,
+                    trackColor = RingTrack,
+                    modifier = Modifier.weight(1f)
                 )
-                MacroColumnItem(
-                    label       = "Grasas",
-                    currentVal  = state.totalFat,
-                    targetVal   = state.targetFat,
-                    progress    = state.fatProgress,
-                    color       = Amber400,
-                    modifier    = Modifier.weight(1f)
+                MacroRingCard(
+                    title = "Carbos",
+                    emoji = "🍞",
+                    currentVal = state.totalCarbs,
+                    targetVal = state.targetCarbs,
+                    progress = state.carbsProgress,
+                    color = Cyan400,
+                    trackColor = RingTrack,
+                    modifier = Modifier.weight(1f)
                 )
+                MacroRingCard(
+                    title = "Grasas",
+                    emoji = "🥑",
+                    currentVal = state.totalFat,
+                    targetVal = state.targetFat,
+                    progress = state.fatProgress,
+                    color = Amber400,
+                    trackColor = RingTrack,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // ─── Barra Proporcional de Reparto Calórico de Macros ───
+            if (state.totalCalories > 0) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(7.dp)
+                            .clip(RoundedCornerShape(3.5.dp))
+                    ) {
+                        if (proteinPct > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(proteinPct.toFloat())
+                                    .fillMaxHeight()
+                                    .background(Violet400)
+                            )
+                        }
+                        if (carbsPct > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(carbsPct.toFloat())
+                                    .fillMaxHeight()
+                                    .background(Cyan400)
+                            )
+                        }
+                        if (fatPct > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(fatPct.toFloat())
+                                    .fillMaxHeight()
+                                    .background(Amber400)
+                            )
+                        }
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("🥩 $proteinPct% Proteína", style = MaterialTheme.typography.labelSmall, color = Violet300, fontSize = 10.sp)
+                        Text("🍞 $carbsPct% Carbos", style = MaterialTheme.typography.labelSmall, color = Cyan400, fontSize = 10.sp)
+                        Text("🥑 $fatPct% Grasas", style = MaterialTheme.typography.labelSmall, color = Amber400, fontSize = 10.sp)
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun CalorieMetricBox(
-    label: String,
-    value: String,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(Indigo900.copy(alpha = 0.7f))
-            .padding(vertical = 10.dp, horizontal = 8.dp)
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            Text(text = label, style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 10.sp)
-            Spacer(Modifier.height(2.dp))
-            Text(text = value, style = MaterialTheme.typography.bodyMedium, color = color, fontWeight = FontWeight.Bold)
-        }
+private fun PillMetric(label: String, value: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 10.sp)
+        Spacer(Modifier.height(2.dp))
+        Text(text = value, style = MaterialTheme.typography.bodySmall, color = color, fontWeight = FontWeight.Bold, fontSize = 12.sp)
     }
 }
 
 @Composable
-private fun MacroColumnItem(
-    label: String,
+private fun MacroRingCard(
+    title: String,
+    emoji: String,
     currentVal: Float,
     targetVal: Float,
     progress: Float,
     color: Color,
+    trackColor: Color,
     modifier: Modifier = Modifier
 ) {
     val animatedProgress by animateFloatAsState(
         targetValue = progress,
         animationSpec = tween(900, easing = FastOutSlowInEasing),
-        label = "macro_progress"
+        label = "ring_progress"
     )
     val remainingGrams = (targetVal - currentVal).coerceAtLeast(0f).toInt()
+    val isComplete = currentVal >= targetVal && targetVal > 0f
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = modifier.padding(horizontal = 4.dp)
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(Indigo900.copy(alpha = 0.75f))
+            .border(1.dp, color.copy(alpha = 0.28f), RoundedCornerShape(18.dp))
+            .padding(vertical = 12.dp, horizontal = 4.dp)
     ) {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = Gray400)
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                text       = "${currentVal.toInt()}",
-                style      = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold,
-                color      = White
-            )
-            Text(
-                text     = "/${targetVal.toInt()}g",
-                style    = MaterialTheme.typography.labelSmall,
-                color    = Gray500,
-                fontSize = 10.sp
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.85f)
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(Indigo700)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(animatedProgress)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(color)
-            )
-        }
+            // Título con emoji
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(text = emoji, fontSize = 11.sp)
+                Spacer(Modifier.width(3.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = color,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
 
-        Text(
-            text = "${remainingGrams}g rest.",
-            style = MaterialTheme.typography.labelSmall,
-            color = Gray400,
-            fontSize = 9.sp
-        )
+            // Anillo Circular Canvas
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(54.dp)
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val strokeW = 5.dp.toPx()
+                    // Pista de fondo
+                    drawArc(
+                        color = trackColor,
+                        startAngle = -90f,
+                        sweepAngle = 360f,
+                        useCenter = false,
+                        style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                    )
+                    // Arco de progreso
+                    drawArc(
+                        color = color,
+                        startAngle = -90f,
+                        sweepAngle = animatedProgress * 360f,
+                        useCenter = false,
+                        style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                    )
+                }
+
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp
+                )
+            }
+
+            // Gramos consumidos y meta
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = "${currentVal.toInt()}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = White,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        text = "/${targetVal.toInt()}g",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Gray400,
+                        fontSize = 10.sp
+                    )
+                }
+
+                Spacer(Modifier.height(3.dp))
+
+                // Píldora de estado
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isComplete) Emerald400.copy(alpha = 0.2f) else color.copy(alpha = 0.15f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = if (isComplete) "✓ Meta" else "${remainingGrams}g rest.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isComplete) Emerald400 else color,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
     }
 }
 
-// ─── Tarjeta de Sección de Comida ─────────────────────────────────────────────
+// ─── Tarjeta de Sección de Comida Rediseñada ──────────────────────────────────
 
 @Composable
 private fun MealSectionCard(
@@ -716,9 +933,7 @@ private fun MealSectionCard(
     meals: List<MealEntryEntity>,
     onAddClick: () -> Unit,
     onScanBarcodeClick: () -> Unit,
-    onTextAiClick: () -> Unit,
-    onCameraClick: () -> Unit,
-    onGalleryClick: () -> Unit,
+    onAiClick: () -> Unit,
     onQuickAddClick: () -> Unit,
     onEditMeal: (MealEntryEntity) -> Unit,
     onDeleteMeal: (Long) -> Unit
@@ -731,50 +946,86 @@ private fun MealSectionCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(22.dp))
             .background(Indigo800)
-            .border(1.dp, Indigo700, RoundedCornerShape(20.dp))
+            .border(1.dp, Indigo700, RoundedCornerShape(22.dp))
             .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // Cabecera de la sección
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // Cabecera elegante de la sección
             Row(
                 verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier              = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = section.iconEmoji, fontSize = 20.sp)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text       = section.title,
-                        style      = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color      = White
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Indigo700),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = section.iconEmoji, fontSize = 20.sp)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text       = section.title,
+                            style      = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color      = White,
+                            maxLines   = 1
+                        )
+                        val mealRatio = when (section) {
+                            MealSectionType.DESAYUNO -> "~25% ingesta diaria"
+                            MealSectionType.COMIDA -> "~35% ingesta diaria"
+                            MealSectionType.MERIENDA -> "~15% ingesta diaria"
+                            MealSectionType.CENA -> "~25% ingesta diaria"
+                            MealSectionType.SNACK -> "Snacks y complementos"
+                        }
+                        Text(
+                            text = mealRatio,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Gray400,
+                            fontSize = 10.sp,
+                            maxLines = 1
+                        )
+                    }
                 }
 
                 if (sectionKcal > 0) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "P:${sectionP}g C:${sectionC}g G:${sectionG}g",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Gray400,
-                            fontSize = 10.sp
-                        )
+                    Spacer(Modifier.width(8.dp))
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(Indigo700)
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Text(
                                 text  = "$sectionKcal kcal",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Amber400,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
+                        Text(
+                            text = "P:${sectionP}g · C:${sectionC}g · G:${sectionG}g",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Gray400,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
             }
@@ -791,117 +1042,82 @@ private fun MealSectionCard(
                     }
                 }
             } else {
-                Text(
-                    text = "No has registrado alimentos en ${section.title.lowercase()} todavía.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Gray500,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Indigo900.copy(alpha = 0.4f))
+                        .padding(vertical = 12.dp, horizontal = 12.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text(
+                        text = "Sin alimentos registrados en ${section.title.lowercase()} aún.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Gray400
+                    )
+                }
             }
 
-            // Barra de acciones: Añadir Alimento principal + Escaneo QR + Atajos de IA y Rápido
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            // ─── Barra de Acciones Rediseñada y Unificada en 1 Sola Línea ───
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
+                // 1. Añadir Alimento desde Buscador / Supermercados
+                Button(
+                    onClick = onAddClick,
+                    colors = ButtonDefaults.buttonColors(containerColor = Indigo700),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 9.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    // Botón Buscar Alimento
-                    Button(
-                        onClick = onAddClick,
-                        colors  = ButtonDefaults.buttonColors(containerColor = Indigo700),
-                        shape   = RoundedCornerShape(14.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Search, contentDescription = null, tint = Violet300, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = "Buscar",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = White,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                    }
-
-                    // Botón Escanear QR / Código de Barras (DIRECTO EN CADA SECCIÓN)
-                    Button(
-                        onClick = onScanBarcodeClick,
-                        colors  = ButtonDefaults.buttonColors(containerColor = Violet400.copy(alpha = 0.22f)),
-                        border  = BorderStroke(1.dp, Violet400.copy(alpha = 0.55f)),
-                        shape   = RoundedCornerShape(14.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.CropFree, contentDescription = null, tint = Cyan400, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = "Escanear QR",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Cyan400,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                    }
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Violet300, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Añadir",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = White,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
                 }
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
+                // 2. Escanear Código de Barras / QR
+                IconButton(
+                    onClick = onScanBarcodeClick,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Cyan400.copy(alpha = 0.15f))
+                        .border(1.dp, Cyan400.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
                 ) {
-                    // Botón Texto IA
-                    OutlinedButton(
-                        onClick = onTextAiClick,
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = Violet400.copy(alpha = 0.12f),
-                            contentColor = Violet300
-                        ),
-                        border = BorderStroke(1.dp, Violet400.copy(alpha = 0.35f)),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Texto IA", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                    }
+                    Icon(Icons.Default.CropFree, contentDescription = "Escanear QR o código de barras", tint = Cyan400, modifier = Modifier.size(18.dp))
+                }
 
-                    // Botón Foto IA
-                    OutlinedButton(
-                        onClick = onCameraClick,
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = Indigo700.copy(alpha = 0.5f),
-                            contentColor = Gray200
-                        ),
-                        border = BorderStroke(1.dp, Indigo600),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Foto IA", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                    }
+                // 3. Registrar con IA (Cámara o Texto)
+                IconButton(
+                    onClick = onAiClick,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Violet400.copy(alpha = 0.15f))
+                        .border(1.dp, Violet400.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = "Registrar comida con IA", tint = Violet300, modifier = Modifier.size(18.dp))
+                }
 
-                    // Botón Añadido Rápido
-                    OutlinedButton(
-                        onClick = onQuickAddClick,
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = Indigo700.copy(alpha = 0.5f),
-                            contentColor = Amber400
-                        ),
-                        border = BorderStroke(1.dp, Amber400.copy(alpha = 0.35f)),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 7.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.FlashOn, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Rápido", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                    }
+                // 4. Añadido Rápido de Calorías
+                IconButton(
+                    onClick = onQuickAddClick,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Amber400.copy(alpha = 0.15f))
+                        .border(1.dp, Amber400.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                ) {
+                    Icon(Icons.Default.FlashOn, contentDescription = "Añadido rápido de calorías", tint = Amber400, modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -925,11 +1141,11 @@ private fun MealItemRow(
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         // Thumbnail visual real con fallback limpio
-        FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = meal.imageUrl, size = 44.dp)
+        FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = meal.imageUrl, size = 42.dp)
         Spacer(Modifier.width(10.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            // Línea 1: Nombre del alimento con 100% de anchura disponible
+            // Línea 1: Nombre del alimento
             Text(
                 text       = meal.name,
                 style      = MaterialTheme.typography.bodyMedium,
@@ -937,16 +1153,14 @@ private fun MealItemRow(
                 fontWeight = FontWeight.SemiBold,
                 maxLines   = 1,
                 softWrap   = false,
-                overflow   = TextOverflow.Ellipsis,
-                modifier   = Modifier.fillMaxWidth()
+                overflow   = TextOverflow.Ellipsis
             )
             Spacer(Modifier.height(3.dp))
 
-            // Línea 2: Marca (si aplica), gramos, calorías y macronutrientes sin solapamientos
+            // Línea 2: Marca (badge sutil), gramos y macronutrientes
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.fillMaxWidth()
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 if (meal.brand.isNotBlank() && meal.brand != "Básico" && meal.brand != "Manual") {
                     Box(
@@ -965,16 +1179,14 @@ private fun MealItemRow(
                             softWrap   = false
                         )
                     }
-                    Text("·", color = Gray600)
+                    Text("·", color = Gray600, fontSize = 10.sp)
                 }
                 Text("${meal.grams.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp, maxLines = 1, softWrap = false)
-                Text("·", color = Gray600)
-                Text("${meal.calories.toInt()} kcal", style = MaterialTheme.typography.labelSmall, color = Amber400, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, maxLines = 1, softWrap = false)
-                Text("·", color = Gray600)
+                Text("·", color = Gray600, fontSize = 10.sp)
                 Text(
                     text = "P:${meal.protein.toInt()}g C:${meal.carbs.toInt()}g G:${meal.fat.toInt()}g",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Gray400,
+                    color = Gray500,
                     fontSize = 10.sp,
                     maxLines = 1,
                     softWrap = false,
@@ -983,18 +1195,34 @@ private fun MealItemRow(
             }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(
-                onClick  = onEdit,
-                modifier = Modifier.size(28.dp)
-            ) {
-                Icon(Icons.Default.Edit, contentDescription = "Editar porción", tint = Gray400, modifier = Modifier.size(15.dp))
-            }
-            IconButton(
-                onClick  = onDelete,
-                modifier = Modifier.size(28.dp)
-            ) {
-                Icon(Icons.Default.DeleteOutline, contentDescription = "Eliminar", tint = Gray500, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(8.dp))
+
+        // Calorías a la derecha, destacadas con botones de acción compactos debajo
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text       = "${meal.calories.toInt()} kcal",
+                style      = MaterialTheme.typography.labelMedium,
+                color      = Amber400,
+                fontWeight = FontWeight.Bold,
+                maxLines   = 1,
+                softWrap   = false
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick  = onEdit,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = "Editar porción", tint = Gray400, modifier = Modifier.size(13.dp))
+                }
+                IconButton(
+                    onClick  = onDelete,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(Icons.Default.DeleteOutline, contentDescription = "Eliminar", tint = Gray500, modifier = Modifier.size(14.dp))
+                }
             }
         }
     }
@@ -1557,6 +1785,8 @@ private fun PhotoAiDialog(
     detectedItems: List<DetectedFoodItem>?,
     errorMessage: String?,
     explanation: String?,
+    hasGeminiApiKey: Boolean,
+    onOpenApiKeyDialog: () -> Unit,
     onDescriptionChange: (String) -> Unit,
     onAnalyze: () -> Unit,
     onItemChange: (Int, DetectedFoodItem) -> Unit,
@@ -1597,6 +1827,36 @@ private fun PhotoAiDialog(
                     }
                     IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
                         Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Gray400, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                // Banner de estado de Gemini
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (hasGeminiApiKey) Violet400.copy(alpha = 0.15f) else Amber400.copy(alpha = 0.15f))
+                        .border(1.dp, if (hasGeminiApiKey) Violet400.copy(alpha = 0.35f) else Amber400.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                        .clickable(onClick = onOpenApiKeyDialog)
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = if (hasGeminiApiKey) Violet300 else Amber400, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = if (hasGeminiApiKey) "Gemini 2.0 Flash Vision Activo" else "Modo Básico · Toca para vincular tu Gemini API Key gratis",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (hasGeminiApiKey) Violet200 else Amber400,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
 
@@ -2860,6 +3120,10 @@ private fun TextAiMealDialog(
     detectedItems: List<DetectedFoodItem>?,
     errorMessage: String?,
     explanation: String?,
+    hasGeminiApiKey: Boolean,
+    onOpenApiKeyDialog: () -> Unit,
+    onTakePhoto: () -> Unit,
+    onPickGallery: () -> Unit,
     onInputChange: (String) -> Unit,
     onAnalyze: () -> Unit,
     onItemChange: (Int, DetectedFoodItem) -> Unit,
@@ -2903,18 +3167,80 @@ private fun TextAiMealDialog(
                     }
                 }
 
+                // Banner de estado de Gemini
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Violet400.copy(alpha = 0.15f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (hasGeminiApiKey) Violet400.copy(alpha = 0.15f) else Amber400.copy(alpha = 0.15f))
+                        .border(1.dp, if (hasGeminiApiKey) Violet400.copy(alpha = 0.35f) else Amber400.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                        .clickable(onClick = onOpenApiKeyDialog)
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    Text(
-                        text = "Destino: $mealType",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Violet300,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = if (hasGeminiApiKey) Violet300 else Amber400, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = if (hasGeminiApiKey) "Gemini 2.0 Flash Conectado · IA Activa" else "Motor Local Básico · Toca para vincular tu Gemini API Key gratis",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (hasGeminiApiKey) Violet200 else Amber400,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Violet400.copy(alpha = 0.15f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Destino: $mealType",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Violet300,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(
+                            onClick = onTakePhoto,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Gray300),
+                            border = BorderStroke(1.dp, Indigo600),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Foto", style = MaterialTheme.typography.labelSmall)
+                        }
+
+                        OutlinedButton(
+                            onClick = onPickGallery,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Gray300),
+                            border = BorderStroke(1.dp, Indigo600),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Galería", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
                 }
 
                 // Campo de entrada de texto
@@ -2971,7 +3297,7 @@ private fun TextAiMealDialog(
                     ) {
                         CircularProgressIndicator(color = Violet400, strokeWidth = 3.dp)
                         Text(
-                            text = "Gemini 2.0 Flash está calculando alimentos, porciones y calorías...",
+                            text = if (hasGeminiApiKey) "Gemini 2.0 Flash está calculando alimentos, porciones y calorías..." else "Analizando alimentos y macros con el motor local...",
                             style = MaterialTheme.typography.bodySmall,
                             color = Violet300,
                             textAlign = TextAlign.Center
@@ -3040,6 +3366,198 @@ private fun TextAiMealDialog(
                         Icon(Icons.Default.Check, contentDescription = null, tint = Indigo900)
                         Spacer(Modifier.width(8.dp))
                         Text("Añadir a $mealType", color = Indigo900, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Diálogo de Configuración de Clave Gemini desde Nutrición ──────────────────
+
+@Composable
+private fun NutritionApiKeyDialog(
+    currentKey: String,
+    onDismiss: () -> Unit,
+    onTest: (suspend (String) -> Result<String>),
+    onSave: (String) -> Unit
+) {
+    var keyInput by remember { mutableStateOf(currentKey) }
+    var isTesting by remember { mutableStateOf(false) }
+    var testResultText by remember { mutableStateOf<String?>(null) }
+    var testIsSuccess by remember { mutableStateOf<Boolean?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Indigo800)
+                .border(1.dp, Violet400.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                .padding(20.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                // Header
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Key, contentDescription = null, tint = Violet300, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Google Gemini API Key",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = White
+                        )
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Gray400, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Text(
+                    text = "Consigue una clave gratis en Google AI Studio (aistudio.google.com). Con tu clave, la IA visual y de texto de Gemini 2.0 Flash analizará fotos y platos con máxima precisión.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray300
+                )
+
+                OutlinedButton(
+                    onClick = {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/app/apikey"))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Abre aistudio.google.com en tu navegador", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan400),
+                    border = BorderStroke(1.dp, Cyan400.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Obtener Clave Gratis en Google AI Studio", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedTextField(
+                    value = keyInput,
+                    onValueChange = {
+                        keyInput = it
+                        testResultText = null
+                        testIsSuccess = null
+                    },
+                    label = { Text("Clave API de Gemini", color = Gray400) },
+                    placeholder = { Text("AIzaSy...", color = Gray500) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Violet400, unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White, unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Button(
+                        onClick = {
+                            if (keyInput.isBlank()) {
+                                Toast.makeText(context, "Escribe o pega una clave primero", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            isTesting = true
+                            testResultText = null
+                            coroutineScope.launch {
+                                val res = onTest(keyInput.trim())
+                                isTesting = false
+                                if (res.isSuccess) {
+                                    testIsSuccess = true
+                                    testResultText = res.getOrNull() ?: "Conexión exitosa"
+                                } else {
+                                    testIsSuccess = false
+                                    testResultText = res.exceptionOrNull()?.message ?: "Error al conectar"
+                                }
+                            }
+                        },
+                        enabled = !isTesting && keyInput.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Indigo700, contentColor = White),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        if (isTesting) {
+                            CircularProgressIndicator(color = Violet300, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Comprobando...", style = MaterialTheme.typography.labelSmall)
+                        } else {
+                            Icon(Icons.Default.CheckCircleOutline, contentDescription = null, modifier = Modifier.size(14.dp), tint = Violet300)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Probar Clave", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+
+                    if (keyInput.isNotBlank()) {
+                        TextButton(
+                            onClick = {
+                                keyInput = ""
+                                testResultText = null
+                                testIsSuccess = null
+                            },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text("Borrar", style = MaterialTheme.typography.labelSmall, color = Rose400)
+                        }
+                    }
+                }
+
+                testResultText?.let { msg ->
+                    val isSuccess = testIsSuccess == true
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isSuccess) Emerald400.copy(alpha = 0.2f) else Rose400.copy(alpha = 0.2f))
+                            .border(1.dp, if (isSuccess) Emerald400.copy(alpha = 0.5f) else Rose400.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                            .padding(8.dp)
+                    ) {
+                        Text(
+                            text = (if (isSuccess) "✅ " else "❌ ") + msg,
+                            color = if (isSuccess) Emerald400 else Rose400,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        border = BorderStroke(1.dp, Indigo600),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancelar", color = Gray400)
+                    }
+
+                    Button(
+                        onClick = { onSave(keyInput) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Guardar", fontWeight = FontWeight.Bold)
                     }
                 }
             }
