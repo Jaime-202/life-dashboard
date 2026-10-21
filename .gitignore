@@ -48,3 +48,4 @@ Thumbs.db
 # Temporary text / exports
 all_kotlin_files.txt
 captures/
+.kotlin/

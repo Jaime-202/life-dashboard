@@ -9,6 +9,7 @@ import com.lifedashboard.data.local.entity.MealEntryEntity
 import com.lifedashboard.data.remote.food.DetectedFoodItem
 import com.lifedashboard.data.remote.food.FoodAiResult
 import com.lifedashboard.data.remote.food.FoodCatalogItem
+import com.lifedashboard.data.remote.food.FoodCatalogService
 import com.lifedashboard.data.remote.food.FoodSourceCategory
 import com.lifedashboard.data.remote.food.RealFoodImageResolver
 import com.lifedashboard.data.repository.NutritionRepository
@@ -286,16 +287,32 @@ class NutritionViewModel @Inject constructor(
             val zone = ZoneId.systemDefault()
             val dateMillis = date.atStartOfDay(zone).toInstant().toEpochMilli()
 
+            var calories = item.caloriesPer100g * factor
+            var protein = item.proteinPer100g * factor
+            var carbs = item.carbsPer100g * factor
+            var fat = item.fatPer100g * factor
+
+            if (calories <= 0f && (protein > 0f || carbs > 0f || fat > 0f)) {
+                calories = (protein * 4f) + (carbs * 4f) + (fat * 9f)
+            }
+            if (calories <= 0f && !item.name.contains("agua", ignoreCase = true)) {
+                val inf = FoodCatalogService.inferMacrosIfZero(item.name, 0f, protein, carbs, fat)
+                calories = inf.calories * factor
+                if (protein <= 0f) protein = inf.protein * factor
+                if (carbs <= 0f) carbs = inf.carbs * factor
+                if (fat <= 0f) fat = inf.fat * factor
+            }
+
             val entry = MealEntryEntity(
                 dateMillis = dateMillis,
                 mealType = mealType,
                 name = item.name,
                 brand = item.brand,
                 grams = grams,
-                calories = item.caloriesPer100g * factor,
-                protein = item.proteinPer100g * factor,
-                carbs = item.carbsPer100g * factor,
-                fat = item.fatPer100g * factor,
+                calories = calories,
+                protein = protein,
+                carbs = carbs,
+                fat = fat,
                 imageUrl = RealFoodImageResolver.resolve(item.name, item.brand, item.imageUrl)
             )
             repository.insertMeal(entry)
@@ -343,16 +360,32 @@ class NutritionViewModel @Inject constructor(
             val dateMillis = date.atStartOfDay(zone).toInstant().toEpochMilli()
             val cleanName = name.ifBlank { "Comida rápida" }
 
+            var safeCalories = calories.coerceAtLeast(0f)
+            var safeP = protein.coerceAtLeast(0f)
+            var safeC = carbs.coerceAtLeast(0f)
+            var safeF = fat.coerceAtLeast(0f)
+
+            if (safeCalories <= 0f && (safeP > 0f || safeC > 0f || safeF > 0f)) {
+                safeCalories = (safeP * 4f) + (safeC * 4f) + (safeF * 9f)
+            }
+            if (safeCalories <= 0f && !cleanName.contains("agua", ignoreCase = true)) {
+                val inf = FoodCatalogService.inferMacrosIfZero(cleanName, 0f, safeP, safeC, safeF)
+                safeCalories = inf.calories
+                if (safeP <= 0f) safeP = inf.protein
+                if (safeC <= 0f) safeC = inf.carbs
+                if (safeF <= 0f) safeF = inf.fat
+            }
+
             val entry = MealEntryEntity(
                 dateMillis = dateMillis,
                 mealType = mealType,
                 name = cleanName,
                 brand = "Manual",
                 grams = 100f,
-                calories = calories.coerceAtLeast(0f),
-                protein = protein.coerceAtLeast(0f),
-                carbs = carbs.coerceAtLeast(0f),
-                fat = fat.coerceAtLeast(0f),
+                calories = safeCalories,
+                protein = safeP,
+                carbs = safeC,
+                fat = safeF,
                 imageUrl = RealFoodImageResolver.resolve(cleanName, "Manual")
             )
             repository.insertMeal(entry)
@@ -550,16 +583,32 @@ class NutritionViewModel @Inject constructor(
                 } else {
                     "Genérico"
                 }
+                var safeKcal = item.calories
+                var safeP = item.protein
+                var safeC = item.carbs
+                var safeF = item.fat
+                if (safeKcal <= 0f && (safeP > 0f || safeC > 0f || safeF > 0f)) {
+                    safeKcal = (safeP * 4f) + (safeC * 4f) + (safeF * 9f)
+                }
+                if (safeKcal <= 0f && !item.name.contains("agua", ignoreCase = true)) {
+                    val factor = if (item.grams > 0f) item.grams / 100f else 1f
+                    val inf = FoodCatalogService.inferMacrosIfZero(item.name, 0f, safeP, safeC, safeF)
+                    safeKcal = inf.calories * factor
+                    if (safeP <= 0f) safeP = inf.protein * factor
+                    if (safeC <= 0f) safeC = inf.carbs * factor
+                    if (safeF <= 0f) safeF = inf.fat * factor
+                }
+
                 MealEntryEntity(
                     dateMillis = dateMillis,
                     mealType = mealType,
                     name = item.name,
                     brand = finalBrand,
                     grams = item.grams,
-                    calories = item.calories,
-                    protein = item.protein,
-                    carbs = item.carbs,
-                    fat = item.fat,
+                    calories = safeKcal,
+                    protein = safeP,
+                    carbs = safeC,
+                    fat = safeF,
                     imageUrl = RealFoodImageResolver.resolve(item.name, finalBrand)
                 )
             }
@@ -650,16 +699,32 @@ class NutritionViewModel @Inject constructor(
                 } else {
                     "Genérico"
                 }
+                var safeKcal = item.calories
+                var safeP = item.protein
+                var safeC = item.carbs
+                var safeF = item.fat
+                if (safeKcal <= 0f && (safeP > 0f || safeC > 0f || safeF > 0f)) {
+                    safeKcal = (safeP * 4f) + (safeC * 4f) + (safeF * 9f)
+                }
+                if (safeKcal <= 0f && !item.name.contains("agua", ignoreCase = true)) {
+                    val factor = if (item.grams > 0f) item.grams / 100f else 1f
+                    val inf = FoodCatalogService.inferMacrosIfZero(item.name, 0f, safeP, safeC, safeF)
+                    safeKcal = inf.calories * factor
+                    if (safeP <= 0f) safeP = inf.protein * factor
+                    if (safeC <= 0f) safeC = inf.carbs * factor
+                    if (safeF <= 0f) safeF = inf.fat * factor
+                }
+
                 MealEntryEntity(
                     dateMillis = dateMillis,
                     mealType = mealType,
                     name = item.name,
                     brand = finalBrand,
                     grams = item.grams,
-                    calories = item.calories,
-                    protein = item.protein,
-                    carbs = item.carbs,
-                    fat = item.fat,
+                    calories = safeKcal,
+                    protein = safeP,
+                    carbs = safeC,
+                    fat = safeF,
                     imageUrl = RealFoodImageResolver.resolve(item.name, finalBrand)
                 )
             }

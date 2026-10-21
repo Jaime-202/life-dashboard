@@ -203,7 +203,13 @@ class FoodAiService @Inject constructor(
                - Si en la foto se aprecia un producto de marca o envase comercial, o el usuario indica en su descripción que proviene de una marca/supermercado concreto (ej: "Hacendado", "Mercadona", "Carrefour", "Día", "Alcampo", "Lidl", "Danone", "Asturiana", etc.), asigna exactamente esa marca en "brand" (ej: "Hacendado", "Carrefour", "Día", "Lidl") y pon "isGeneric": false.
                - Si el alimento es comida casera, no empaquetada, o NO se especifica marca alguna, asígnalo como genérico: pon "brand": "Genérico" y "isGeneric": true.
             3. Estimar con precisión el peso en gramos (o ml) de cada ingrediente.
-            4. Calcular con rigor: calorías (kcal), proteínas (g), carbohidratos (g) y grasas (g) reales de cada uno.
+            4. REGLA DE CALORÍAS REALES (NINGÚN ALIMENTO TIENE 0 KCAL EXCEPTO AGUA):
+               - Café solo (expreso o americano): ~2 a 4 kcal por taza. NUNCA pongas 0 calorías.
+               - Cerveza con alcohol (lata/botellín 330ml): ~140-165 kcal (~43-48 kcal/100ml). NUNCA pongas 0 calorías.
+               - Cerveza 0,0% sin alcohol (330ml): ~75-85 kcal (~24 kcal/100ml). NUNCA pongas 0 calorías.
+               - Leche semidesnatada (vaso 200ml): ~92 kcal (~46 kcal/100ml, P: 6.4g, C: 9.6g, G: 3.2g).
+               - Salsas (mayonesa, alioli, barbacoa, césar, etc.): tienen entre 60 y 650 kcal/100g. NUNCA pongas 0 calorías.
+               - Calcular con rigor: calorías (kcal), proteínas (g), carbohidratos (g) y grasas (g) reales de cada uno.
             
             Responde ÚNICAMENTE con un array JSON válido con la siguiente estructura:
             [
@@ -256,7 +262,13 @@ class FoodAiService @Inject constructor(
                    - Si el usuario indica o menciona que un producto viene de una marca o supermercado específico (por ejemplo: "hacendado", "mercadona", "carrefour", "día", "dia", "alcampo", "lidl", "danone", "central lechera asturiana", etc.), asigna exactamente esa marca en el campo "brand" (ej: "Hacendado", "Carrefour", "Día", "Lidl") y pon "isGeneric": false.
                    - Si el usuario NO menciona ninguna marca o supermercado para ese producto (ej: "arroz blanco", "2 huevos fritos", "pechuga de pollo"), asígnalo como genérico: pon "brand": "Genérico" y "isGeneric": true.
                 3. Si el usuario indicó cantidades (ej: "2 huevos", "100g de pan", "un vaso de leche", "media pizza"), calcula el peso exacto. Si no indicó cantidad, asume la ración estándar habitual para adultos.
-                4. Calcula con precisión médica calorías (kcal), proteínas (g), carbohidratos (g) y grasas (g).
+                4. REGLA DE CALORÍAS REALES (NINGÚN ALIMENTO TIENE 0 KCAL EXCEPTO AGUA):
+                   - Café solo (expreso o americano): ~2 a 4 kcal por taza (~2 kcal/100ml). NUNCA pongas 0 calorías.
+                   - Cerveza con alcohol (lata/botellín 330ml): ~140-165 kcal (~43-48 kcal/100ml). NUNCA pongas 0 calorías.
+                   - Cerveza 0,0% sin alcohol (330ml): ~75-85 kcal (~24 kcal/100ml). NUNCA pongas 0 calorías.
+                   - Leche semidesnatada (vaso 200ml): ~92 kcal (~46 kcal/100ml, P: 6.4g, C: 9.6g, G: 3.2g).
+                   - Salsas (mayonesa, alioli, barbacoa, césar, etc.): tienen entre 60 y 650 kcal/100g. NUNCA pongas 0 calorías.
+                   - Calcula con precisión médica calorías (kcal), proteínas (g), carbohidratos (g) y grasas (g).
                 
                 Responde ÚNICAMENTE con un array JSON válido:
                 [
@@ -353,14 +365,30 @@ class FoodAiService @Inject constructor(
         if (first != null) {
             val factor = if (first.grams > 0) 100f / first.grams else 1f
             val imgUrl = RealFoodImageResolver.resolve(first.name, brandName)
+            var rawKcal = first.calories * factor
+            var rawP = first.protein * factor
+            var rawC = first.carbs * factor
+            var rawF = first.fat * factor
+
+            if (rawKcal <= 0f && (rawP > 0f || rawC > 0f || rawF > 0f)) {
+                rawKcal = (rawP * 4f) + (rawC * 4f) + (rawF * 9f)
+            }
+            if (rawKcal <= 0f && !first.name.contains("agua", ignoreCase = true)) {
+                val inf = FoodCatalogService.inferMacrosIfZero(first.name, 0f, rawP, rawC, rawF)
+                rawKcal = inf.calories
+                if (rawP <= 0f) rawP = inf.protein
+                if (rawC <= 0f) rawC = inf.carbs
+                if (rawF <= 0f) rawF = inf.fat
+            }
+
             return@withContext FoodCatalogItem(
                 id = "ai_local_${trimmed.hashCode()}",
                 name = first.name,
                 brand = brandName,
-                caloriesPer100g = first.calories * factor,
-                proteinPer100g = first.protein * factor,
-                carbsPer100g = first.carbs * factor,
-                fatPer100g = first.fat * factor,
+                caloriesPer100g = rawKcal,
+                proteinPer100g = rawP,
+                carbsPer100g = rawC,
+                fatPer100g = rawF,
                 servingSizeGrams = first.grams,
                 servingDescription = "1 ración (~${first.grams.toInt()}g)",
                 imageUrl = imgUrl,
@@ -401,10 +429,24 @@ class FoodAiService @Inject constructor(
                 if (name.isBlank()) continue
 
                 val grams = obj.optDouble("grams", 100.0).toFloat()
-                val calories = obj.optDouble("calories", 0.0).toFloat()
-                val protein = obj.optDouble("protein", 0.0).toFloat()
-                val carbs = obj.optDouble("carbs", 0.0).toFloat()
-                val fat = obj.optDouble("fat", 0.0).toFloat()
+                var calories = obj.optDouble("calories", 0.0).toFloat()
+                var protein = obj.optDouble("protein", 0.0).toFloat()
+                var carbs = obj.optDouble("carbs", 0.0).toFloat()
+                var fat = obj.optDouble("fat", 0.0).toFloat()
+
+                // Si la IA devolvió 0 o negativo en calorías pero hay macronutrientes:
+                if (calories <= 0f && (protein > 0f || carbs > 0f || fat > 0f)) {
+                    calories = (protein * 4f) + (carbs * 4f) + (fat * 9f)
+                }
+                // Si sigue siendo 0 o menor y no es agua, inferir según el alimento (café solo, cerveza, salsa, etc.)
+                if (calories <= 0f && !name.contains("agua", ignoreCase = true)) {
+                    val factor = if (grams > 0f) grams / 100f else 1f
+                    val inf = FoodCatalogService.inferMacrosIfZero(name, 0f, protein, carbs, fat)
+                    calories = inf.calories * factor
+                    if (protein <= 0f) protein = inf.protein * factor
+                    if (carbs <= 0f) carbs = inf.carbs * factor
+                    if (fat <= 0f) fat = inf.fat * factor
+                }
 
                 val rawBrand = obj.optString("brand").trim()
                 val isGenericExplicit = obj.optBoolean("isGeneric", true)
@@ -761,7 +803,14 @@ class FoodAiService @Inject constructor(
                 clause.contains("leche") -> {
                     val grams = findGramsOrMultiplier(clause, 200f)
                     val factor = grams / 100f
-                    items.add(DetectedFoodItem("Leche semidesnatada", grams, 46f * factor, 3.2f * factor, 4.8f * factor, 1.6f * factor))
+                    when {
+                        clause.contains("desnatada") -> items.add(DetectedFoodItem("Leche desnatada", grams, 35f * factor, 3.3f * factor, 4.9f * factor, 0.2f * factor))
+                        clause.contains("entera") -> items.add(DetectedFoodItem("Leche entera", grams, 63f * factor, 3.1f * factor, 4.7f * factor, 3.6f * factor))
+                        clause.contains("avena") -> items.add(DetectedFoodItem("Bebida de avena", grams, 45f * factor, 1f * factor, 7.5f * factor, 1.2f * factor))
+                        clause.contains("soja") -> items.add(DetectedFoodItem("Bebida de soja", grams, 38f * factor, 3.2f * factor, 1.8f * factor, 1.8f * factor))
+                        clause.contains("almendra") -> items.add(DetectedFoodItem("Bebida de almendras", grams, 24f * factor, 0.5f * factor, 3f * factor, 1.1f * factor))
+                        else -> items.add(DetectedFoodItem("Leche semidesnatada", grams, 46f * factor, 3.2f * factor, 4.8f * factor, 1.6f * factor))
+                    }
                 }
                 // Desayuno: Avena, Café, Aceite
                 clause.contains("avena") -> {
@@ -770,11 +819,65 @@ class FoodAiService @Inject constructor(
                     items.add(DetectedFoodItem("Copos de avena integral", grams, 375f * factor, 13.5f * factor, 59f * factor, 7f * factor))
                 }
                 clause.contains("cafe") || clause.contains("café") -> {
-                    val hasMilk = clause.contains("leche") || clause.contains("cortado")
-                    if (hasMilk) {
-                        items.add(DetectedFoodItem("Café con leche", 150f, 55f, 3.5f, 5f, 2.5f))
-                    } else {
-                        items.add(DetectedFoodItem("Café solo expreso", 60f, 2f, 0.2f, 0.3f, 0f))
+                    val hasMilk = clause.contains("leche")
+                    val isCortado = clause.contains("cortado")
+                    when {
+                        hasMilk -> items.add(DetectedFoodItem("Café con leche", 200f, 110f, 6.4f, 10f, 4.8f))
+                        isCortado -> items.add(DetectedFoodItem("Café cortado", 100f, 38f, 2.2f, 3.5f, 1.6f))
+                        clause.contains("americano") -> items.add(DetectedFoodItem("Café solo americano", 150f, 3f, 0.3f, 0.4f, 0f))
+                        else -> items.add(DetectedFoodItem("Café solo expreso", 60f, 2f, 0.2f, 0.3f, 0f))
+                    }
+                }
+                // Bebidas: Cervezas y Vino
+                clause.contains("cerveza") || clause.contains("caña") || clause.contains("cana") ||
+                clause.contains("tercio") || clause.contains("botellin") || clause.contains("botellín") ||
+                clause.contains("quinto") || clause.contains("birra") || clause.contains("radler") || clause.contains("clara") -> {
+                    val is00 = clause.contains("0,0") || clause.contains("0.0") || clause.contains("sin alcohol") || clause.contains("cero")
+                    val isRadler = clause.contains("radler") || clause.contains("clara") || clause.contains("limon") || clause.contains("limón")
+                    val isTostada = clause.contains("tostada") || clause.contains("especial")
+                    val defaultG = if (clause.contains("tercio") || clause.contains("lata") || clause.contains("botellin") || clause.contains("botellín")) 330f else 250f
+                    val grams = findGramsOrMultiplier(clause, defaultG)
+                    val factor = grams / 100f
+                    when {
+                        is00 -> items.add(DetectedFoodItem("Cerveza 0,0% sin alcohol", grams, 24f * factor, 0.3f * factor, 5.2f * factor, 0f))
+                        isRadler -> items.add(DetectedFoodItem("Cerveza Radler / Clara con limón", grams, 35f * factor, 0.2f * factor, 6.2f * factor, 0f))
+                        isTostada -> items.add(DetectedFoodItem("Cerveza especial / tostada", grams, 48f * factor, 0.5f * factor, 3.8f * factor, 0f))
+                        else -> items.add(DetectedFoodItem("Cerveza rubia con alcohol", grams, 43f * factor, 0.5f * factor, 3.5f * factor, 0f))
+                    }
+                }
+                clause.contains("vino") -> {
+                    val grams = findGramsOrMultiplier(clause, 150f)
+                    val factor = grams / 100f
+                    items.add(DetectedFoodItem("Copa de vino", grams, 75f * factor, 0.1f * factor, 2.5f * factor, 0f))
+                }
+                // Salsas y condimentos
+                clause.contains("salsa") || clause.contains("mayonesa") || clause.contains("alioli") ||
+                clause.contains("allioli") || clause.contains("ketchup") || clause.contains("kétchup") || clause.contains("mostaza") -> {
+                    val grams = findGramsOrMultiplier(clause, 30f)
+                    val factor = grams / 100f
+                    when {
+                        clause.contains("mayonesa") || clause.contains("alioli") || clause.contains("allioli") ->
+                            items.add(DetectedFoodItem("Salsa mayonesa / alioli", grams, 645f * factor, 1.1f * factor, 2.5f * factor, 71f * factor))
+                        clause.contains("barbacoa") ->
+                            items.add(DetectedFoodItem("Salsa barbacoa", grams, 135f * factor, 1.2f * factor, 30f * factor, 0.4f * factor))
+                        clause.contains("burger") ->
+                            items.add(DetectedFoodItem("Salsa burger", grams, 290f * factor, 1.1f * factor, 12f * factor, 26f * factor))
+                        clause.contains("cesar") || clause.contains("césar") ->
+                            items.add(DetectedFoodItem("Salsa César", grams, 295f * factor, 1.5f * factor, 6.5f * factor, 30f * factor))
+                        clause.contains("pesto") ->
+                            items.add(DetectedFoodItem("Salsa pesto", grams, 460f * factor, 5.2f * factor, 6f * factor, 47f * factor))
+                        clause.contains("soja") ->
+                            items.add(DetectedFoodItem("Salsa de soja", grams, 65f * factor, 8.5f * factor, 7.5f * factor, 0.1f * factor))
+                        clause.contains("ketchup") || clause.contains("kétchup") ->
+                            items.add(DetectedFoodItem("Salsa kétchup", grams, 110f * factor, 1.2f * factor, 25f * factor, 0.2f * factor))
+                        clause.contains("mostaza") ->
+                            items.add(DetectedFoodItem("Salsa mostaza", grams, 90f * factor, 5f * factor, 5f * factor, 5f * factor))
+                        clause.contains("brava") ->
+                            items.add(DetectedFoodItem("Salsa brava", grams, 95f * factor, 1.2f * factor, 11f * factor, 5f * factor))
+                        clause.contains("tomate") ->
+                            items.add(DetectedFoodItem("Salsa de tomate frito", grams, 75f * factor, 1.5f * factor, 8.5f * factor, 4f * factor))
+                        else ->
+                            items.add(DetectedFoodItem("Salsa para acompañar", grams, 150f * factor, 1.5f * factor, 12f * factor, 10.5f * factor))
                     }
                 }
                 clause.contains("aceite") || clause.contains("oliva") -> {

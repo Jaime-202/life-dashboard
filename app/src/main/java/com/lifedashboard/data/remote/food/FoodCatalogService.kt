@@ -27,6 +27,13 @@ enum class FoodSourceCategory(val label: String) {
     BASICOS("Básicos / Genéricos")
 }
 
+data class QuadrupleCalories(
+    val calories: Float,
+    val protein: Float,
+    val carbs: Float,
+    val fat: Float
+)
+
 data class FoodCatalogItem(
     val id: String,
     val name: String,
@@ -598,7 +605,7 @@ class FoodCatalogService @Inject constructor(
         val tokens = normQuery.split("\\s+".toRegex()).filter { it.isNotBlank() }
 
         val localMatches = if (trimmed.isBlank()) {
-            filterByCategory(allFoods, category).take(300)
+            filterByCategory(allFoods, category).take(500)
         } else {
             val categorized = filterByCategory(allFoods, category)
             val filtered = categorized.filter { item ->
@@ -607,7 +614,7 @@ class FoodCatalogService @Inject constructor(
             }
             filtered.sortedByDescending { item ->
                 calculateRelevance(item, normQuery, tokens)
-            }.take(200)
+            }.take(250)
         }
 
         // Si la búsqueda está vacía (ej: selección de pestaña de supermercado), devolver catálogo completo filtrado
@@ -617,14 +624,14 @@ class FoodCatalogService @Inject constructor(
             }
         }
 
-        // Si tenemos suficientes resultados locales relevantes para Mercadona, Día, Carrefour o Todos, devolverlos
-        if (localMatches.isNotEmpty() && (localMatches.size >= 8 || category != FoodSourceCategory.TODOS)) {
+        // Si tenemos suficientes resultados locales relevantes (al menos 12), devolverlos
+        if (localMatches.size >= 12) {
             return@withContext localMatches.map { item ->
                 item.copy(imageUrl = RealFoodImageResolver.resolve(item.name, item.brand, item.imageUrl))
             }
         }
 
-        // 3. Consulta remota en Open Food Facts si se busca en otros supermercados o hay pocos resultados
+        // 3. Consulta remota en Open Food Facts para enriquecer la búsqueda con el catálogo oficial completo
         val remoteResults = if (category != FoodSourceCategory.BASICOS && trimmed.length >= 2) {
             queryOpenFoodFacts(trimmed, category)
         } else emptyList()
@@ -633,7 +640,7 @@ class FoodCatalogService @Inject constructor(
             normalize(it.name) to normalize(it.brand)
         }.sortedByDescending {
             calculateRelevance(it, normQuery, tokens)
-        }.take(200)
+        }.take(250)
 
         if (combined.isNotEmpty()) {
             return@withContext combined.map { item ->
@@ -748,40 +755,37 @@ class FoodCatalogService @Inject constructor(
     }
 
     /**
-     * Consulta REST de texto a Open Food Facts con soporte de marcas de supermercado.
+     * Consulta REST de texto a Open Food Facts con soporte de marcas de supermercado (Día, Carrefour, Hacendado, etc.).
      */
     private fun queryOpenFoodFacts(query: String, category: FoodSourceCategory): List<FoodCatalogItem> {
         val results = mutableListOf<FoodCatalogItem>()
-        val brandSearchSuffix = when (category) {
+        val brandTag = when (category) {
             FoodSourceCategory.MERCADONA -> "hacendado"
             FoodSourceCategory.CARREFOUR -> "carrefour"
             FoodSourceCategory.DIA -> "dia"
-            FoodSourceCategory.ALCAMPO -> "alcampo"
+            FoodSourceCategory.ALCAMPO -> "auchan"
             FoodSourceCategory.SUPERCOR -> "el corte ingles"
             else -> ""
         }
 
-        val searchTerm = if (brandSearchSuffix.isNotEmpty() && !query.contains(brandSearchSuffix, ignoreCase = true)) {
-            "$query $brandSearchSuffix"
+        val endpoints = mutableListOf<String>()
+        val encodedQuery = URLEncoder.encode(query, "UTF-8")
+
+        if (brandTag.isNotBlank()) {
+            endpoints.add("https://es.openfoodfacts.net/cgi/search.pl?search_terms=$encodedQuery&tagtype_0=brands&tag_contains_0=contains&tag_0=$brandTag&action=process&json=1&page_size=40")
+            endpoints.add("https://es.openfoodfacts.net/cgi/search.pl?search_terms=${URLEncoder.encode("$query $brandTag", "UTF-8")}&search_simple=1&action=process&json=1&page_size=35")
         } else {
-            query
+            endpoints.add("https://es.openfoodfacts.net/cgi/search.pl?search_terms=$encodedQuery&search_simple=1&action=process&json=1&page_size=40")
+            endpoints.add("https://world.openfoodfacts.net/cgi/search.pl?search_terms=$encodedQuery&search_simple=1&action=process&json=1&page_size=35")
         }
 
-        val endpoints = listOf(
-            "https://es.openfoodfacts.net/cgi/search.pl",
-            "https://world.openfoodfacts.net/cgi/search.pl"
-        )
-
-        for (baseEndpoint in endpoints) {
+        for (urlString in endpoints) {
             var connection: HttpURLConnection? = null
             try {
-                val encoded = URLEncoder.encode(searchTerm, "UTF-8")
-                val urlString = "$baseEndpoint?search_terms=$encoded&search_simple=1&action=process&json=1&page_size=25"
                 val url = URL(urlString)
-
                 connection = (url.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 4500
-                    readTimeout = 4500
+                    connectTimeout = 4000
+                    readTimeout = 4000
                     requestMethod = "GET"
                     setRequestProperty("User-Agent", "LifeDashboardApp/1.0 (contacto@lifedashboard.app)")
                 }
@@ -800,10 +804,10 @@ class FoodCatalogService @Inject constructor(
                             }
                         }
                     }
-                    if (results.isNotEmpty()) break
+                    if (results.size >= 15) break
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Fallo al consultar $baseEndpoint: ${e.message}")
+                Log.w(TAG, "Fallo al consultar $urlString: ${e.message}")
             } finally {
                 connection?.disconnect()
             }
@@ -818,12 +822,39 @@ class FoodCatalogService @Inject constructor(
         if (name.isBlank()) return null
 
         val brands = p.optString("brands").ifBlank { "Supermercado" }
-        val nutriments = p.optJSONObject("nutriments") ?: return null
+        val nutriments = p.optJSONObject("nutriments")
 
-        val kcal = nutriments.optDouble("energy-kcal_100g", nutriments.optDouble("energy-kcal", 0.0)).toFloat()
-        val protein = nutriments.optDouble("proteins_100g", 0.0).toFloat()
-        val carbs = nutriments.optDouble("carbohydrates_100g", 0.0).toFloat()
-        val fat = nutriments.optDouble("fat_100g", 0.0).toFloat()
+        var kcal = 0f
+        var protein = 0f
+        var carbs = 0f
+        var fat = 0f
+        var alcohol = 0f
+
+        if (nutriments != null) {
+            kcal = nutriments.optDouble("energy-kcal_100g", -1.0).toFloat()
+            if (kcal <= 0f) {
+                kcal = nutriments.optDouble("energy-kcal", -1.0).toFloat()
+            }
+            if (kcal <= 0f) {
+                kcal = nutriments.optDouble("energy-kcal_value", -1.0).toFloat()
+            }
+            if (kcal <= 0f) {
+                val energyKj = nutriments.optDouble("energy_100g", nutriments.optDouble("energy-kj_100g", 0.0)).toFloat()
+                if (energyKj > 0f) {
+                    kcal = energyKj / 4.184f
+                }
+            }
+
+            protein = nutriments.optDouble("proteins_100g", nutriments.optDouble("proteins", 0.0)).toFloat().coerceAtLeast(0f)
+            carbs = nutriments.optDouble("carbohydrates_100g", nutriments.optDouble("carbohydrates", 0.0)).toFloat().coerceAtLeast(0f)
+            fat = nutriments.optDouble("fat_100g", nutriments.optDouble("fat", 0.0)).toFloat().coerceAtLeast(0f)
+            alcohol = nutriments.optDouble("alcohol_100g", nutriments.optDouble("alcohol", 0.0)).toFloat().coerceAtLeast(0f)
+
+            if (kcal <= 0f && (protein > 0f || carbs > 0f || fat > 0f || alcohol > 0f)) {
+                kcal = (protein * 4f) + (carbs * 4f) + (fat * 9f) + (alcohol * 7f)
+            }
+        }
+
         val code = p.optString("code").ifBlank { fallbackBarcode ?: "" }
         val servingStr = p.optString("serving_size").ifBlank { "100g" }
 
@@ -841,23 +872,23 @@ class FoodCatalogService @Inject constructor(
         val cleanBrand = cleanBrandName(brands)
         val resolvedImg = RealFoodImageResolver.resolve(cleanName, cleanBrand, rawImgUrl)
 
-        if (kcal > 0 || protein > 0 || carbs > 0 || fat > 0) {
-            return FoodCatalogItem(
-                id = "off_${code.ifBlank { name.hashCode().toString() }}",
-                name = cleanName,
-                brand = cleanBrand,
-                caloriesPer100g = kcal,
-                proteinPer100g = protein,
-                carbsPer100g = carbs,
-                fatPer100g = fat,
-                servingSizeGrams = 100f,
-                servingDescription = servingStr,
-                barcode = code.takeIf { it.isNotBlank() },
-                imageUrl = resolvedImg,
-                isGeneric = false
-            )
-        }
-        return null
+        // Inferencia nutricional para evitar comidas con 0 calorías
+        val inf = inferMacrosIfZero(cleanName, kcal, protein, carbs, fat, alcohol)
+
+        return FoodCatalogItem(
+            id = "off_${code.ifBlank { cleanName.hashCode().toString() }}",
+            name = cleanName,
+            brand = cleanBrand,
+            caloriesPer100g = inf.calories,
+            proteinPer100g = inf.protein,
+            carbsPer100g = inf.carbs,
+            fatPer100g = inf.fat,
+            servingSizeGrams = 100f,
+            servingDescription = servingStr,
+            barcode = code.takeIf { it.isNotBlank() },
+            imageUrl = resolvedImg,
+            isGeneric = false
+        )
     }
 
     private fun cleanProductName(name: String): String {
@@ -867,5 +898,168 @@ class FoodCatalogService @Inject constructor(
     private fun cleanBrandName(brand: String): String {
         val first = brand.split(",").firstOrNull()?.trim() ?: brand.trim()
         return first.replaceFirstChar { it.uppercase() }
+    }
+
+    companion object {
+        fun inferMacrosIfZero(
+            name: String,
+            rawKcal: Float,
+            rawP: Float,
+            rawC: Float,
+            rawF: Float,
+            rawAlcohol: Float = 0f
+        ): QuadrupleCalories {
+            val lower = name.lowercase(Locale.ROOT)
+
+            // Agua mineral / soda / sifón: 0 kcal es legítimo
+            if (lower.contains("agua mineral") || lower.contains("agua de soda") ||
+                lower.contains("bezoya") || lower.contains("solan") || lower.contains("solán") ||
+                lower.contains("font vella") || lower.contains("lanjaron") || lower.contains("lanjarón") ||
+                (lower.startsWith("agua ") && !lower.contains("coco") && !lower.contains("sabor"))
+            ) {
+                return QuadrupleCalories(0f, 0f, 0f, 0f)
+            }
+
+            // Bebidas zero / refrescos zero
+            if (lower.contains("zero") || lower.contains("0% azucar") || lower.contains("0% azúcar") || lower.contains("light")) {
+                if (lower.contains("coca-cola") || lower.contains("cola") || lower.contains("fanta") ||
+                    lower.contains("sprite") || lower.contains("pepsi") || lower.contains("gaseosa") ||
+                    lower.contains("aquarius zero") || lower.contains("monster zero")
+                ) {
+                    return QuadrupleCalories(1f, 0f, 0.2f, 0f)
+                }
+            }
+
+            // Si ya tiene calorías válidas (> 0) y macros
+            if (rawKcal > 0f) {
+                return QuadrupleCalories(rawKcal, rawP, rawC, rawF)
+            }
+
+            // Si no tiene calorías pero tiene macros:
+            if (rawP > 0f || rawC > 0f || rawF > 0f || rawAlcohol > 0f) {
+                val computed = (rawP * 4f) + (rawC * 4f) + (rawF * 9f) + (rawAlcohol * 7f)
+                if (computed > 0f) {
+                    return QuadrupleCalories(computed, rawP, rawC, rawF)
+                }
+            }
+
+            // Inferencia contextual por categoría alimentaria:
+            return when {
+                // Cervezas (con y sin alcohol)
+                lower.contains("cerveza") || lower.contains("shandy") || lower.contains("radler") ||
+                lower.contains("mahou") || lower.contains("heineken") || lower.contains("estrella") ||
+                lower.contains("san miguel") || lower.contains("cruzcampo") || lower.contains("steinburg") ||
+                lower.contains("ramblers") || lower.contains("birra") -> {
+                    when {
+                        lower.contains("0,0") || lower.contains("0.0") || lower.contains("sin alcohol") || lower.contains("cero") ->
+                            QuadrupleCalories(24f, 0.3f, 5.2f, 0f)
+                        lower.contains("radler") || lower.contains("limon") || lower.contains("limón") ->
+                            QuadrupleCalories(35f, 0.2f, 6.2f, 0f)
+                        lower.contains("tostada") || lower.contains("especial") ->
+                            QuadrupleCalories(48f, 0.5f, 3.8f, 0f)
+                        else ->
+                            QuadrupleCalories(43f, 0.5f, 3.5f, 0f)
+                    }
+                }
+
+                // Vinos
+                lower.contains("vino") ->
+                    QuadrupleCalories(75f, 0.1f, 2.5f, 0f)
+
+                // Cafés
+                lower.contains("cafe") || lower.contains("café") -> {
+                    when {
+                        lower.contains("leche") -> QuadrupleCalories(55f, 3.2f, 5.0f, 2.4f)
+                        lower.contains("cortado") -> QuadrupleCalories(38f, 2.2f, 3.5f, 1.6f)
+                        else -> QuadrupleCalories(2f, 0.2f, 0.3f, 0f) // Café solo espresso o americano
+                    }
+                }
+
+                // Leche
+                lower.contains("leche") || lower.contains("lactea") || lower.contains("láctea") -> {
+                    when {
+                        lower.contains("semi") -> QuadrupleCalories(46f, 3.2f, 4.8f, 1.6f)
+                        lower.contains("desnatada") || lower.contains("0%") -> QuadrupleCalories(35f, 3.3f, 4.9f, 0.2f)
+                        lower.contains("entera") -> QuadrupleCalories(63f, 3.1f, 4.7f, 3.6f)
+                        else -> QuadrupleCalories(46f, 3.2f, 4.8f, 1.6f)
+                    }
+                }
+
+                // Salsas
+                lower.contains("salsa") || lower.contains("mayonesa") || lower.contains("alioli") ||
+                lower.contains("allioli") || lower.contains("ketchup") || lower.contains("kétchup") || lower.contains("mostaza") -> {
+                    when {
+                        lower.contains("mayonesa") || lower.contains("alioli") || lower.contains("allioli") ->
+                            QuadrupleCalories(645f, 1.1f, 2.5f, 71f)
+                        lower.contains("barbacoa") ->
+                            QuadrupleCalories(135f, 1.2f, 30f, 0.4f)
+                        lower.contains("burger") ->
+                            QuadrupleCalories(290f, 1.1f, 12f, 26f)
+                        lower.contains("cesar") || lower.contains("césar") ->
+                            QuadrupleCalories(295f, 1.5f, 6.5f, 30f)
+                        lower.contains("pesto") ->
+                            QuadrupleCalories(460f, 5.2f, 6.0f, 47f)
+                        lower.contains("tomate") ->
+                            QuadrupleCalories(65f, 1.8f, 7.5f, 3.0f)
+                        lower.contains("soja") ->
+                            QuadrupleCalories(65f, 8.5f, 7.5f, 0.1f)
+                        lower.contains("ketchup") || lower.contains("kétchup") ->
+                            QuadrupleCalories(110f, 1.2f, 25f, 0.2f)
+                        lower.contains("mostaza") ->
+                            QuadrupleCalories(90f, 5.0f, 5.0f, 5.0f)
+                        else ->
+                            QuadrupleCalories(150f, 1.5f, 12f, 10.5f)
+                    }
+                }
+
+                // Salmón
+                lower.contains("salmon") || lower.contains("salmón") -> {
+                    if (lower.contains("ahumado") || lower.contains("marinado") || lower.contains("taquitos")) {
+                        QuadrupleCalories(192f, 22f, 0.5f, 11.5f)
+                    } else {
+                        QuadrupleCalories(208f, 20f, 0f, 13.5f)
+                    }
+                }
+
+                // Ensaladilla
+                lower.contains("ensaladilla") ->
+                    QuadrupleCalories(185f, 4.5f, 14f, 12f)
+
+                // Frutos secos
+                lower.contains("pistacho") || lower.contains("cacahuete") || lower.contains("almendra") ||
+                lower.contains("nuez") || lower.contains("anacardo") || lower.contains("pipas") || lower.contains("piñones") ->
+                    QuadrupleCalories(600f, 20f, 15f, 50f)
+
+                // Panes
+                lower.contains("pan") || lower.contains("tostada") || lower.contains("bocadillo") ->
+                    QuadrupleCalories(250f, 9f, 48f, 2f)
+
+                // Yogures
+                lower.contains("yogur") || lower.contains("yogurt") ->
+                    QuadrupleCalories(65f, 4.5f, 4.8f, 3.2f)
+
+                // Carnes
+                lower.contains("pollo") || lower.contains("pavo") ->
+                    QuadrupleCalories(120f, 22f, 0f, 3.5f)
+                lower.contains("ternera") || lower.contains("carne") || lower.contains("hamburguesa") ->
+                    QuadrupleCalories(210f, 20f, 0.5f, 14f)
+
+                // Arroz / Pasta
+                lower.contains("arroz") || lower.contains("pasta") || lower.contains("macarron") || lower.contains("espagueti") ->
+                    QuadrupleCalories(135f, 3.5f, 28f, 0.8f)
+
+                // Frutas
+                lower.contains("manzana") || lower.contains("platano") || lower.contains("plátano") || lower.contains("naranja") ->
+                    QuadrupleCalories(60f, 0.8f, 14f, 0.2f)
+
+                // Verduras
+                lower.contains("ensalada") || lower.contains("tomate") || lower.contains("lechuga") || lower.contains("brocoli") ->
+                    QuadrupleCalories(25f, 1.5f, 4.0f, 0.3f)
+
+                // Default
+                else ->
+                    QuadrupleCalories(50f, 2f, 8f, 1f)
+            }
+        }
     }
 }

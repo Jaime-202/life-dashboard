@@ -49,6 +49,7 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.lifedashboard.data.local.entity.MealEntryEntity
 import com.lifedashboard.data.remote.food.DetectedFoodItem
 import com.lifedashboard.data.remote.food.FoodCatalogItem
+import com.lifedashboard.data.remote.food.FoodCatalogService
 import com.lifedashboard.data.remote.food.FoodSourceCategory
 import com.lifedashboard.data.remote.food.RealFoodImageResolver
 import com.lifedashboard.presentation.theme.*
@@ -1069,8 +1070,14 @@ private fun MealItemRow(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.Center
         ) {
+            val displayCalories = if (meal.calories > 0f || meal.name.contains("agua", ignoreCase = true)) {
+                meal.calories
+            } else {
+                val inf = FoodCatalogService.inferMacrosIfZero(meal.name, 0f, meal.protein, meal.carbs, meal.fat)
+                inf.calories * (meal.grams / 100f)
+            }
             Text(
-                text       = "${meal.calories.toInt()} kcal",
+                text       = "${displayCalories.toInt()} kcal",
                 style      = MaterialTheme.typography.labelMedium,
                 color      = Amber400,
                 fontWeight = FontWeight.Bold,
@@ -1108,7 +1115,13 @@ private fun EditPortionDialog(
     val parsedGrams = gramsInput.toFloatOrNull() ?: meal.grams
     val ratio = if (meal.grams > 0f) parsedGrams / meal.grams else 1f
 
-    val previewKcal = (meal.calories * ratio).coerceAtLeast(0f).toInt()
+    val baseCalories = if (meal.calories > 0f || meal.name.contains("agua", ignoreCase = true)) {
+        meal.calories
+    } else {
+        val inf = FoodCatalogService.inferMacrosIfZero(meal.name, 0f, meal.protein, meal.carbs, meal.fat)
+        inf.calories * (meal.grams / 100f)
+    }
+    val previewKcal = (baseCalories * ratio).coerceAtLeast(0f).toInt()
     val previewProtein = "%.1f".format(Locale.US, (meal.protein * ratio).coerceAtLeast(0f))
     val previewCarbs = "%.1f".format(Locale.US, (meal.carbs * ratio).coerceAtLeast(0f))
     val previewFat = "%.1f".format(Locale.US, (meal.fat * ratio).coerceAtLeast(0f))
@@ -1416,15 +1429,27 @@ private fun QuickAddMealDialog(
                     }
                     Button(
                         onClick = {
-                            val kcal = kcalInput.toFloatOrNull() ?: 0f
-                            val p = proteinInput.toFloatOrNull() ?: 0f
-                            val c = carbsInput.toFloatOrNull() ?: 0f
-                            val f = fatInput.toFloatOrNull() ?: 0f
-                            if (kcal > 0f || p > 0f || c > 0f || f > 0f) {
-                                onAdd(nameInput.ifBlank { "Comida rápida" }, kcal, p, c, f)
+                            var kcal = kcalInput.toFloatOrNull() ?: 0f
+                            var p = proteinInput.toFloatOrNull() ?: 0f
+                            var c = carbsInput.toFloatOrNull() ?: 0f
+                            var f = fatInput.toFloatOrNull() ?: 0f
+                            val safeName = nameInput.ifBlank { "Comida rápida" }
+
+                            if (kcal <= 0f && (p > 0f || c > 0f || f > 0f)) {
+                                kcal = (p * 4f) + (c * 4f) + (f * 9f)
+                            }
+                            if (kcal <= 0f && !safeName.contains("agua", ignoreCase = true)) {
+                                val inf = FoodCatalogService.inferMacrosIfZero(safeName, 0f, p, c, f)
+                                kcal = inf.calories
+                                if (p <= 0f) p = inf.protein
+                                if (c <= 0f) c = inf.carbs
+                                if (f <= 0f) f = inf.fat
+                            }
+                            if (kcal > 0f || p > 0f || c > 0f || f > 0f || safeName.isNotBlank()) {
+                                onAdd(safeName, kcal, p, c, f)
                             }
                         },
-                        enabled = (kcalInput.toFloatOrNull() ?: 0f) > 0f || (proteinInput.toFloatOrNull() ?: 0f) > 0f,
+                        enabled = nameInput.isNotBlank() || (kcalInput.toFloatOrNull() ?: 0f) > 0f || (proteinInput.toFloatOrNull() ?: 0f) > 0f,
                         colors = ButtonDefaults.buttonColors(containerColor = Violet400),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1.3f)
@@ -2163,7 +2188,12 @@ private fun SearchFoodDialog(
                     val item = selectedItem!!
                     val grams = inputGrams.toFloatOrNull() ?: 100f
                     val factor = grams / 100f
-                    val calcKcal = (item.caloriesPer100g * factor).toInt()
+                    val baseKcal = if (item.caloriesPer100g > 0f || item.name.contains("agua", ignoreCase = true)) {
+                        item.caloriesPer100g
+                    } else {
+                        FoodCatalogService.inferMacrosIfZero(item.name, 0f, item.proteinPer100g, item.carbsPer100g, item.fatPer100g).calories
+                    }
+                    val calcKcal = (baseKcal * factor).toInt()
                     val calcP = (item.proteinPer100g * factor).toInt()
                     val calcC = (item.carbsPer100g * factor).toInt()
                     val calcG = (item.fatPer100g * factor).toInt()
@@ -2308,7 +2338,12 @@ private fun SearchFoodDialog(
                                                     overflow = TextOverflow.Ellipsis
                                                 )
                                             }
-                                            Text("${food.caloriesPer100g.toInt()} kcal/100g", style = MaterialTheme.typography.labelSmall, color = Amber400, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                                            val safeKcal100 = if (food.caloriesPer100g > 0f || food.name.contains("agua", ignoreCase = true)) {
+                                                food.caloriesPer100g
+                                            } else {
+                                                FoodCatalogService.inferMacrosIfZero(food.name, 0f, food.proteinPer100g, food.carbsPer100g, food.fatPer100g).calories
+                                            }
+                                            Text("${safeKcal100.toInt()} kcal/100g", style = MaterialTheme.typography.labelSmall, color = Amber400, fontSize = 11.sp, maxLines = 1, softWrap = false)
                                             Text("·", color = Gray500)
                                             Text("P:${food.proteinPer100g.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp, maxLines = 1, softWrap = false)
                                         }
@@ -2341,7 +2376,12 @@ private fun ScannedFoodDialog(
 
     val parsedGrams = inputGrams.toFloatOrNull() ?: food.servingSizeGrams
     val factor = parsedGrams / 100f
-    val calcKcal = (food.caloriesPer100g * factor).toInt()
+    val safeCaloriesPer100 = if (food.caloriesPer100g > 0f || food.name.contains("agua", ignoreCase = true)) {
+        food.caloriesPer100g
+    } else {
+        FoodCatalogService.inferMacrosIfZero(food.name, 0f, food.proteinPer100g, food.carbsPer100g, food.fatPer100g).calories
+    }
+    val calcKcal = (safeCaloriesPer100 * factor).toInt()
     val calcP = "%.1f".format(Locale.US, food.proteinPer100g * factor)
     val calcC = "%.1f".format(Locale.US, food.carbsPer100g * factor)
     val calcF = "%.1f".format(Locale.US, food.fatPer100g * factor)
@@ -2435,8 +2475,13 @@ private fun ScannedFoodDialog(
                                     fontSize = 10.sp
                                 )
                             }
+                            val safeFoodKcal = if (food.caloriesPer100g > 0f || food.name.contains("agua", ignoreCase = true)) {
+                                food.caloriesPer100g
+                            } else {
+                                FoodCatalogService.inferMacrosIfZero(food.name, 0f, food.proteinPer100g, food.carbsPer100g, food.fatPer100g).calories
+                            }
                             Text(
-                                text = "${food.caloriesPer100g.toInt()} kcal / 100g",
+                                text = "${safeFoodKcal.toInt()} kcal / 100g",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Amber400,
                                 fontSize = 11.sp
