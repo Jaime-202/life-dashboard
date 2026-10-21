@@ -551,7 +551,7 @@ private fun NutritionHeroCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(
                 Brush.linearGradient(
                     listOf(
@@ -561,51 +561,44 @@ private fun NutritionHeroCard(
                     )
                 )
             )
-            .border(1.dp, Violet400.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
-            .padding(14.dp)
+            .border(1.dp, Violet400.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            // ─── Fila 1: Resumen de Calorías y Botones Compactos de Metas ───
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // ─── Fila 1: Título "Balance Calórico" y Botones Compactos de Metas ───
             Row(
                 verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier              = Modifier.fillMaxWidth()
             ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = if (remaining >= 0) "$remaining" else "+${-remaining}",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (remaining >= 0) Emerald400 else Rose400
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = if (remaining >= 0) "kcal restantes" else "kcal superadas",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = if (remaining >= 0) Emerald400 else Rose400,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.LocalFireDepartment,
+                        contentDescription = null,
+                        tint = Amber400,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
                     Text(
-                        text = "${state.totalCalories.toInt()} de ${state.targetCalories.toInt()} kcal · ${state.activeBurnedCalories.toInt()} quemadas",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Gray400,
-                        fontSize = 11.sp
+                        text = "Balance Calórico",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = White,
+                        fontSize = 15.sp
                     )
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .background(Violet400.copy(alpha = 0.18f))
-                            .border(1.dp, Violet400.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                            .border(1.dp, Violet400.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
                             .clickable(onClick = onOpenCustomTargets)
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Tune, contentDescription = null, tint = Violet300, modifier = Modifier.size(12.dp))
+                            Icon(Icons.Default.Tune, contentDescription = null, tint = Violet300, modifier = Modifier.size(11.dp))
                             Spacer(Modifier.width(3.dp))
                             Text("Metas", style = MaterialTheme.typography.labelSmall, color = Violet300, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                         }
@@ -613,35 +606,82 @@ private fun NutritionHeroCard(
 
                     Box(
                         modifier = Modifier
-                            .size(28.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .size(26.dp)
+                            .clip(RoundedCornerShape(8.dp))
                             .background(Indigo700)
                             .clickable(onClick = onOpenCalculator),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Calculate, contentDescription = "Calcular según perfil", tint = Gray300, modifier = Modifier.size(15.dp))
+                        Icon(Icons.Default.Calculate, contentDescription = "Calcular según perfil", tint = Gray300, modifier = Modifier.size(13.dp))
                     }
                 }
             }
 
-            // ─── Fila 2: Barra Fina de Progreso Calórico ───
+            // ─── Fila 2: Resumen Numérico (Restantes + Consumidas vs Meta) ───
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = if (remaining >= 0) "$remaining" else "+${-remaining}",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (remaining >= 0) Emerald400 else Rose400
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = if (remaining >= 0) "kcal restantes" else "kcal superadas",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (remaining >= 0) Emerald400 else Rose400,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    )
+                }
+
+                Text(
+                    text = "${state.totalCalories.toInt()} de ${state.targetCalories.toInt()} kcal",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Gray300,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 11.sp
+                )
+            }
+
+            // ─── Fila 3: Barra Fina de Progreso Calórico ───
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(2.5.dp))
                     .background(Indigo700)
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(animatedCaloriesProgress)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(3.dp))
+                        .clip(RoundedCornerShape(2.5.dp))
                         .background(Brush.horizontalGradient(listOf(Violet400, Cyan400)))
                 )
             }
 
-            // ─── Fila 3: 3 Tarjetas Compactas de Macronutrientes ───
+            if (state.activeBurnedCalories > 0f) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Text(
+                        text = "🔥 ${state.activeBurnedCalories.toInt()} kcal quemadas en entreno/pasos",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Cyan400,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            // ─── Fila 4: 3 Mini Tarjetas Compactas de Macronutrientes ───
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -653,7 +693,6 @@ private fun NutritionHeroCard(
                     targetVal = state.targetProtein,
                     progress = state.proteinProgress,
                     color = Violet400,
-                    trackColor = RingTrack,
                     modifier = Modifier.weight(1f)
                 )
                 CompactMacroCard(
@@ -663,7 +702,6 @@ private fun NutritionHeroCard(
                     targetVal = state.targetCarbs,
                     progress = state.carbsProgress,
                     color = Cyan400,
-                    trackColor = RingTrack,
                     modifier = Modifier.weight(1f)
                 )
                 CompactMacroCard(
@@ -673,7 +711,6 @@ private fun NutritionHeroCard(
                     targetVal = state.targetFat,
                     progress = state.fatProgress,
                     color = Amber400,
-                    trackColor = RingTrack,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -689,34 +726,29 @@ private fun CompactMacroCard(
     targetVal: Float,
     progress: Float,
     color: Color,
-    trackColor: Color,
     modifier: Modifier = Modifier
 ) {
     val animatedProgress by animateFloatAsState(
-        targetValue = progress,
+        targetValue = progress.coerceIn(0f, 1f),
         animationSpec = tween(900, easing = FastOutSlowInEasing),
         label = "macro_progress"
     )
-    val remainingGrams = (targetVal - currentVal).coerceAtLeast(0f).toInt()
     val isComplete = currentVal >= targetVal && targetVal > 0f
+    val remainingGrams = (targetVal - currentVal).coerceAtLeast(0f).toInt()
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(Indigo900.copy(alpha = 0.75f))
-            .border(1.dp, color.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
-            .padding(horizontal = 6.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Indigo900.copy(alpha = 0.65f))
+            .border(1.dp, color.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 8.dp, vertical = 7.dp)
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Fila de Encabezado: Emoji + Título
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
+            // Fila 1: Emoji + Nombre de Macro
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text = emoji, fontSize = 11.sp)
                 Spacer(Modifier.width(3.dp))
                 Text(
@@ -725,70 +757,67 @@ private fun CompactMacroCard(
                     color = color,
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.sp,
-                    maxLines = 1,
-                    softWrap = false
+                    maxLines = 1
                 )
             }
 
-            // Anillo Canvas circular de 34dp con % animado
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.size(34.dp)
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val strokeW = 3.5.dp.toPx()
-                    drawArc(
-                        color = trackColor,
-                        startAngle = -90f,
-                        sweepAngle = 360f,
-                        useCenter = false,
-                        style = Stroke(width = strokeW, cap = StrokeCap.Round)
-                    )
-                    drawArc(
-                        color = color,
-                        startAngle = -90f,
-                        sweepAngle = animatedProgress * 360f,
-                        useCenter = false,
-                        style = Stroke(width = strokeW, cap = StrokeCap.Round)
-                    )
-                }
-                Text(
-                    text = "${(progress * 100).toInt()}%",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 9.sp
-                )
-            }
-
-            // Gramos: ${current} / ${target}g
+            // Fila 2: Gramos actuales / meta
             Row(
                 verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.Center
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = "${currentVal.toInt()}",
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = White,
-                    fontSize = 12.sp
+                    color = White
                 )
                 Text(
                     text = "/${targetVal.toInt()}g",
-                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 10.sp,
                     color = Gray400,
-                    fontSize = 9.sp
+                    modifier = Modifier.padding(bottom = 1.dp)
                 )
             }
 
-            // Estado restante
-            Text(
-                text = if (isComplete) "✓ Listo" else "${remainingGrams}g rest.",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isComplete) Emerald400 else Gray400,
-                fontSize = 9.sp,
-                maxLines = 1
-            )
+            // Fila 3: Barra fina de progreso
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.5.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Indigo700)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(animatedProgress)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(color)
+                )
+            }
+
+            // Fila 4: % y restantes
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "${(progress * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isComplete) Emerald400 else color,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = if (isComplete) "✓ Listo" else "${remainingGrams}g rest.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isComplete) Emerald400 else Gray400,
+                    fontSize = 8.5.sp,
+                    maxLines = 1
+                )
+            }
         }
     }
 }
@@ -2995,10 +3024,12 @@ private fun NutritionCoachCard(
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var isExpanded by remember { mutableStateOf(false) }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(
                 Brush.linearGradient(
                     colors = listOf(
@@ -3007,10 +3038,10 @@ private fun NutritionCoachCard(
                     )
                 )
             )
-            .border(1.dp, Violet400.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
-            .padding(18.dp)
+            .border(1.dp, Violet400.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(14.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -3020,7 +3051,7 @@ private fun NutritionCoachCard(
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(30.dp)
                             .clip(CircleShape)
                             .background(Violet400.copy(alpha = 0.2f))
                     ) {
@@ -3028,22 +3059,23 @@ private fun NutritionCoachCard(
                             imageVector = Icons.Default.AutoAwesome,
                             contentDescription = null,
                             tint = Violet300,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(17.dp)
                         )
                     }
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f, fill = false)) {
                         Text(
                             text = "Coach Nutricional IA",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = White
+                            color = White,
+                            fontSize = 14.sp
                         )
                         Text(
                             text = "¿Necesitas comer más o menos? ¿Qué comer?",
                             style = MaterialTheme.typography.labelSmall,
                             color = Gray400,
-                            fontSize = 11.sp
+                            fontSize = 10.5.sp
                         )
                     }
                 }
@@ -3051,7 +3083,7 @@ private fun NutritionCoachCard(
                 IconButton(
                     onClick = onRefresh,
                     enabled = !isLoading,
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(30.dp)
                 ) {
                     val rotation by animateFloatAsState(
                         targetValue = if (isLoading) 360f else 0f,
@@ -3065,7 +3097,7 @@ private fun NutritionCoachCard(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "Actualizar recomendación",
                         tint = if (isLoading) Violet300 else Gray400,
-                        modifier = Modifier.size(18.dp).rotate(rotation)
+                        modifier = Modifier.size(16.dp).rotate(rotation)
                     )
                 }
             }
@@ -3078,33 +3110,50 @@ private fun NutritionCoachCard(
                 if (loading) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Violet400, strokeWidth = 2.dp)
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Violet400, strokeWidth = 2.dp)
                         Text(
                             text = "Calculando tu balance calórico y recomendación...",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Violet300
+                            color = Violet300,
+                            fontSize = 12.sp
                         )
                     }
                 } else if (!text.isNullOrBlank()) {
-                    Text(
-                        text = text,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Gray100,
-                        lineHeight = 22.sp
-                    )
+                    Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
+                        Text(
+                            text = text,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray100,
+                            fontSize = 12.5.sp,
+                            lineHeight = 18.sp,
+                            maxLines = if (isExpanded) Int.MAX_VALUE else 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (text.length > 120) {
+                            Text(
+                                text = if (isExpanded) "Mostrar menos ▲" else "Leer más ▼",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Violet300,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
                 } else {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
                     ) {
                         Text(
                             text = "Toca para analizar tu ingesta y recibir consejo",
                             style = MaterialTheme.typography.bodySmall,
                             color = Gray400,
+                            fontSize = 11.5.sp,
                             modifier = Modifier.weight(1f)
                         )
                         Spacer(Modifier.width(8.dp))
