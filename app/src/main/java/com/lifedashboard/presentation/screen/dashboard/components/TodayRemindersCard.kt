@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -124,55 +125,55 @@ fun TodayRemindersCard(
             }
 
             if (reminders.isEmpty()) {
-                // Empty state
-                Box(
+                // Empty state compacto y elegante
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(Indigo900.copy(alpha = 0.5f))
-                        .border(1.dp, Indigo700.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                        .padding(16.dp)
+                        .border(1.dp, Indigo700.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Text(
-                            text = "💊",
-                            fontSize = 28.sp
-                        )
-                        Text(
-                            text = "No tienes tomas programadas para hoy",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Gray300,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Configura tus tomas (creatina, suplementos, hábitos) con su frecuencia en Ajustes.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Gray400,
-                            fontSize = 11.sp,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        OutlinedButton(
-                            onClick = onNavigateToSettings,
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Violet400),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Configurar en Ajustes", style = MaterialTheme.typography.labelSmall)
+                        Text(text = "💊", fontSize = 18.sp)
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Sin tomas programadas para hoy",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Gray300,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                text = "Configura creatina, vitaminas o hábitos",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Gray500,
+                                fontSize = 11.sp
+                            )
                         }
+                    }
+
+                    OutlinedButton(
+                        onClick = onNavigateToSettings,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Violet400),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text("Añadir", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                 }
             } else {
                 // List of reminders
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     reminders.forEach { reminder ->
@@ -207,10 +208,10 @@ private fun ReminderRow(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(backgroundColor)
-            .border(1.dp, borderColor, RoundedCornerShape(14.dp))
-            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -224,19 +225,19 @@ private fun ReminderRow(
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .background(
                             if (item.isCompleted) Emerald400.copy(alpha = 0.15f) else Violet400.copy(alpha = 0.15f)
                         )
                 ) {
                     Text(
                         text = item.iconEmoji.ifBlank { "💊" },
-                        fontSize = 18.sp
+                        fontSize = 16.sp
                     )
                 }
 
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(10.dp))
 
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -255,11 +256,11 @@ private fun ReminderRow(
                                 imageVector = Icons.Default.CheckCircle,
                                 contentDescription = null,
                                 tint = Emerald400,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                         }
                     }
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(1.dp))
                     Text(
                         text = if (item.isCompleted) "Completado hoy" else item.subtitle,
                         style = MaterialTheme.typography.bodySmall,
@@ -271,7 +272,7 @@ private fun ReminderRow(
 
             Spacer(Modifier.width(8.dp))
 
-            // Interruptor interactivo
+            // Interruptor interactivo compacto
             Switch(
                 checked = item.isCompleted,
                 onCheckedChange = onToggle,
@@ -280,7 +281,8 @@ private fun ReminderRow(
                     checkedTrackColor = Emerald400,
                     uncheckedThumbColor = Gray400,
                     uncheckedTrackColor = Indigo700
-                )
+                ),
+                modifier = Modifier.scale(0.85f)
             )
         }
     }

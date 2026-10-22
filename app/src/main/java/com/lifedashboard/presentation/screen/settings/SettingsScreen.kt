@@ -21,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -696,33 +697,15 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         SectionHeader("Notificaciones & Hábitos")
         SettingsCard {
             val notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
-            if (!notificationsEnabled) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Rose400.copy(alpha = 0.15f))
-                        .border(1.dp, Rose400.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                        .padding(12.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.NotificationsOff, contentDescription = null, tint = Rose400, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Notificaciones desactivadas en Android",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Rose400,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Activa los avisos en Ajustes del teléfono para recibir tus recordatorios.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Gray300,
-                                fontSize = 11.sp
-                            )
-                        }
+
+            SettingsItem(
+                icon      = if (notificationsEnabled) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
+                iconColor = if (notificationsEnabled) Violet400 else Rose400,
+                title     = "Comprobar Notificaciones",
+                subtitle  = if (notificationsEnabled) "Prueba el sonido y la alerta en tu móvil"
+                            else "Desactivadas en Android · Toca para activar",
+                trailing  = {
+                    if (!notificationsEnabled) {
                         Button(
                             onClick = {
                                 val intent = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
@@ -737,63 +720,20 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                         ) {
                             Text("Activar", color = White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                         }
-                    }
-                }
-                HorizontalDivider(color = Indigo700)
-            }
-
-            // Fila para comprobar / testear avisos instantáneos
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Comprobar Notificaciones",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = White,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (notificationsEnabled) Emerald400.copy(alpha = 0.2f) else Rose400.copy(alpha = 0.2f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                    } else {
+                        OutlinedButton(
+                            onClick = { viewModel.sendTestNotification() },
+                            colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                            border  = BorderStroke(1.dp, Violet400),
+                            shape   = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(30.dp)
                         ) {
-                            Text(
-                                text = if (notificationsEnabled) "Activas ✔" else "Desactivadas ✖",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (notificationsEnabled) Emerald400 else Rose400,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Text("Probar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                         }
                     }
-                    Text(
-                        text = "Envía una alerta de prueba con sonido a tu móvil ahora mismo",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Gray400
-                    )
                 }
-
-                OutlinedButton(
-                    onClick = { viewModel.sendTestNotification() },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
-                    border = BorderStroke(1.dp, Violet400),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier.height(32.dp)
-                ) {
-                    Icon(Icons.Default.NotificationsActive, contentDescription = null, modifier = Modifier.size(14.dp), tint = Violet300)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Probar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                }
-            }
+            )
             HorizontalDivider(color = Indigo700)
 
             SwitchSettingItem(
@@ -916,99 +856,58 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         }
 
         // ─── Tomas & Recordatorios Personalizados ───────────────────────────
-        SectionHeader("Tomas & Recordatorios Personalizados")
+        SectionHeader("Tomas & Hábitos")
         SettingsCard {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Tomas y Hábitos Diarios",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = White,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (state.reminders.isNotEmpty()) {
-                                Spacer(Modifier.width(8.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(Emerald400.copy(alpha = 0.2f))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "${state.reminders.count { it.isEnabled }} activas",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Emerald400,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                        Text(
-                            text = "Configura creatina, suplementos o tareas con avisos puntuales a tu móvil.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Gray400,
-                            fontSize = 11.sp
-                        )
-                    }
-
-                    Button(
+            SettingsItem(
+                icon      = Icons.Default.AlarmOn,
+                iconColor = Violet400,
+                title     = if (state.reminders.isNotEmpty()) "Tomas (${state.reminders.count { it.isEnabled }} activas)" else "Tomas y Hábitos",
+                subtitle  = "Suplementos y hábitos con aviso puntual",
+                trailing  = {
+                    OutlinedButton(
                         onClick = {
                             reminderToEdit = null
                             showAddEditReminderModal = true
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Violet400),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                        border  = BorderStroke(1.dp, Violet400),
+                        shape   = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = Indigo900)
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Añadir", color = Indigo900, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                        Text("Añadir", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                 }
+            )
 
-                if (state.reminders.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Indigo900.copy(alpha = 0.5f))
-                            .border(1.dp, Indigo700.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                            .padding(14.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Aún no tienes recordatorios personalizados.\nPulsa en \"Añadir\" para crear tu primera toma.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Gray400,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        state.reminders.forEach { reminder ->
-                            ReminderSettingsItemRow(
-                                reminder = reminder,
-                                onToggle = { enabled -> viewModel.toggleReminderEnabled(reminder.id, enabled) },
-                                onEdit = {
-                                    reminderToEdit = reminder
-                                    showAddEditReminderModal = true
-                                },
-                                onDelete = { viewModel.deleteReminder(reminder.id) }
-                            )
-                        }
-                    }
+            if (state.reminders.isEmpty()) {
+                HorizontalDivider(color = Indigo700)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Sin tomas configuradas · Pulsa 'Añadir' para crear una.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Gray500
+                    )
+                }
+            } else {
+                state.reminders.forEach { reminder ->
+                    HorizontalDivider(color = Indigo700)
+                    ReminderSettingsItemRow(
+                        reminder = reminder,
+                        onToggle = { enabled -> viewModel.toggleReminderEnabled(reminder.id, enabled) },
+                        onEdit = {
+                            reminderToEdit = reminder
+                            showAddEditReminderModal = true
+                        },
+                        onDelete = { viewModel.deleteReminder(reminder.id) }
+                    )
                 }
             }
         }
@@ -1403,87 +1302,81 @@ private fun ReminderSettingsItemRow(
         else -> "Aviso a las ${reminder.timeOfDay}"
     }
 
-    Box(
-        modifier = Modifier
+    Row(
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier              = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Indigo900.copy(alpha = 0.6f))
-            .border(1.dp, Indigo700, RoundedCornerShape(14.dp))
             .clickable(onClick = onEdit)
-            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
+            modifier          = Modifier.weight(1f)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (reminder.isEnabled) Violet400.copy(alpha = 0.15f) else Indigo900.copy(alpha = 0.4f))
             ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Violet400.copy(alpha = 0.15f))
-                ) {
-                    Text(text = reminder.iconEmoji.ifBlank { "💊" }, fontSize = 18.sp)
-                }
-
-                Spacer(Modifier.width(10.dp))
-
-                Column {
-                    Text(
-                        text = reminder.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (reminder.isEnabled) White else Gray500,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (reminder.isEnabled) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
-                            contentDescription = null,
-                            tint = if (reminder.isEnabled) Amber400 else Gray500,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (reminder.isEnabled) Gray300 else Gray500,
-                            fontSize = 11.sp
-                        )
-                    }
-                }
+                Text(text = reminder.iconEmoji.ifBlank { "💊" }, fontSize = 16.sp)
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Switch(
-                    checked = reminder.isEnabled,
-                    onCheckedChange = onToggle,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Indigo900,
-                        checkedTrackColor = Violet400,
-                        uncheckedThumbColor = Gray400,
-                        uncheckedTrackColor = Indigo700
-                    )
-                )
+            Spacer(Modifier.width(10.dp))
 
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(32.dp)
-                ) {
+            Column {
+                Text(
+                    text = reminder.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (reminder.isEnabled) White else Gray500,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(1.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Eliminar",
-                        tint = Rose400,
-                        modifier = Modifier.size(18.dp)
+                        imageVector = if (reminder.isEnabled) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
+                        contentDescription = null,
+                        tint = if (reminder.isEnabled) Amber400 else Gray500,
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (reminder.isEnabled) Gray300 else Gray500,
+                        fontSize = 11.sp
                     )
                 }
+            }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(
+                checked = reminder.isEnabled,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor   = Indigo900,
+                    checkedTrackColor   = Violet400,
+                    uncheckedThumbColor = Gray400,
+                    uncheckedTrackColor = Indigo700
+                ),
+                modifier = Modifier.scale(0.85f)
+            )
+
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = "Eliminar",
+                    tint = Rose400.copy(alpha = 0.7f),
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
     }
@@ -1567,19 +1460,19 @@ private fun AddEditReminderModal(
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(
                                     if (isSelected) Violet400.copy(alpha = 0.35f) else Indigo900.copy(alpha = 0.6f)
                                 )
                                 .border(
                                     1.dp,
                                     if (isSelected) Violet400 else Indigo700,
-                                    RoundedCornerShape(10.dp)
+                                    RoundedCornerShape(8.dp)
                                 )
                                 .clickable { iconEmoji = emoji }
                         ) {
-                            Text(text = emoji, fontSize = 20.sp)
+                            Text(text = emoji, fontSize = 16.sp)
                         }
                     }
                 }
@@ -1601,21 +1494,21 @@ private fun AddEditReminderModal(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(
                                     if (isSelected) Violet400 else Indigo900.copy(alpha = 0.7f)
                                 )
                                 .border(
                                     1.dp,
                                     if (isSelected) Violet300 else Indigo700,
-                                    RoundedCornerShape(10.dp)
+                                    RoundedCornerShape(8.dp)
                                 )
                                 .clickable { type = t }
-                                .padding(vertical = 10.dp)
+                                .padding(vertical = 6.dp)
                         ) {
                             Text(
                                 text = label,
-                                style = MaterialTheme.typography.labelMedium,
+                                style = MaterialTheme.typography.labelSmall,
                                 color = if (isSelected) Indigo900 else White,
                                 fontWeight = FontWeight.Bold
                             )
@@ -1625,7 +1518,7 @@ private fun AddEditReminderModal(
 
                 // Días activos de la semana (si es Semanal)
                 if (type == ReminderType.SEMANAL) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Días activos de la semana:", style = MaterialTheme.typography.labelSmall, color = Gray400)
                         Row(
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1636,7 +1529,7 @@ private fun AddEditReminderModal(
                                 Box(
                                     contentAlignment = Alignment.Center,
                                     modifier = Modifier
-                                        .size(34.dp)
+                                        .size(28.dp)
                                         .clip(CircleShape)
                                         .background(
                                             if (isDaySelected) Emerald400 else Indigo900.copy(alpha = 0.7f)
@@ -1656,30 +1549,24 @@ private fun AddEditReminderModal(
                                 ) {
                                     Text(
                                         text = label,
-                                        style = MaterialTheme.typography.labelMedium,
+                                        style = MaterialTheme.typography.labelSmall,
                                         color = if (isDaySelected) Indigo900 else White,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
                         }
-                        Text(
-                            text = "Solo se mostrará en tu panel los días seleccionados.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Gray400,
-                            fontSize = 11.sp
-                        )
                     }
                 }
 
-                // Hora del Aviso / Notificación (para TODOS los tipos de recordatorio)
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Hora del Aviso / Notificación
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Alarm, contentDescription = null, tint = Violet300, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Alarm, contentDescription = null, tint = Violet300, modifier = Modifier.size(15.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            text = "Hora de la Notificación en el móvil:",
-                            style = MaterialTheme.typography.labelMedium,
+                            text = "Hora de la Notificación:",
+                            style = MaterialTheme.typography.labelSmall,
                             color = White,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -1698,7 +1585,7 @@ private fun AddEditReminderModal(
                             focusedTextColor = White,
                             unfocusedTextColor = White
                         ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(10.dp),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -1724,7 +1611,7 @@ private fun AddEditReminderModal(
                                         RoundedCornerShape(8.dp)
                                     )
                                     .clickable { timeOfDay = preset }
-                                    .padding(vertical = 6.dp)
+                                    .padding(vertical = 5.dp)
                             ) {
                                 Text(
                                     text = preset,
@@ -1738,7 +1625,7 @@ private fun AddEditReminderModal(
                     }
 
                     Text(
-                        text = "🔔 Tu teléfono te avisará puntualmente con sonido y la opción de marcar la toma directamente desde la notificación.",
+                        text = "🔔 Aviso puntual con sonido y opción de marcar como tomado.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Gray400,
                         fontSize = 11.sp
@@ -1806,20 +1693,19 @@ private fun EnhancedUserProfileCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(
-                Brush.radialGradient(
-                    colors = listOf(
-                        Violet400.copy(alpha = 0.22f),
-                        Indigo800
-                    ),
-                    radius = 800f
+                Brush.linearGradient(
+                    listOf(
+                        Indigo800,
+                        Color(0xFF1E1444)
+                    )
                 )
             )
-            .border(1.dp, Indigo700, RoundedCornerShape(24.dp))
-            .padding(18.dp)
+            .border(1.dp, Indigo700, RoundedCornerShape(20.dp))
+            .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1831,27 +1717,25 @@ private fun EnhancedUserProfileCard(
                         .weight(1f)
                         .clickable(onClick = onOpenProfile)
                 ) {
-                    // Avatar con inicial
+                    // Avatar compacto con degradado violeta
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(52.dp)
+                            .size(42.dp)
                             .clip(CircleShape)
                             .background(
-                                Brush.linearGradient(
-                                    listOf(Violet400, Color(0xFF6366F1))
-                                )
+                                Brush.linearGradient(listOf(Violet400, Color(0xFF6366F1)))
                             )
                     ) {
                         Text(
                             text       = userName.firstOrNull()?.uppercase() ?: "J",
-                            fontSize   = 22.sp,
+                            fontSize   = 18.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color      = White
                         )
                     }
 
-                    Spacer(Modifier.width(14.dp))
+                    Spacer(Modifier.width(12.dp))
 
                     Column {
                         Text(
@@ -1859,25 +1743,25 @@ private fun EnhancedUserProfileCard(
                             style      = MaterialTheme.typography.titleMedium,
                             color      = White,
                             fontWeight = FontWeight.Bold,
-                            fontSize   = 18.sp
+                            fontSize   = 16.sp
                         )
-                        Spacer(Modifier.height(3.dp))
+                        Spacer(Modifier.height(2.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(Violet400.copy(alpha = 0.25f))
+                                    .background(Violet400.copy(alpha = 0.2f))
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
-                                Text(levelLabel, fontSize = 10.sp, color = Violet300, fontWeight = FontWeight.Bold)
+                                Text(levelLabel, fontSize = 10.sp, color = Violet300, fontWeight = FontWeight.SemiBold)
                             }
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(Cyan400.copy(alpha = 0.20f))
+                                    .background(Cyan400.copy(alpha = 0.15f))
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
-                                Text(goalLabel, fontSize = 10.sp, color = Cyan400, fontWeight = FontWeight.Bold)
+                                Text(goalLabel, fontSize = 10.sp, color = Cyan400, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
@@ -1886,42 +1770,44 @@ private fun EnhancedUserProfileCard(
                 IconButton(
                     onClick  = onOpenProfile,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(32.dp)
                         .clip(CircleShape)
-                        .background(Indigo700.copy(alpha = 0.6f))
+                        .background(Indigo700.copy(alpha = 0.5f))
                 ) {
-                    Icon(Icons.Default.Edit, contentDescription = "Editar perfil", tint = White, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Edit, contentDescription = "Editar perfil", tint = Gray300, modifier = Modifier.size(15.dp))
                 }
             }
 
-            // Datos antropométricos
+            // Barra unificada de métricas (cápsula compacta y limpia)
             Row(
-                modifier              = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Indigo900.copy(alpha = 0.5f))
+                    .border(1.dp, Indigo700.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                    .padding(vertical = 8.dp, horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                MetricChip("Peso", "${weightKg.toInt()} kg", Modifier.weight(1f))
-                MetricChip("Altura", "${heightCm} cm", Modifier.weight(1f))
-                MetricChip("IMC", imc, Modifier.weight(1f))
+                CompactMetricItem("Peso", "${String.format(Locale.US, "%.1f", weightKg)} kg", Modifier.weight(1f))
+                Box(modifier = Modifier.width(1.dp).height(20.dp).background(Indigo700.copy(alpha = 0.5f)))
+                CompactMetricItem("Altura", "${heightCm} cm", Modifier.weight(1f))
+                Box(modifier = Modifier.width(1.dp).height(20.dp).background(Indigo700.copy(alpha = 0.5f)))
+                CompactMetricItem("IMC", imc, Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun MetricChip(label: String, value: String, modifier: Modifier) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(Indigo900.copy(alpha = 0.6f))
-            .border(1.dp, Indigo700.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-            .padding(vertical = 8.dp, horizontal = 4.dp),
-        contentAlignment = Alignment.Center
+private fun CompactMetricItem(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = label, style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 10.sp)
-            Spacer(Modifier.height(2.dp))
-            Text(text = value, style = MaterialTheme.typography.labelMedium, color = White, fontWeight = FontWeight.Bold)
-        }
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 10.sp)
+        Spacer(Modifier.height(1.dp))
+        Text(text = value, style = MaterialTheme.typography.labelMedium, color = White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
     }
 }
 
@@ -1963,7 +1849,7 @@ private fun WeightTrackerCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(
                 Brush.linearGradient(
                     listOf(
@@ -1972,11 +1858,11 @@ private fun WeightTrackerCard(
                     )
                 )
             )
-            .border(1.dp, Indigo700, RoundedCornerShape(24.dp))
-            .padding(18.dp)
+            .border(1.dp, Indigo700, RoundedCornerShape(20.dp))
+            .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            // Cabecera con título y botón de registro
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Cabecera con título, peso actual y botón de registro
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1989,43 +1875,48 @@ private fun WeightTrackerCard(
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(10.dp))
                             .background(Violet400.copy(alpha = 0.15f))
                     ) {
                         Icon(
                             imageVector = Icons.Default.FitnessCenter,
                             contentDescription = null,
                             tint = Violet300,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     Spacer(Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                    Column {
                         Text(
                             text = "Seguimiento de Peso",
                             style = MaterialTheme.typography.titleMedium,
                             color = White,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            fontSize = 15.sp
                         )
-                        Text(
-                            text = "Progreso de composición física",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Gray400,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${String.format(Locale.US, "%.1f", latestWeight)} kg",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Violet300,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "· ${deltaTextAndColor.first} · ${imcCategory.first}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Gray400,
+                                fontSize = 11.sp
+                            )
+                        }
                     }
                 }
-
-                Spacer(Modifier.width(10.dp))
 
                 IconButton(
                     onClick  = onAddWeight,
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(32.dp)
                         .clip(CircleShape)
                         .background(Violet400)
                 ) {
@@ -2033,81 +1924,7 @@ private fun WeightTrackerCard(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Registrar pesaje",
                         tint = Indigo900,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            // Fila central: Peso Actual + Variación + IMC
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Indigo700.copy(alpha = 0.35f))
-                    .border(1.dp, Indigo700.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Column {
-                    Text(
-                        text = "ÚLTIMO REGISTRO",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Gray400,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            text = String.format(Locale.US, "%.1f", latestWeight),
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = White,
-                            fontWeight = FontWeight.Black
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = "kg",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Violet300,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 3.dp)
-                        )
-                    }
-                }
-
-                // Variación respecto al pesaje anterior
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "VARIACIÓN",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Gray400,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        deltaTextAndColor.third?.let { icon ->
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = null,
-                                tint = deltaTextAndColor.second,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(2.dp))
-                        }
-                        Text(
-                            text = deltaTextAndColor.first,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = deltaTextAndColor.second,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Text(
-                        text = "IMC ${String.format(Locale.US, "%.1f", imc)} · ${imcCategory.first}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = imcCategory.second,
-                        fontSize = 11.sp
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -2118,7 +1935,7 @@ private fun WeightTrackerCard(
                     weightHistory = weightHistory,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp)
+                        .height(135.dp)
                 )
 
                 // Enlace al historial completo
@@ -2127,13 +1944,13 @@ private fun WeightTrackerCard(
                     horizontalArrangement = Arrangement.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .clickable(onClick = onViewHistory)
-                        .padding(vertical = 4.dp)
+                        .padding(vertical = 2.dp)
                 ) {
                     Text(
                         text = "Ver historial completo (${weightHistory.size} registros)",
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelSmall,
                         color = Violet300,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -2142,12 +1959,12 @@ private fun WeightTrackerCard(
                         imageVector = Icons.Default.ChevronRight,
                         contentDescription = null,
                         tint = Violet300,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             } else {
                 Text(
-                    text = "Aún no has registrado ningún pesaje. Pulsa en 'Pesar' para comenzar tu seguimiento.",
+                    text = "Aún no has registrado ningún pesaje. Pulsa en '+' para comenzar tu seguimiento.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Gray500
                 )
@@ -2888,7 +2705,7 @@ private fun EditApiKeyModal(
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Obtener Clave Gratis en Google AI Studio", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
@@ -3152,10 +2969,10 @@ private fun OptionChip(label: String, isSelected: Boolean, modifier: Modifier, o
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(if (isSelected) Violet400 else Indigo700)
             .clickable(onClick = onClick)
-            .padding(vertical = 9.dp)
+            .padding(vertical = 7.dp)
     ) {
         Text(
             text       = label,
