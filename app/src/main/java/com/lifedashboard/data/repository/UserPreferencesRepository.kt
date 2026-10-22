@@ -29,7 +29,7 @@ data class UserGoals(
     val showAiInsight: Boolean = true,
     val showUpcomingEvents: Boolean = true,
     val dailyReminders: Boolean = true,
-    val hydrationReminder: Boolean = true,
+    val hydrationReminder: Boolean = false,
     val inactivityAlerts: Boolean = false,
     val eveningReview: Boolean = true,
     val aiStyle: String = "CIENTIFICO",            // "CIENTIFICO" | "MOTIVADOR" | "DIRECTO"
@@ -108,7 +108,7 @@ class UserPreferencesRepository @Inject constructor(
                 showAiInsight        = prefs[Keys.SHOW_AI_INSIGHT] ?: true,
                 showUpcomingEvents   = prefs[Keys.SHOW_UPCOMING_EVENTS] ?: true,
                 dailyReminders       = prefs[Keys.DAILY_REMINDERS] ?: true,
-                hydrationReminder    = prefs[Keys.HYDRATION_REMINDER] ?: true,
+                hydrationReminder    = prefs[Keys.HYDRATION_REMINDER] ?: false,
                 inactivityAlerts     = prefs[Keys.INACTIVITY_ALERTS] ?: false,
                 eveningReview        = prefs[Keys.EVENING_REVIEW] ?: true,
                 aiStyle              = prefs[Keys.AI_STYLE] ?: "CIENTIFICO",

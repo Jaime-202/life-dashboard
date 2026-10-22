@@ -20,27 +20,9 @@ class HydrationReminderWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
-        return try {
-            val goals = userPreferences.userGoals.first()
-            if (!goals.hydrationReminder) {
-                return Result.success()
-            }
-
-            // Solo notificar en horario diurno (entre 09:00 y 21:59)
-            val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-            if (currentHour in 9..21) {
-                NotificationHelper.showHydrationReminder(
-                    context = context,
-                    title = "💧 Momento de Hidratarte",
-                    message = "Bebe un vaso de agua para mantener tu metabolismo activo, hidratación y energía."
-                )
-            }
-
-            Result.success()
-        } catch (e: Exception) {
-            Log.e("HydrationWorker", "Error ejecutando recordatorio de hidratación", e)
-            Result.failure()
-        }
+        // Alerta de hidratación deshabilitada por el usuario
+        androidx.work.WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+        return Result.success()
     }
 
     companion object {

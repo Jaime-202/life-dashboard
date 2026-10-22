@@ -65,17 +65,11 @@ object NotificationHelper {
             }
             manager.createNotificationChannel(remindersChannel)
 
-            // 3. Canal Hidratación
-            val hydrationChannel = NotificationChannel(
-                CHANNEL_HYDRATION_ID,
-                CHANNEL_HYDRATION_NAME,
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = CHANNEL_HYDRATION_DESC
-                enableVibration(true)
-                setShowBadge(true)
-            }
-            manager.createNotificationChannel(hydrationChannel)
+            // 3. Eliminar canal Hidratación si existía
+            try {
+                manager.deleteNotificationChannel(CHANNEL_HYDRATION_ID)
+                NotificationManagerCompat.from(context).cancel(NOTIFICATION_HYDRATION_ID)
+            } catch (ignored: Exception) {}
 
             // 4. Canal Resumen Diario
             val dailyChannel = NotificationChannel(
@@ -207,38 +201,10 @@ object NotificationHelper {
     }
 
     /**
-     * Alerta periódica de hidratación y pausas activas.
+     * Alerta periódica de hidratación deshabilitada.
      */
     fun showHydrationReminder(context: Context, title: String, message: String) {
-        createChannels(context)
-        if (!hasPostNotificationPermission(context)) return
-
-        val openIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val openPendingIntent = PendingIntent.getActivity(
-            context,
-            NOTIFICATION_HYDRATION_ID,
-            openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_HYDRATION_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .setAutoCancel(true)
-            .setContentIntent(openPendingIntent)
-            .build()
-
-        try {
-            NotificationManagerCompat.from(context).notify(NOTIFICATION_HYDRATION_ID, notification)
-        } catch (e: SecurityException) {
-            // Permiso denegado
-        }
+        NotificationManagerCompat.from(context).cancel(NOTIFICATION_HYDRATION_ID)
     }
 
     /**

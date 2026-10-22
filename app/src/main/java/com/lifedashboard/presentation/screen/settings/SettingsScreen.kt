@@ -85,7 +85,7 @@ data class SettingsState(
     val showAiInsight: Boolean = true,
     val showUpcomingEvents: Boolean = true,
     val dailyReminders: Boolean = true,
-    val hydrationReminder: Boolean = true,
+    val hydrationReminder: Boolean = false,
     val inactivityAlerts: Boolean = false,
     val eveningReview: Boolean = true,
     val aiStyle: String = "CIENTIFICO",
@@ -741,13 +741,6 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 subtitle        = "Notificación matutina con el resumen de tus metas",
                 checked         = state.dailyReminders,
                 onCheckedChange = { viewModel.toggleDailyReminders(it) }
-            )
-            HorizontalDivider(color = Indigo700)
-            SwitchSettingItem(
-                title           = "Alerta de Hidratación",
-                subtitle        = "Avisos periódicos para beber agua y pausas activas",
-                checked         = state.hydrationReminder,
-                onCheckedChange = { viewModel.toggleHydrationReminder(it) }
             )
             HorizontalDivider(color = Indigo700)
             SwitchSettingItem(
