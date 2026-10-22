@@ -54,12 +54,21 @@ class NutritionRepository @Inject constructor(
         return catalogService.findFoodByBarcode(barcode)
     }
 
-    suspend fun analyzeFoodPhoto(bitmap: Bitmap, userDescription: String): FoodAiResult {
-        return aiService.analyzeFoodImage(bitmap, userDescription)
+    suspend fun analyzeFoodPhoto(
+        bitmap: Bitmap,
+        userDescription: String,
+        mealType: String = "",
+        existingItems: List<String> = emptyList()
+    ): FoodAiResult {
+        return aiService.analyzeFoodImage(bitmap, userDescription, mealType, existingItems)
     }
 
-    suspend fun analyzeFoodText(userDescription: String): FoodAiResult {
-        return aiService.analyzeFoodText(userDescription)
+    suspend fun analyzeFoodText(
+        userDescription: String,
+        mealType: String = "",
+        existingItems: List<String> = emptyList()
+    ): FoodAiResult {
+        return aiService.analyzeFoodText(userDescription, mealType, existingItems)
     }
 
     suspend fun getNutritionAdvice(

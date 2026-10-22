@@ -93,7 +93,9 @@ class FoodAiService @Inject constructor(
      */
     suspend fun analyzeFoodImage(
         bitmap: Bitmap,
-        userDescription: String
+        userDescription: String,
+        mealType: String = "",
+        existingItemsContext: List<String> = emptyList()
     ): FoodAiResult = withContext(Dispatchers.IO) {
         val userGoals = userPreferences.userGoals.first()
         val apiKey = userGoals.geminiApiKey.ifBlank {
@@ -117,7 +119,7 @@ class FoodAiService @Inject constructor(
         try {
             // Escalar a 768px máx para envío rápido y optimización de memoria
             val scaledBitmap = scaleBitmapIfNeeded(bitmap, maxDimension = 768)
-            val prompt = buildVisionPrompt(userDescription)
+            val prompt = buildVisionPrompt(userDescription, mealType, existingItemsContext)
 
             // Estrategia de modelos: selección inteligente (Gemini 3.8 Flash por defecto con fallbacks automáticos)
             val candidateModels = GeminiModelManager.getCandidateModels(apiKey, userGoals.geminiModel)
@@ -188,22 +190,70 @@ class FoodAiService @Inject constructor(
         }
     }
 
-    private fun buildVisionPrompt(userDescription: String): String {
+    private fun formatMealContext(
+        mealType: String,
+        existingItemsContext: List<String>
+    ): String {
+        val sb = StringBuilder()
+        if (mealType.isNotBlank()) {
+            val friendlyMeal = when (mealType.uppercase(Locale.ROOT)) {
+                "DESAYUNO" -> "Desayuno (primera comida del día)"
+                "COMIDA", "ALMUERZO" -> "Comida / Almuerzo principal del mediodía"
+                "MERIENDA" -> "Merienda de la tarde"
+                "CENA" -> "Cena de la noche"
+                "SNACK", "TENTEMPIÉ" -> "Snack / Tentempié entre horas"
+                else -> mealType
+            }
+            sb.append("\nCONTEXTO DE LA TOMA: El usuario está registrando su $friendlyMeal.")
+        }
+        if (existingItemsContext.isNotEmpty()) {
+            sb.append("\nPLATOS YA REGISTRADOS EN ESTA TOMA HOY: ")
+            sb.append(existingItemsContext.joinToString(", "))
+            sb.append(". Úsalo como referencia de lo que ya lleva consumido en esta comida (ej: para entender si añade un segundo plato, bebida o postre) y NO dupliques los que ya estén registrados salvo que el usuario lo pida expresamente.")
+        }
+        return sb.toString()
+    }
+
+    private fun buildVisionPrompt(
+        userDescription: String,
+        mealType: String = "",
+        existingItemsContext: List<String> = emptyList()
+    ): String {
         val extra = if (userDescription.isNotBlank()) {
-            "\nINFORMACIÓN ADICIONAL DEL USUARIO: \"$userDescription\". Prioriza estos ingredientes y marcas indicadas.\n"
+            "\nINFORMACIÓN ADICIONAL DEL USUARIO: \"$userDescription\". Prioriza estos ingredientes y marcas indicadas."
         } else ""
+        val contextInfo = formatMealContext(mealType, existingItemsContext)
 
         return """
             Eres un nutricionista experto y especialista en reconocimiento visual de platos de comida española, supermercados (Mercadona/Hacendado, Carrefour, Día, Alcampo, Lidl, etc.) y productos comerciales.
-            Analiza cuidadosamente la imagen adjunta.$extra
+            Analiza cuidadosamente la imagen adjunta.$extra$contextInfo
             
             Tu objetivo:
-            1. Desglosar individualmente cada componente o alimento presente en el plato o envase.
-            2. REGLA ESTRICTA DE MARCA VS GENÉRICO:
+            1. AUDITORÍA EXHAUSTIVA DE ELEMENTOS (NUNCA OMITIR ALIMENTOS NI BEBIDAS):
+               - Desglosa individualmente CADA componente, plato, bebida, pan, salsa o postre presente en la foto o mencionado en la descripción.
+               - Si en la foto o en la descripción hay un plato principal, una bebida, pan o postre, DEBES crear una entrada INDEPENDIENTE en el array JSON para CADA UNO de ellos.
+               - CADA BEBIDA (agua, cerveza, café, refresco, vino, zumo...) DEBE ser un elemento independiente.
+               - CADA POSTRE O FRUTA (manzana, yogur, plátano, fruta...) DEBE ser un elemento independiente.
+               - ACOMPAÑAMIENTOS Y SALSAS notables (pan, patatas fritas, ensalada lateral, mayonesa, alioli...) DEBEN ser elementos independientes en el JSON para permitir al usuario editarlos o eliminarlos por separado.
+            2. REGLA ESTRICTA SOBRE EL CAFÉ:
+               - NUNCA supongas si un café lleva más o menos leche según la hora o la comida (ni en el desayuno ni después de comer).
+               - Si se detecta o pide café solo sin especificar leche, trátalo como café solo estándar (~2 a 4 kcal).
+               - Si se indica o detecta café con leche, cortado, manchado o capuchino, calcula los gramos y calorías de café + leche correspondientes a esa bebida exacta sin alterar las proporciones según la hora.
+            3. PLATOS COMPUESTOS TRADICIONALES:
+               - Platos típicos españoles (ej: tortilla de patatas, paella, lentejas estofadas con chorizo, cocido madrileño, lasaña, etc.): regístralos como el plato preparado completo (una ración con sus calorías y macronutrientes totales). NO los desgloses en ingredientes crudos aislados (no pongas cebolla cruda, patata cruda, etc.).
+            4. DICCIONARIO DE MEDIDAS Y RACIONES EN ESPAÑA:
+               - Un tercio o botellín de cerveza: 330 ml (~140-165 kcal con alcohol; ~75-85 kcal sin alcohol 0,0%).
+               - Una caña de cerveza: 200 ml (~85-100 kcal con alcohol).
+               - Un doble: 350-400 ml de cerveza (~160-180 kcal con alcohol).
+               - Un pincho o montadito: 120-150 g.
+               - Una ración: ~250-350 g; media ración: ~150-180 g.
+               - Un chorro o chorrito de aceite de oliva: 10 a 15 ml (~90 a 130 kcal).
+               - Un tazón: ~250-300 ml; una taza: ~150-200 ml; un vaso / copa: ~200-250 ml.
+               - Un puñado (frutos secos): ~25-30 g.
+            5. REGLA ESTRICTA DE MARCA VS GENÉRICO:
                - Si en la foto se aprecia un producto de marca o envase comercial, o el usuario indica en su descripción que proviene de una marca/supermercado concreto (ej: "Hacendado", "Mercadona", "Carrefour", "Día", "Alcampo", "Lidl", "Danone", "Asturiana", etc.), asigna exactamente esa marca en "brand" (ej: "Hacendado", "Carrefour", "Día", "Lidl") y pon "isGeneric": false.
                - Si el alimento es comida casera, no empaquetada, o NO se especifica marca alguna, asígnalo como genérico: pon "brand": "Genérico" y "isGeneric": true.
-            3. Estimar con precisión el peso en gramos (o ml) de cada ingrediente.
-            4. REGLA DE CALORÍAS REALES (NINGÚN ALIMENTO TIENE 0 KCAL EXCEPTO AGUA):
+            6. REGLA DE CALORÍAS REALES (NINGÚN ALIMENTO TIENE 0 KCAL EXCEPTO AGUA):
                - Café solo (expreso o americano): ~2 a 4 kcal por taza. NUNCA pongas 0 calorías.
                - Cerveza con alcohol (lata/botellín 330ml): ~140-165 kcal (~43-48 kcal/100ml). NUNCA pongas 0 calorías.
                - Cerveza 0,0% sin alcohol (330ml): ~75-85 kcal (~24 kcal/100ml). NUNCA pongas 0 calorías.
@@ -229,9 +279,13 @@ class FoodAiService @Inject constructor(
 
     /**
      * Analiza una descripción en texto libre (sin foto) de lo que comió el usuario
-     * y genera automáticamente los alimentos, porciones y macronutrientes.
+     * y genera automáticamente los alimentos, porciones y macronutrientes con contexto.
      */
-    suspend fun analyzeFoodText(userDescription: String): FoodAiResult = withContext(Dispatchers.IO) {
+    suspend fun analyzeFoodText(
+        userDescription: String,
+        mealType: String = "",
+        existingItemsContext: List<String> = emptyList()
+    ): FoodAiResult = withContext(Dispatchers.IO) {
         val trimmed = userDescription.trim()
         if (trimmed.isBlank()) {
             return@withContext FoodAiResult.Error("Por favor, escribe lo que has comido.")
@@ -252,17 +306,40 @@ class FoodAiService @Inject constructor(
         }
 
         try {
+            val contextInfo = formatMealContext(mealType, existingItemsContext)
             val prompt = """
                 Eres un nutricionista experto en gastronomía española, supermercados (Mercadona/Hacendado, Carrefour, Día, Alcampo, Lidl, etc.) y cálculo de macronutrientes.
-                El usuario ha registrado en lenguaje natural lo que ha comido: "$trimmed"
+                El usuario ha registrado en lenguaje natural lo que ha comido: "$trimmed"$contextInfo
                 
                 Tu objetivo:
-                1. Extraer e identificar individualmente cada alimento, ingrediente o bebida mencionado.
-                2. REGLA ESTRICTA DE MARCA VS GENÉRICO:
+                1. AUDITORÍA EXHAUSTIVA DE ELEMENTOS (NUNCA OMITIR ALIMENTOS NI BEBIDAS):
+                   - Escanea minuciosamente toda la descripción del usuario.
+                   - Si el usuario menciona múltiples platos, guarniciones, panes, bebidas, postres o salsas (ej: "arroz con pollo, ensalada mixta, dos rebanadas de pan, una cerveza y de postre una manzana"), DEBES devolver una entrada INDEPENDIENTE en el array JSON para CADA UNO de ellos (en el ejemplo: exactamente 5 entradas independientes).
+                   - NUNCA descartes ni omitas alimentos secundarios:
+                     * CADA BEBIDA (agua, cerveza, refresco, café, leche, vino, zumo...) DEBE ser un elemento independiente.
+                     * CADA POSTRE O FRUTA (manzana, yogur, plátano, fruta...) DEBE ser un elemento independiente.
+                     * CADA ACOMPAÑAMIENTO O PAN (pan blanco, integral, patatas fritas, ensalada lateral...) DEBE ser un elemento independiente.
+                     * SALSAS O EXTRAS NOTORIOS (mayonesa, alioli, kétchup, queso rallado, aceite extra...) DEBEN ser elementos independientes.
+                2. REGLA ESTRICTA SOBRE EL CAFÉ:
+                   - NUNCA supongas si un café lleva más o menos leche según la hora o la comida (ni en el desayuno ni después de comer).
+                   - Si el usuario dice "café" a secas sin especificar leche, trátalo como café solo estándar (~2 a 4 kcal).
+                   - Si el usuario dice "café con leche", "cortado", "manchado" o "capuchino", calcula los gramos y calorías de café + leche correspondientes a esa bebida exacta sin alterar las proporciones según la hora.
+                3. PLATOS COMPUESTOS TRADICIONALES:
+                   - Platos cocinados tradicionales españoles (ej: "Tortilla de patatas", "Paella valenciana", "Lentejas estofadas con chorizo", "Cocido madrileño", "Lasaña de carne", "Gazpacho andaluz", "Arroz a la cubana"): regístralos como el plato preparado completo (una ración con sus calorías y macronutrientes totales). NO los desgloses en ingredientes crudos aislados (no pongas cebolla cruda, patata cruda, etc.).
+                4. DICCIONARIO DE MEDIDAS Y RACIONES EN ESPAÑA:
+                   - "Un tercio" o "un botellín": 330 ml de cerveza (~140-165 kcal con alcohol; ~75-85 kcal sin alcohol 0,0%).
+                   - "Una caña": 200 ml de cerveza (~85-100 kcal con alcohol).
+                   - "Un doble": 350-400 ml de cerveza (~160-180 kcal con alcohol).
+                   - "Un pincho" o "un montadito": ración de tapa española (~120-150 g).
+                   - "Una ración": ~250-350 g; "media ración": ~150-180 g.
+                   - "Un chorro" o "un chorrito de aceite de oliva": ~10 a 15 ml (~90 a 130 kcal).
+                   - "Un tazón": ~250-300 ml; "una taza": ~150-200 ml; "un vaso": ~200-250 ml.
+                   - "Un puñado" (frutos secos): ~25-30 g.
+                   - Si el usuario especificó cantidades (ej: "2 huevos", "150g de pollo", "media pizza"), calcula el peso exacto. Si no indicó cantidad, asume la ración estándar habitual para adultos en España.
+                5. REGLA ESTRICTA DE MARCA VS GENÉRICO:
                    - Si el usuario indica o menciona que un producto viene de una marca o supermercado específico (por ejemplo: "hacendado", "mercadona", "carrefour", "día", "dia", "alcampo", "lidl", "danone", "central lechera asturiana", etc.), asigna exactamente esa marca en el campo "brand" (ej: "Hacendado", "Carrefour", "Día", "Lidl") y pon "isGeneric": false.
                    - Si el usuario NO menciona ninguna marca o supermercado para ese producto (ej: "arroz blanco", "2 huevos fritos", "pechuga de pollo"), asígnalo como genérico: pon "brand": "Genérico" y "isGeneric": true.
-                3. Si el usuario indicó cantidades (ej: "2 huevos", "100g de pan", "un vaso de leche", "media pizza"), calcula el peso exacto. Si no indicó cantidad, asume la ración estándar habitual para adultos.
-                4. REGLA DE CALORÍAS REALES (NINGÚN ALIMENTO TIENE 0 KCAL EXCEPTO AGUA):
+                6. REGLA DE CALORÍAS REALES (NINGÚN ALIMENTO TIENE 0 KCAL EXCEPTO AGUA):
                    - Café solo (expreso o americano): ~2 a 4 kcal por taza (~2 kcal/100ml). NUNCA pongas 0 calorías.
                    - Cerveza con alcohol (lata/botellín 330ml): ~140-165 kcal (~43-48 kcal/100ml). NUNCA pongas 0 calorías.
                    - Cerveza 0,0% sin alcohol (330ml): ~75-85 kcal (~24 kcal/100ml). NUNCA pongas 0 calorías.
@@ -529,8 +606,45 @@ class FoodAiService @Inject constructor(
             return defaultGrams * unitMultiplier
         }
 
-        // Dividir la descripción por comas, "con", "y", "+", puntos
-        val rawClauses = lower.split(Regex("[,;+\\n]+|\\by\\b|\\be\\b|\\bcon\\b|\\bmás\\b")).map { it.trim() }.filter { it.isNotBlank() }
+        // Proteger expresiones culinarias compuestas habituales para no partirlas por "con"
+        var normalized = lower
+        val compoundReplacements = listOf(
+            "cafe con leche" to "cafe_con_leche",
+            "café con leche" to "café_con_leche",
+            "arroz con pollo" to "arroz_con_pollo",
+            "arroz con tomate" to "arroz_con_tomate",
+            "lentejas con chorizo" to "lentejas_con_chorizo",
+            "pan con tomate" to "pan_con_tomate",
+            "pan con aceite" to "pan_con_aceite",
+            "pan con mantequilla" to "pan_con_mantequilla",
+            "tostada con tomate" to "tostada_con_tomate",
+            "tostada con aceite" to "tostada_con_aceite",
+            "tostada con jamon" to "tostada_con_jamón",
+            "tostada con jamón" to "tostada_con_jamón",
+            "tostada con mantequilla" to "tostada_con_mantequilla",
+            "leche con colacao" to "leche_con_colacao",
+            "leche con cereales" to "leche_con_cereales",
+            "macarrones con queso" to "macarrones_con_queso",
+            "macarrones con tomate" to "macarrones_con_tomate",
+            "pasta con tomate" to "pasta_con_tomate",
+            "pasta con atun" to "pasta_con_atún",
+            "pasta con atún" to "pasta_con_atún",
+            "ensalada con atun" to "ensalada_con_atún",
+            "ensalada con atún" to "ensalada_con_atún",
+            "tortilla de patata" to "tortilla_de_patatas",
+            "tortilla de patatas" to "tortilla_de_patatas",
+            "huevos con jamon" to "huevos_con_jamón",
+            "huevos con jamón" to "huevos_con_jamón"
+        )
+        for ((phrase, safeToken) in compoundReplacements) {
+            normalized = normalized.replace(phrase, safeToken)
+        }
+
+        // Dividir la descripción por conectores de múltiples platos
+        val rawClauses = normalized
+            .split(Regex("[,;+\\n]+|\\by\\b|\\be\\b|\\bcon\\b|\\bmás\\b|\\bmas\\b|\\bluego\\b|\\bdespues\\b|\\bdespués\\b"))
+            .map { it.replace('_', ' ').trim() }
+            .filter { it.isNotBlank() }
 
         // 2. Detección de marcas y supermercados específicos en el texto
         fun detectBrandForSegment(segment: String): Pair<String, Boolean> {
@@ -597,6 +711,17 @@ class FoodAiService @Inject constructor(
                     } else {
                         items.add(DetectedFoodItem("Huevo cocido o a la plancha", grams, 143f * factor, 12.6f * factor, 0.7f * factor, 9.5f * factor))
                     }
+                }
+                // Platos compuestos tradicionales
+                clause.contains("arroz con pollo") -> {
+                    val grams = findGramsOrMultiplier(clause, 280f)
+                    val factor = grams / 100f
+                    items.add(DetectedFoodItem("Arroz con pollo", grams, 140f * factor, 9.8f * factor, 17f * factor, 2.8f * factor))
+                }
+                clause.contains("arroz con tomate") -> {
+                    val grams = findGramsOrMultiplier(clause, 220f)
+                    val factor = grams / 100f
+                    items.add(DetectedFoodItem("Arroz blanco con salsa de tomate", grams, 125f * factor, 2.5f * factor, 25f * factor, 1.2f * factor))
                 }
                 // Pollo
                 clause.contains("pollo") -> {
@@ -720,6 +845,16 @@ class FoodAiService @Inject constructor(
                     }
                 }
                 // Panes y Tostadas
+                clause.contains("tostada con tomate") || clause.contains("pan con tomate") -> {
+                    val grams = findGramsOrMultiplier(clause, 80f)
+                    val factor = grams / 100f
+                    items.add(DetectedFoodItem("Tostada con tomate natural y aceite de oliva", grams, 195f * factor, 3.8f * factor, 26f * factor, 8.2f * factor))
+                }
+                clause.contains("tostada con jamon") || clause.contains("tostada con jamón") || clause.contains("pan con jamon") || clause.contains("pan con jamón") -> {
+                    val grams = findGramsOrMultiplier(clause, 90f)
+                    val factor = grams / 100f
+                    items.add(DetectedFoodItem("Tostada con tomate, aceite y jamón serrano", grams, 235f * factor, 9.5f * factor, 26f * factor, 10.5f * factor))
+                }
                 clause.contains("pan") || clause.contains("tostada") || clause.contains("bocadillo") || clause.contains("rebanada") -> {
                     val grams = findGramsOrMultiplier(clause, 50f)
                     val factor = grams / 100f
@@ -800,6 +935,18 @@ class FoodAiService @Inject constructor(
                     val factor = grams / 100f
                     items.add(DetectedFoodItem("Queso tierno / semicurado", grams, 350f * factor, 23f * factor, 1.5f * factor, 28f * factor))
                 }
+                // Desayuno: Café (con o sin leche, solo o cortado)
+                clause.contains("cafe") || clause.contains("café") -> {
+                    val hasMilk = clause.contains("leche")
+                    val isCortado = clause.contains("cortado")
+                    when {
+                        hasMilk -> items.add(DetectedFoodItem("Café con leche", 200f, 110f, 6.4f, 10f, 4.8f))
+                        isCortado -> items.add(DetectedFoodItem("Café cortado", 100f, 38f, 2.2f, 3.5f, 1.6f))
+                        clause.contains("americano") -> items.add(DetectedFoodItem("Café solo americano", 150f, 3f, 0.3f, 0.4f, 0f))
+                        else -> items.add(DetectedFoodItem("Café solo expreso", 60f, 2f, 0.2f, 0.3f, 0f))
+                    }
+                }
+                // Leche (sin café)
                 clause.contains("leche") -> {
                     val grams = findGramsOrMultiplier(clause, 200f)
                     val factor = grams / 100f
@@ -812,21 +959,11 @@ class FoodAiService @Inject constructor(
                         else -> items.add(DetectedFoodItem("Leche semidesnatada", grams, 46f * factor, 3.2f * factor, 4.8f * factor, 1.6f * factor))
                     }
                 }
-                // Desayuno: Avena, Café, Aceite
+                // Desayuno: Avena
                 clause.contains("avena") -> {
                     val grams = findGramsOrMultiplier(clause, 50f)
                     val factor = grams / 100f
                     items.add(DetectedFoodItem("Copos de avena integral", grams, 375f * factor, 13.5f * factor, 59f * factor, 7f * factor))
-                }
-                clause.contains("cafe") || clause.contains("café") -> {
-                    val hasMilk = clause.contains("leche")
-                    val isCortado = clause.contains("cortado")
-                    when {
-                        hasMilk -> items.add(DetectedFoodItem("Café con leche", 200f, 110f, 6.4f, 10f, 4.8f))
-                        isCortado -> items.add(DetectedFoodItem("Café cortado", 100f, 38f, 2.2f, 3.5f, 1.6f))
-                        clause.contains("americano") -> items.add(DetectedFoodItem("Café solo americano", 150f, 3f, 0.3f, 0.4f, 0f))
-                        else -> items.add(DetectedFoodItem("Café solo expreso", 60f, 2f, 0.2f, 0.3f, 0f))
-                    }
                 }
                 // Bebidas: Cervezas y Vino
                 clause.contains("cerveza") || clause.contains("caña") || clause.contains("cana") ||

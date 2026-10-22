@@ -529,11 +529,15 @@ class NutritionViewModel @Inject constructor(
     fun analyzeStagedPhoto() {
         val bitmap = _uiState.value.stagedBitmap ?: return
         val desc = _uiState.value.stagedDescription
+        val targetMeal = _uiState.value.activeMealType
+        val existingItemsForMeal = _uiState.value.meals
+            .filter { it.mealType.equals(targetMeal, ignoreCase = true) }
+            .map { "${it.name} (${it.grams.toInt()}g)" }
 
         _uiState.update { it.copy(isAiAnalyzing = true, aiErrorMessage = null) }
 
         viewModelScope.launch {
-            when (val result = repository.analyzeFoodPhoto(bitmap, desc)) {
+            when (val result = repository.analyzeFoodPhoto(bitmap, desc, targetMeal, existingItemsForMeal)) {
                 is FoodAiResult.Success -> {
                     _uiState.update {
                         it.copy(
@@ -647,9 +651,14 @@ class NutritionViewModel @Inject constructor(
         val input = _uiState.value.textAiInput.trim()
         if (input.isBlank()) return
 
+        val targetMeal = _uiState.value.textAiMealType.ifBlank { _uiState.value.activeMealType }
+        val existingItemsForMeal = _uiState.value.meals
+            .filter { it.mealType.equals(targetMeal, ignoreCase = true) }
+            .map { "${it.name} (${it.grams.toInt()}g)" }
+
         _uiState.update { it.copy(isTextAiAnalyzing = true, textAiErrorMessage = null) }
         viewModelScope.launch {
-            when (val result = repository.analyzeFoodText(input)) {
+            when (val result = repository.analyzeFoodText(input, targetMeal, existingItemsForMeal)) {
                 is FoodAiResult.Success -> {
                     _uiState.update {
                         it.copy(
