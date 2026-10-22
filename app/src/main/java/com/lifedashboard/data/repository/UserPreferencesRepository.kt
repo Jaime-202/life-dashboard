@@ -43,7 +43,8 @@ data class UserGoals(
     val bedtimeReminderMinutesBefore: Int = 30,
     val proteinTargetGrams: Float = 140f,
     val carbsTargetGrams: Float = 250f,
-    val fatTargetGrams: Float = 70f
+    val fatTargetGrams: Float = 70f,
+    val waterTargetMl: Int = 2500
 )
 
 @Singleton
@@ -81,6 +82,7 @@ class UserPreferencesRepository @Inject constructor(
         val PROTEIN_TARGET         = floatPreferencesKey("protein_target")
         val CARBS_TARGET           = floatPreferencesKey("carbs_target")
         val FAT_TARGET             = floatPreferencesKey("fat_target")
+        val WATER_TARGET_ML        = intPreferencesKey("water_target_ml")
     }
 
     val userGoals: Flow<UserGoals> = context.dataStore.data
@@ -122,7 +124,8 @@ class UserPreferencesRepository @Inject constructor(
                 bedtimeReminderMinutesBefore = prefs[Keys.BEDTIME_MINUTES_BEFORE] ?: 30,
                 proteinTargetGrams   = prefs[Keys.PROTEIN_TARGET] ?: 140f,
                 carbsTargetGrams     = prefs[Keys.CARBS_TARGET] ?: 250f,
-                fatTargetGrams       = prefs[Keys.FAT_TARGET] ?: 70f
+                fatTargetGrams       = prefs[Keys.FAT_TARGET] ?: 70f,
+                waterTargetMl        = prefs[Keys.WATER_TARGET_ML] ?: 2500
             )
         }
 
@@ -246,6 +249,43 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun updateWeight(weightKg: Float) {
         context.dataStore.edit { prefs ->
             prefs[Keys.WEIGHT_KG] = weightKg
+        }
+    }
+
+    suspend fun updateWaterTarget(targetMl: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.WATER_TARGET_ML] = targetMl
+        }
+    }
+
+    suspend fun resetToDefaults() {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.STEPS_TARGET]           = 10000
+            prefs[Keys.SLEEP_TARGET]           = 8.0f
+            prefs[Keys.CALORIES_TARGET]        = 2200f
+            prefs[Keys.ACTIVE_CALORIES_TARGET] = 500f
+            prefs[Keys.WORKOUT_DAYS_TARGET]    = 4
+            prefs[Keys.WORKOUT_MINUTES_TARGET] = 180
+            prefs[Keys.FITNESS_LEVEL]          = "INTERMEDIO"
+            prefs[Keys.PRIMARY_GOAL]           = "SALUD_GENERAL"
+            prefs[Keys.SHOW_HERO_RINGS]        = true
+            prefs[Keys.SHOW_AI_INSIGHT]        = true
+            prefs[Keys.SHOW_UPCOMING_EVENTS]   = true
+            prefs[Keys.DAILY_REMINDERS]        = true
+            prefs[Keys.HYDRATION_REMINDER]     = false
+            prefs[Keys.INACTIVITY_ALERTS]      = false
+            prefs[Keys.EVENING_REVIEW]         = true
+            prefs[Keys.AI_STYLE]               = "CIENTIFICO"
+            prefs[Keys.SYNC_FREQUENCY]         = "30_MIN"
+            prefs[Keys.THEME_MODE]             = "OSCURO"
+            prefs[Keys.BEDTIME_REMINDER]       = true
+            prefs[Keys.WAKE_UP_HOUR]           = 8
+            prefs[Keys.WAKE_UP_MINUTE]         = 30
+            prefs[Keys.BEDTIME_MINUTES_BEFORE] = 30
+            prefs[Keys.PROTEIN_TARGET]         = 140f
+            prefs[Keys.CARBS_TARGET]           = 250f
+            prefs[Keys.FAT_TARGET]             = 70f
+            prefs[Keys.WATER_TARGET_ML]        = 2500
         }
     }
 }

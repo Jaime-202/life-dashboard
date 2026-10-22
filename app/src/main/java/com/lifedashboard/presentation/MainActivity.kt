@@ -35,6 +35,7 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var workManagerScheduler: WorkManagerScheduler
+    @Inject lateinit var userPreferences: com.lifedashboard.data.repository.UserPreferencesRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,7 +46,8 @@ class MainActivity : ComponentActivity() {
         workManagerScheduler.runHealthSyncNow()
 
         setContent {
-            LifeDashboardTheme {
+            val goals by userPreferences.userGoals.collectAsState(initial = com.lifedashboard.data.repository.UserGoals())
+            LifeDashboardTheme(themeMode = goals.themeMode) {
                 LifeDashboardApp()
             }
         }
@@ -83,7 +85,7 @@ private fun LifeDashboardApp() {
     }
 
     Scaffold(
-        containerColor = Indigo900,
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             LifeDashboardBottomNav(
                 currentRoute = currentRoute,
@@ -116,11 +118,11 @@ private fun LifeDashboardBottomNav(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Indigo900)
+            .background(MaterialTheme.colorScheme.background)
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         NavigationBar(
-            containerColor = Indigo800,
+            containerColor = MaterialTheme.colorScheme.surface,
             tonalElevation = 0.dp,
             modifier       = Modifier
                 .clip(RoundedCornerShape(24.dp))

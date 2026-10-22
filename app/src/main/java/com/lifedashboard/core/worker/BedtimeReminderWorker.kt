@@ -58,6 +58,14 @@ class BedtimeReminderWorker @AssistedInject constructor(
 
             NotificationHelper.showBedtimeReminder(context, title, message)
 
+            // Reprogramar para la noche siguiente
+            WorkManagerScheduler(context).scheduleBedtimeReminder(
+                wakeUpHour = wakeUpHour,
+                wakeUpMinute = wakeUpMinute,
+                sleepTargetHours = sleepHours,
+                minutesBefore = minutesBefore
+            )
+
             Result.success()
         } catch (e: Exception) {
             Log.e("BedtimeReminderWorker", "Error executing bedtime reminder", e)

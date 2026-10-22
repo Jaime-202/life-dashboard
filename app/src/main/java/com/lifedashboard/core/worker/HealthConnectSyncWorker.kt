@@ -210,8 +210,8 @@ class HealthConnectSyncWorker @AssistedInject constructor(
     companion object {
         const val WORK_NAME = "health_connect_sync"
 
-        fun buildRequest(): PeriodicWorkRequest =
-            PeriodicWorkRequestBuilder<HealthConnectSyncWorker>(15, TimeUnit.MINUTES)
+        fun buildRequest(intervalMinutes: Long = 30): PeriodicWorkRequest =
+            PeriodicWorkRequestBuilder<HealthConnectSyncWorker>(intervalMinutes.coerceAtLeast(15), TimeUnit.MINUTES)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.NOT_REQUIRED)

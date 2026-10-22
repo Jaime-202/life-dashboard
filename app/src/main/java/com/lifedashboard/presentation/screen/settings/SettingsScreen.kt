@@ -70,7 +70,7 @@ import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
 
-enum class ThemeMode { OSCURO, CLARO, SISTEMA }
+enum class ThemeMode { OSCURO, AMOLED, MIDNIGHT }
 
 // ─── ViewModel ────────────────────────────────────────────────────────────────
 
@@ -107,6 +107,9 @@ data class SettingsState(
     val proteinTargetGrams: Float = 140f,
     val carbsTargetGrams: Float = 250f,
     val fatTargetGrams: Float = 70f,
+    val waterTargetMl: Int = 2500,
+    val bmrKcal: Float = 1750f,
+    val tdeeKcal: Float = 2350f,
     val reminders: List<ReminderEntity> = emptyList()
 )
 
@@ -127,10 +130,22 @@ class SettingsViewModel @Inject constructor(
         userPreferences.userGoals
             .onEach { goals ->
                 val currentTheme = when (goals.themeMode) {
-                    "CLARO"   -> ThemeMode.CLARO
-                    "SISTEMA" -> ThemeMode.SISTEMA
+                    "AMOLED", "CLARO" -> ThemeMode.AMOLED
+                    "MIDNIGHT", "SISTEMA" -> ThemeMode.MIDNIGHT
                     else      -> ThemeMode.OSCURO
                 }
+                val validW = if (goals.weightKg > 30f) goals.weightKg else 75f
+                val validH = if (goals.heightCm > 100) goals.heightCm else 175
+                val bmr = (10f * validW) + (6.25f * validH) - (5f * 25f) + 5f
+                val activityMult = when (goals.fitnessLevel) {
+                    "PRINCIPIANTE" -> 1.25f
+                    "INTERMEDIO"   -> 1.375f
+                    "AVANZADO"     -> 1.55f
+                    "ATLETA"       -> 1.725f
+                    else           -> 1.35f
+                }
+                val tdee = bmr * activityMult
+
                 _state.value = _state.value.copy(
                     userName             = goals.userName,
                     fitnessLevel         = goals.fitnessLevel,
@@ -160,7 +175,10 @@ class SettingsViewModel @Inject constructor(
                     bedtimeReminderMinutesBefore = goals.bedtimeReminderMinutesBefore,
                     proteinTargetGrams   = goals.proteinTargetGrams,
                     carbsTargetGrams     = goals.carbsTargetGrams,
-                    fatTargetGrams       = goals.fatTargetGrams
+                    fatTargetGrams       = goals.fatTargetGrams,
+                    waterTargetMl        = goals.waterTargetMl,
+                    bmrKcal              = bmr,
+                    tdeeKcal             = tdee
                 )
             }
             .launchIn(viewModelScope)
@@ -381,7 +399,14 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun toggleDailyReminders(enabled: Boolean) {
-        viewModelScope.launch { userPreferences.updateDailyReminders(enabled) }
+        viewModelScope.launch {
+            userPreferences.updateDailyReminders(enabled)
+            if (enabled) {
+                scheduler.scheduleDailySummaryReminder(_state.value.wakeUpHour, _state.value.wakeUpMinute)
+            } else {
+                scheduler.cancelDailySummaryReminder()
+            }
+        }
     }
 
     fun toggleHydrationReminder(enabled: Boolean) {
@@ -405,7 +430,14 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun toggleEveningReview(enabled: Boolean) {
-        viewModelScope.launch { userPreferences.updateEveningReview(enabled) }
+        viewModelScope.launch {
+            userPreferences.updateEveningReview(enabled)
+            if (enabled) {
+                scheduler.scheduleEveningReviewReminder()
+            } else {
+                scheduler.cancelEveningReviewReminder()
+            }
+        }
     }
 
     fun setAiStyle(style: String) {
@@ -413,7 +445,28 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setSyncFrequency(freq: String) {
-        viewModelScope.launch { userPreferences.updateSyncFrequency(freq) }
+        viewModelScope.launch {
+            userPreferences.updateSyncFrequency(freq)
+            scheduler.scheduleHealthConnectSync(freq)
+        }
+    }
+
+    fun updateWaterTarget(targetMl: Int) {
+        if (targetMl in 500..10000) {
+            viewModelScope.launch {
+                userPreferences.updateWaterTarget(targetMl)
+                com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
+            }
+        }
+    }
+
+    fun resetToDefaults() {
+        viewModelScope.launch {
+            userPreferences.resetToDefaults()
+            scheduler.scheduleAll()
+            com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
+            Toast.makeText(context, "Ajustes restablecidos a los valores por defecto", Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun onHealthConnectConnect(context: Context) {
@@ -533,6 +586,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     var showAddEditReminderModal by remember { mutableStateOf(false) }
     var reminderToEdit by remember { mutableStateOf<ReminderEntity?>(null) }
 
+    var showWaterModal by remember { mutableStateOf(false) }
+    var showResetConfirmDialog by remember { mutableStateOf(false) }
+
     val healthPermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
         HealthPermission.getReadPermission(DistanceRecord::class),
@@ -565,10 +621,16 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         }
     }
 
+    val bgColors = when (state.themeMode) {
+        ThemeMode.AMOLED -> listOf(Color(0xFF000000), Color(0xFF08080C))
+        ThemeMode.MIDNIGHT -> listOf(Color(0xFF0B0F19), Color(0xFF050811))
+        ThemeMode.OSCURO -> listOf(GradientStart, GradientEnd)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(GradientStart, GradientEnd)))
+            .background(Brush.verticalGradient(bgColors))
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             .padding(top = 56.dp, bottom = 100.dp),
@@ -588,6 +650,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             primaryGoal   = state.primaryGoal,
             weightKg      = state.weightHistory.firstOrNull()?.weightKg ?: state.weightKg,
             heightCm      = state.heightCm,
+            tdeeKcal      = state.tdeeKcal,
             onOpenProfile = { showProfileModal = true },
             onSyncAll     = { viewModel.forceSyncAll(context) }
         )
@@ -620,7 +683,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 }
             )
 
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             SettingsItem(
                 icon      = Icons.Default.Bedtime,
@@ -638,7 +701,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 }
             )
 
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             SettingsItem(
                 icon      = Icons.Default.LocalFireDepartment,
@@ -656,7 +719,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 }
             )
 
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             SettingsItem(
                 icon      = Icons.Default.FitnessCenter,
@@ -674,7 +737,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 }
             )
 
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             SettingsItem(
                 icon      = Icons.Default.Restaurant,
@@ -684,6 +747,24 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 trailing  = {
                     OutlinedButton(
                         onClick = { showMacrosModal = true },
+                        colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                        border  = BorderStroke(1.dp, Violet400)
+                    ) {
+                        Text("Modificar", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            SettingsItem(
+                icon      = Icons.Default.WaterDrop,
+                iconColor = Cyan400,
+                title     = "Objetivo Diario de Agua",
+                subtitle  = "${state.waterTargetMl} ml al día · Seguimiento visual",
+                trailing  = {
+                    OutlinedButton(
+                        onClick = { showWaterModal = true },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
                         border  = BorderStroke(1.dp, Violet400)
                     ) {
@@ -734,7 +815,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     }
                 }
             )
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             SwitchSettingItem(
                 title           = "Recordatorios Diarios",
@@ -742,14 +823,14 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 checked         = state.dailyReminders,
                 onCheckedChange = { viewModel.toggleDailyReminders(it) }
             )
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SwitchSettingItem(
                 title           = "Resumen Nocturno de Recuperación",
                 subtitle        = "Consejos para optimizar el sueño según tu día",
                 checked         = state.eveningReview,
                 onCheckedChange = { viewModel.toggleEveningReview(it) }
             )
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -876,7 +957,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             )
 
             if (state.reminders.isEmpty()) {
-                HorizontalDivider(color = Indigo700)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -891,7 +972,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 }
             } else {
                 state.reminders.forEach { reminder ->
-                    HorizontalDivider(color = Indigo700)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     ReminderSettingsItemRow(
                         reminder = reminder,
                         onToggle = { enabled -> viewModel.toggleReminderEnabled(reminder.id, enabled) },
@@ -924,7 +1005,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 }
             }
 
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             SettingsItem(
                 icon      = Icons.Default.AutoAwesome,
@@ -953,14 +1034,14 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 checked         = state.showHeroRings,
                 onCheckedChange = { viewModel.toggleShowHeroRings(it) }
             )
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SwitchSettingItem(
                 title           = "Tarjeta de Insight IA",
                 subtitle        = "Muestra el análisis inteligente del día",
                 checked         = state.showAiInsight,
                 onCheckedChange = { viewModel.toggleShowAiInsight(it) }
             )
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SwitchSettingItem(
                 title           = "Próximos Eventos",
                 subtitle        = "Visualiza eventos próximos del calendario local",
@@ -991,7 +1072,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 }
             }
 
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             SettingsItem(
                 icon      = Icons.Default.Favorite,
@@ -1020,7 +1101,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 }
             )
 
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             SettingsItem(
                 icon      = Icons.Default.CalendarMonth,
@@ -1046,17 +1127,17 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         SectionHeader("Apariencia & Tema")
         SettingsCard {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Modo de Tema", style = MaterialTheme.typography.labelLarge, color = White, fontWeight = FontWeight.Bold)
+                Text("Estilo Visual & Colores", style = MaterialTheme.typography.labelLarge, color = White, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    ThemeOptionChip("Oscuro", Icons.Default.DarkMode, state.themeMode == ThemeMode.OSCURO, Modifier.weight(1f)) {
+                    ThemeOptionChip("Índigo Vital", Icons.Default.DarkMode, state.themeMode == ThemeMode.OSCURO, Modifier.weight(1f)) {
                         viewModel.setThemeMode(ThemeMode.OSCURO)
                     }
-                    ThemeOptionChip("Claro", Icons.Default.LightMode, state.themeMode == ThemeMode.CLARO, Modifier.weight(1f)) {
-                        viewModel.setThemeMode(ThemeMode.CLARO)
+                    ThemeOptionChip("Negro OLED", Icons.Default.Nightlight, state.themeMode == ThemeMode.AMOLED, Modifier.weight(1f)) {
+                        viewModel.setThemeMode(ThemeMode.AMOLED)
                     }
-                    ThemeOptionChip("Sistema", Icons.Default.SettingsSuggest, state.themeMode == ThemeMode.SISTEMA, Modifier.weight(1f)) {
-                        viewModel.setThemeMode(ThemeMode.SISTEMA)
+                    ThemeOptionChip("Medianoche", Icons.Default.SettingsSuggest, state.themeMode == ThemeMode.MIDNIGHT, Modifier.weight(1f)) {
+                        viewModel.setThemeMode(ThemeMode.MIDNIGHT)
                     }
                 }
             }
@@ -1078,7 +1159,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     ) { Text("Exportar", style = MaterialTheme.typography.labelMedium) }
                 }
             )
-            HorizontalDivider(color = Indigo700)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             SettingsItem(
                 icon      = Icons.Default.CleaningServices,
                 iconColor = Amber400,
@@ -1093,6 +1174,20 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Amber400),
                         border  = BorderStroke(1.dp, Amber400)
                     ) { Text("Limpiar", style = MaterialTheme.typography.labelMedium) }
+                }
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            SettingsItem(
+                icon      = Icons.Default.Refresh,
+                iconColor = Rose400,
+                title     = "Restablecer Ajustes",
+                subtitle  = "Restaura metas y opciones a los valores iniciales",
+                trailing  = {
+                    OutlinedButton(
+                        onClick = { showResetConfirmDialog = true },
+                        colors  = ButtonDefaults.outlinedButtonColors(contentColor = Rose400),
+                        border  = BorderStroke(1.dp, Rose400)
+                    ) { Text("Restablecer", style = MaterialTheme.typography.labelMedium) }
                 }
             )
         }
@@ -1267,6 +1362,28 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 }
                 showAddEditReminderModal = false
                 reminderToEdit = null
+            }
+        )
+    }
+
+    if (showWaterModal) {
+        EditWaterGoalModal(
+            currentValue = state.waterTargetMl,
+            onDismiss    = { showWaterModal = false },
+            onSave       = { amount ->
+                viewModel.updateWaterTarget(amount)
+                showWaterModal = false
+                Toast.makeText(context, "Objetivo de agua actualizado", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showResetConfirmDialog) {
+        ResetDefaultsDialog(
+            onDismiss = { showResetConfirmDialog = false },
+            onConfirm = {
+                viewModel.resetToDefaults()
+                showResetConfirmDialog = false
             }
         )
     }
@@ -1661,6 +1778,7 @@ private fun EnhancedUserProfileCard(
     primaryGoal: String,
     weightKg: Float,
     heightCm: Int,
+    tdeeKcal: Float = 2350f,
     onOpenProfile: () -> Unit,
     onSyncAll: () -> Unit
 ) {
@@ -1787,6 +1905,8 @@ private fun EnhancedUserProfileCard(
                 CompactMetricItem("Altura", "${heightCm} cm", Modifier.weight(1f))
                 Box(modifier = Modifier.width(1.dp).height(20.dp).background(Indigo700.copy(alpha = 0.5f)))
                 CompactMetricItem("IMC", imc, Modifier.weight(1f))
+                Box(modifier = Modifier.width(1.dp).height(20.dp).background(Indigo700.copy(alpha = 0.5f)))
+                CompactMetricItem("Gasto Base", "${tdeeKcal.toInt()} kcal", Modifier.weight(1.1f))
             }
         }
     }
@@ -2963,7 +3083,7 @@ private fun OptionChip(label: String, isSelected: Boolean, modifier: Modifier, o
         contentAlignment = Alignment.Center,
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(if (isSelected) Violet400 else Indigo700)
+            .background(if (isSelected) Violet400 else MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
             .padding(vertical = 7.dp)
     ) {
@@ -2982,7 +3102,7 @@ private fun ThemeOptionChip(label: String, icon: ImageVector, isSelected: Boolea
         contentAlignment = Alignment.Center,
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(if (isSelected) Violet400 else Indigo700)
+            .background(if (isSelected) Violet400 else MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp)
     ) {
@@ -3030,8 +3150,8 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Indigo800)
-            .border(1.dp, Indigo700, RoundedCornerShape(20.dp)),
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(20.dp)),
         content  = content
     )
 }
@@ -3302,6 +3422,138 @@ private fun EditMacrosGoalModal(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancelar", color = Gray400) }
+        }
+    )
+}
+
+@Composable
+private fun EditWaterGoalModal(
+    currentValue: Int,
+    onDismiss: () -> Unit,
+    onSave: (Int) -> Unit
+) {
+    var waterText by remember { mutableStateOf("$currentValue") }
+    val presets = listOf(1500, 2000, 2500, 3000)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = Indigo800,
+        shape            = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.WaterDrop, contentDescription = null, tint = Cyan400, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Meta Diaria de Agua", color = White, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Ajusta tu objetivo de hidratación diaria en mililitros para el seguimiento visual en tus paneles:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray300
+                )
+
+                // Presets rápidos
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    presets.forEach { preset ->
+                        val isSelected = waterText == "$preset"
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) Cyan400 else Indigo700)
+                                .clickable { waterText = "$preset" }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "${preset / 1000f}L",
+                                color = if (isSelected) Indigo900 else White,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = waterText,
+                    onValueChange = { waterText = it },
+                    label = { Text("Cantidad (ml)", color = Cyan400) },
+                    placeholder = { Text("ej. 2500", color = Gray500) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Cyan400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text(
+                    text = "💧 Esta meta es visual para tu progreso en la app (sin notificaciones emergentes).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray400,
+                    fontSize = 11.sp
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val amount = waterText.toIntOrNull() ?: currentValue
+                    onSave(amount)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Cyan400, contentColor = Indigo900)
+            ) {
+                Text("Guardar", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar", color = Gray400) }
+        }
+    )
+}
+
+@Composable
+private fun ResetDefaultsDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = Indigo800,
+        shape            = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Refresh, contentDescription = null, tint = Rose400, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Restablecer Ajustes", color = White, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Text(
+                text = "¿Estás seguro de que deseas restablecer todas tus metas y preferencias a los valores por defecto recomendados?\n\nTu historial de pesaje y sesiones registradas se mantendrán a salvo.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Gray300
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors  = ButtonDefaults.buttonColors(containerColor = Rose400, contentColor = White)
+            ) {
+                Text("Restablecer Todo", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = Gray400)
+            }
         }
     )
 }
