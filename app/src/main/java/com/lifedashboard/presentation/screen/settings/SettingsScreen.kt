@@ -676,9 +676,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     OutlinedButton(
                         onClick = { showStepsModal = true },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
-                        border  = BorderStroke(1.dp, Violet400)
+                        border  = BorderStroke(1.dp, Violet400),
+                        shape   = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
                     ) {
-                        Text("Modificar", style = MaterialTheme.typography.labelMedium)
+                        Text("Modificar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -694,9 +697,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     OutlinedButton(
                         onClick = { showSleepModal = true },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
-                        border  = BorderStroke(1.dp, Violet400)
+                        border  = BorderStroke(1.dp, Violet400),
+                        shape   = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
                     ) {
-                        Text("Modificar", style = MaterialTheme.typography.labelMedium)
+                        Text("Modificar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -712,9 +718,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     OutlinedButton(
                         onClick = { showCaloriesModal = true },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
-                        border  = BorderStroke(1.dp, Violet400)
+                        border  = BorderStroke(1.dp, Violet400),
+                        shape   = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
                     ) {
-                        Text("Modificar", style = MaterialTheme.typography.labelMedium)
+                        Text("Modificar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -730,9 +739,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     OutlinedButton(
                         onClick = { showWorkoutModal = true },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
-                        border  = BorderStroke(1.dp, Violet400)
+                        border  = BorderStroke(1.dp, Violet400),
+                        shape   = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
                     ) {
-                        Text("Modificar", style = MaterialTheme.typography.labelMedium)
+                        Text("Modificar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -748,9 +760,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     OutlinedButton(
                         onClick = { showMacrosModal = true },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
-                        border  = BorderStroke(1.dp, Violet400)
+                        border  = BorderStroke(1.dp, Violet400),
+                        shape   = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
                     ) {
-                        Text("Modificar", style = MaterialTheme.typography.labelMedium)
+                        Text("Modificar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -766,9 +781,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     OutlinedButton(
                         onClick = { showWaterModal = true },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
-                        border  = BorderStroke(1.dp, Violet400)
+                        border  = BorderStroke(1.dp, Violet400),
+                        shape   = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
                     ) {
-                        Text("Modificar", style = MaterialTheme.typography.labelMedium)
+                        Text("Modificar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -1017,9 +1035,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     OutlinedButton(
                         onClick = { showApiKeyModal = true },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
-                        border  = BorderStroke(1.dp, Violet400)
+                        border  = BorderStroke(1.dp, Violet400),
+                        shape   = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
                     ) {
-                        Text(if (state.geminiApiKey.isNotBlank()) "Modificar" else "Añadir API Key", style = MaterialTheme.typography.labelMedium)
+                        Text(if (state.geminiApiKey.isNotBlank()) "Modificar" else "Añadir API Key", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -1081,7 +1102,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 subtitle  = if (state.healthConnectGranted) "Conectado y sincronizando"
                             else "Toca para vincular Health Connect",
                 trailing  = {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(
                             onClick = {
                                 try {
@@ -1091,11 +1112,17 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                                 }
                             },
                             colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
-                            border  = BorderStroke(1.dp, Violet400)
-                        ) { Text("Conectar", style = MaterialTheme.typography.labelMedium) }
+                            border  = BorderStroke(1.dp, Violet400),
+                            shape   = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) { Text("Conectar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
 
-                        IconButton(onClick = { openHealthConnectSettings(context) }) {
-                            Icon(Icons.Default.Settings, contentDescription = "Ajustes de Salud", tint = Gray400, modifier = Modifier.size(20.dp))
+                        IconButton(
+                            onClick = { openHealthConnectSettings(context) },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(Icons.Default.Settings, contentDescription = "Ajustes de Salud", tint = Gray400, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -1116,8 +1143,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                         OutlinedButton(
                             onClick = { calendarPermissionLauncher.launch(Manifest.permission.READ_CALENDAR) },
                             colors  = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
-                            border  = BorderStroke(1.dp, Violet400)
-                        ) { Text("Permitir", style = MaterialTheme.typography.labelMedium) }
+                            border  = BorderStroke(1.dp, Violet400),
+                            shape   = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) { Text("Permitir", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
                     }
                 }
             )
@@ -1155,8 +1185,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     OutlinedButton(
                         onClick = { viewModel.exportData(context) },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Cyan400),
-                        border  = BorderStroke(1.dp, Cyan400)
-                    ) { Text("Exportar", style = MaterialTheme.typography.labelMedium) }
+                        border  = BorderStroke(1.dp, Cyan400),
+                        shape   = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) { Text("Exportar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
                 }
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1172,8 +1205,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                             Toast.makeText(context, "Caché temporal liberada", Toast.LENGTH_SHORT).show()
                         },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Amber400),
-                        border  = BorderStroke(1.dp, Amber400)
-                    ) { Text("Limpiar", style = MaterialTheme.typography.labelMedium) }
+                        border  = BorderStroke(1.dp, Amber400),
+                        shape   = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) { Text("Limpiar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
                 }
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1186,8 +1222,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     OutlinedButton(
                         onClick = { showResetConfirmDialog = true },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Rose400),
-                        border  = BorderStroke(1.dp, Rose400)
-                    ) { Text("Restablecer", style = MaterialTheme.typography.labelMedium) }
+                        border  = BorderStroke(1.dp, Rose400),
+                        shape   = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) { Text("Restablecer", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
                 }
             )
         }
@@ -3104,12 +3143,22 @@ private fun ThemeOptionChip(label: String, icon: ImageVector, isSelected: Boolea
             .clip(RoundedCornerShape(12.dp))
             .background(if (isSelected) Violet400 else MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp)
+            .padding(vertical = 10.dp, horizontal = 4.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = if (isSelected) Indigo900 else White, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium, color = if (isSelected) Indigo900 else White, fontWeight = FontWeight.Bold)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = if (isSelected) Indigo900 else White, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isSelected) Indigo900 else White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.5.sp,
+                maxLines = 1
+            )
         }
     }
 }
@@ -3170,8 +3219,8 @@ private fun SettingsItem(icon: ImageVector, iconColor: Color, title: String, sub
         }
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.labelLarge, color = White, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = Gray500, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(text = title, style = MaterialTheme.typography.labelLarge, color = White, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = Gray500, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(8.dp))
         trailing()
