@@ -87,14 +87,6 @@ class HealthViewModel @Inject constructor(
             .launchIn(viewModelScope)
     }
 
-    fun updateActiveCaloriesTarget(target: Float) {
-        if (target > 0f) {
-            viewModelScope.launch {
-                userPreferences.updateActiveCaloriesTarget(target)
-            }
-        }
-    }
-
     fun triggerSync() {
         viewModelScope.launch {
             _uiState.update { it.copy(isSyncing = true) }
@@ -162,7 +154,7 @@ fun HealthScreen(
             when (tab) {
                 HealthTab.PASOS    -> PasosSubSection(state = state)
                 HealthTab.SUENO    -> SuenoSubSection(state = state)
-                HealthTab.CALORIAS -> CaloriasSubSection(state = state, onUpdateTarget = { viewModel.updateActiveCaloriesTarget(it) })
+                HealthTab.CALORIAS -> CaloriasSubSection(state = state)
             }
         }
     }
@@ -479,8 +471,7 @@ private fun SuenoSubSection(state: HealthUiState) {
 // ─── Sub-apartado Calorías ────────────────────────────────────────────────────
 
 @Composable
-private fun CaloriasSubSection(state: HealthUiState, onUpdateTarget: (Float) -> Unit) {
-    var showEditTargetModal by remember { mutableStateOf(false) }
+private fun CaloriasSubSection(state: HealthUiState) {
     val todayEntity = state.last14Days.firstOrNull()
     val rawCal = todayEntity?.activeCalories ?: 0f
     val todaySteps = todayEntity?.steps ?: 0
@@ -502,7 +493,6 @@ private fun CaloriasSubSection(state: HealthUiState, onUpdateTarget: (Float) -> 
             progress      = progress,
             color         = Amber400,
             icon          = Icons.Default.LocalFireDepartment,
-            onEditTargetClick = { showEditTargetModal = true },
             metric1Label  = "Gasto Total",
             metric1Value  = "$totalExpenditure kcal",
             metric2Label  = "Basal (BMR)",
@@ -548,84 +538,6 @@ private fun CaloriasSubSection(state: HealthUiState, onUpdateTarget: (Float) -> 
             }
         )
     }
-
-    if (showEditTargetModal) {
-        var calText by remember { mutableStateOf("${state.caloriesTarget}") }
-        val calOptions = listOf(300, 400, 500, 600, 750, 1000)
-
-        AlertDialog(
-            onDismissRequest = { showEditTargetModal = false },
-            containerColor = Indigo800,
-            shape = RoundedCornerShape(22.dp),
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.LocalFireDepartment, null, tint = Amber400, modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Objetivo de Calorías Activas", color = White, fontWeight = FontWeight.Bold)
-                }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Text(
-                        "Calorías que quieres quemar al día con tu movimiento y ejercicio (no modifica tus metas de comida):",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Gray400
-                    )
-                    OutlinedTextField(
-                        value = calText,
-                        onValueChange = { calText = it.filter { ch -> ch.isDigit() } },
-                        label = { Text("Calorías activas diarias", color = Amber400) },
-                        trailingIcon = { Text("kcal", color = Gray400, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 12.dp)) },
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Amber400,
-                            unfocusedBorderColor = Indigo600,
-                            focusedTextColor = White,
-                            unfocusedTextColor = White
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Text("Sugerencias rápidas:", style = MaterialTheme.typography.labelSmall, color = Gray400)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                        calOptions.forEach { opt ->
-                            val isSel = calText == opt.toString()
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isSel) Amber400 else Indigo700)
-                                    .clickable { calText = opt.toString() }
-                                    .padding(vertical = 8.dp)
-                            ) {
-                                Text("$opt", color = if (isSel) Indigo900 else White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val c = calText.toFloatOrNull()?.coerceIn(100f, 5000f) ?: state.caloriesTarget.toFloat()
-                        onUpdateTarget(c)
-                        showEditTargetModal = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Amber400, contentColor = Indigo900)
-                ) {
-                    Text("Guardar", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEditTargetModal = false }) {
-                    Text("Cancelar", color = Gray400)
-                }
-            }
-        )
-    }
 }
 
 // ─── Componente: Hero Card de Salud ───────────────────────────────────────────
@@ -639,7 +551,6 @@ private fun HealthHeroCard(
     progress: Float,
     color: Color,
     icon: ImageVector,
-    onEditTargetClick: (() -> Unit)? = null,
     metric1Label: String,
     metric1Value: String,
     metric2Label: String,
@@ -731,21 +642,6 @@ private fun HealthHeroCard(
                         modifier = Modifier.padding(bottom = 6.dp, start = 6.dp)
                     )
                 }
-
-                if (onEditTargetClick != null) {
-                    OutlinedButton(
-                        onClick = onEditTargetClick,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = color),
-                        border = BorderStroke(1.dp, color.copy(alpha = 0.5f)),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = "Modificar meta", modifier = Modifier.size(13.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Meta", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                    }
-                }
             }
 
             // Barra de Progreso Neón
@@ -834,12 +730,15 @@ private fun WeeklyBarChart(
                     text       = title,
                     style      = MaterialTheme.typography.titleSmall,
                     color      = White,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier   = Modifier.weight(1f)
                 )
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    text  = "Meta: ${formatVal(target)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Gray400
+                    text     = "Meta: ${formatVal(target)}",
+                    style    = MaterialTheme.typography.labelSmall,
+                    color    = Gray400,
+                    maxLines = 1
                 )
             }
 
