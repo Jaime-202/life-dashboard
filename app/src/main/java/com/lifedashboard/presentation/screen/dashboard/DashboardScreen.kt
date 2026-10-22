@@ -43,7 +43,8 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
     onNavigateToHealth: (String) -> Unit = {},
     onNavigateToWorkout: () -> Unit = {},
-    onNavigateToNutrition: () -> Unit = {}
+    onNavigateToNutrition: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showAddWeightModal by remember { mutableStateOf(false) }
@@ -53,9 +54,11 @@ fun DashboardScreen(
         onSelectDate          = { viewModel.selectDate(it) },
         onRefreshAi           = { viewModel.requestAiInsight() },
         onAddWeightClick      = { showAddWeightModal = true },
+        onToggleReminder      = { id, completed -> viewModel.toggleReminder(id, completed) },
         onNavigateToHealth    = onNavigateToHealth,
         onNavigateToWorkout   = onNavigateToWorkout,
-        onNavigateToNutrition = onNavigateToNutrition
+        onNavigateToNutrition = onNavigateToNutrition,
+        onNavigateToSettings  = onNavigateToSettings
     )
 
     if (showAddWeightModal) {
@@ -76,9 +79,11 @@ fun DashboardContent(
     onSelectDate: (LocalDate) -> Unit = {},
     onRefreshAi: () -> Unit = {},
     onAddWeightClick: () -> Unit = {},
+    onToggleReminder: (Long, Boolean) -> Unit = { _, _ -> },
     onNavigateToHealth: (String) -> Unit = {},
     onNavigateToWorkout: () -> Unit = {},
-    onNavigateToNutrition: () -> Unit = {}
+    onNavigateToNutrition: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     val greeting = remember(state.userName) {
@@ -174,6 +179,14 @@ fun DashboardContent(
                     Icon(Icons.Default.ChevronRight, contentDescription = "Ir a nutrición", tint = Gray400, modifier = Modifier.size(18.dp))
                 }
             }
+
+            // Tomas y Recordatorios con interruptor interactivo
+            TodayRemindersCard(
+                reminders            = state.todayReminders,
+                selectedDate         = state.selectedDate,
+                onToggleReminder     = onToggleReminder,
+                onNavigateToSettings = onNavigateToSettings
+            )
 
             // Tarjeta de Evolución y Seguimiento de Peso en el Panel
             DashboardWeightCard(

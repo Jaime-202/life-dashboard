@@ -43,7 +43,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lifedashboard.core.worker.WorkManagerScheduler
+import com.lifedashboard.data.local.dao.ReminderDao
 import com.lifedashboard.data.local.dao.WeightDao
+import com.lifedashboard.data.local.entity.ReminderEntity
+import com.lifedashboard.data.local.entity.ReminderType
 import com.lifedashboard.data.local.entity.WeightEntryEntity
 import com.lifedashboard.data.repository.UserPreferencesRepository
 import com.lifedashboard.domain.repository.CalendarRepository
@@ -99,7 +102,8 @@ data class SettingsState(
     val bedtimeReminderMinutesBefore: Int = 30,
     val proteinTargetGrams: Float = 140f,
     val carbsTargetGrams: Float = 250f,
-    val fatTargetGrams: Float = 70f
+    val fatTargetGrams: Float = 70f,
+    val reminders: List<ReminderEntity> = emptyList()
 )
 
 @HiltViewModel
@@ -108,6 +112,7 @@ class SettingsViewModel @Inject constructor(
     private val calendarRepository: CalendarRepository,
     private val userPreferences: UserPreferencesRepository,
     private val weightDao: WeightDao,
+    private val reminderDao: ReminderDao,
     private val foodAiService: com.lifedashboard.data.remote.food.FoodAiService,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -159,6 +164,12 @@ class SettingsViewModel @Inject constructor(
         weightDao.observeAllWeights()
             .onEach { weights ->
                 _state.value = _state.value.copy(weightHistory = weights)
+            }
+            .launchIn(viewModelScope)
+
+        reminderDao.observeAll()
+            .onEach { list ->
+                _state.value = _state.value.copy(reminders = list)
             }
             .launchIn(viewModelScope)
     }
@@ -434,6 +445,45 @@ class SettingsViewModel @Inject constructor(
         }
         context.startActivity(Intent.createChooser(sendIntent, "Exportar Datos de Life Dashboard"))
     }
+
+    fun addReminder(
+        title: String,
+        type: String,
+        daysOfWeek: String,
+        timeOfDay: String,
+        iconEmoji: String
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            reminderDao.insert(
+                ReminderEntity(
+                    title = title.trim(),
+                    type = type,
+                    daysOfWeek = daysOfWeek,
+                    timeOfDay = timeOfDay,
+                    iconEmoji = iconEmoji,
+                    isEnabled = true
+                )
+            )
+        }
+    }
+
+    fun updateReminder(reminder: ReminderEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            reminderDao.update(reminder)
+        }
+    }
+
+    fun toggleReminderEnabled(id: Long, enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            reminderDao.setEnabled(id, enabled)
+        }
+    }
+
+    fun deleteReminder(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            reminderDao.deleteReminderAndLogs(id)
+        }
+    }
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -453,6 +503,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     var showWeightHistoryModal by remember { mutableStateOf(false) }
     var showWakeUpTimeModal by remember { mutableStateOf(false) }
     var showMacrosModal by remember { mutableStateOf(false) }
+    var showAddEditReminderModal by remember { mutableStateOf(false) }
+    var reminderToEdit by remember { mutableStateOf<ReminderEntity?>(null) }
 
     val healthPermissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
@@ -730,6 +782,85 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─── Tomas & Recordatorios Personalizados ───────────────────────────
+        SectionHeader("Tomas & Recordatorios Personalizados")
+        SettingsCard {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Tomas y Hábitos Diarios",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Configura creatina, magnesio, suplementos o tareas para marcar en tu Panel.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray400,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            reminderToEdit = null
+                            showAddEditReminderModal = true
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Violet400),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = Indigo900)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Añadir", color = Indigo900, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+
+                if (state.reminders.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Indigo900.copy(alpha = 0.5f))
+                            .border(1.dp, Indigo700.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .padding(14.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Aún no tienes recordatorios personalizados.\nPulsa en \"Añadir\" para crear tu primera toma.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray400,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        state.reminders.forEach { reminder ->
+                            ReminderSettingsItemRow(
+                                reminder = reminder,
+                                onToggle = { enabled -> viewModel.toggleReminderEnabled(reminder.id, enabled) },
+                                onEdit = {
+                                    reminderToEdit = reminder
+                                    showAddEditReminderModal = true
+                                },
+                                onDelete = { viewModel.deleteReminder(reminder.id) }
+                            )
                         }
                     }
                 }
@@ -1072,6 +1203,418 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             }
         )
     }
+
+    if (showAddEditReminderModal) {
+        AddEditReminderModal(
+            reminder = reminderToEdit,
+            onDismiss = {
+                showAddEditReminderModal = false
+                reminderToEdit = null
+            },
+            onSave = { title, type, daysOfWeek, timeOfDay, iconEmoji ->
+                if (reminderToEdit != null) {
+                    viewModel.updateReminder(
+                        reminderToEdit!!.copy(
+                            title = title,
+                            type = type,
+                            daysOfWeek = daysOfWeek,
+                            timeOfDay = timeOfDay,
+                            iconEmoji = iconEmoji
+                        )
+                    )
+                    Toast.makeText(context, "Recordatorio actualizado", Toast.LENGTH_SHORT).show()
+                } else {
+                    viewModel.addReminder(title, type, daysOfWeek, timeOfDay, iconEmoji)
+                    Toast.makeText(context, "Recordatorio creado", Toast.LENGTH_SHORT).show()
+                }
+                showAddEditReminderModal = false
+                reminderToEdit = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun ReminderSettingsItemRow(
+    reminder: ReminderEntity,
+    onToggle: (Boolean) -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val subtitle = when (reminder.type) {
+        ReminderType.DIARIO -> "Diario · Todos los días"
+        ReminderType.HORARIO -> "Horario diario · ${reminder.timeOfDay}"
+        ReminderType.SEMANAL -> {
+            val daysMap = mapOf(
+                1 to "L", 2 to "M", 3 to "X", 4 to "J", 5 to "V", 6 to "S", 7 to "D"
+            )
+            val dayNames = reminder.daysOfWeek.split(",")
+                .mapNotNull { it.trim().toIntOrNull() }
+                .mapNotNull { daysMap[it] }
+                .joinToString(", ")
+            if (dayNames.isNotBlank()) "Semanal · $dayNames" else "Semanal"
+        }
+        else -> "Recordatorio"
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Indigo900.copy(alpha = 0.6f))
+            .border(1.dp, Indigo700, RoundedCornerShape(14.dp))
+            .clickable(onClick = onEdit)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Violet400.copy(alpha = 0.15f))
+                ) {
+                    Text(text = reminder.iconEmoji.ifBlank { "💊" }, fontSize = 18.sp)
+                }
+
+                Spacer(Modifier.width(10.dp))
+
+                Column {
+                    Text(
+                        text = reminder.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (reminder.isEnabled) White else Gray500,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Gray400,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(
+                    checked = reminder.isEnabled,
+                    onCheckedChange = onToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Indigo900,
+                        checkedTrackColor = Violet400,
+                        uncheckedThumbColor = Gray400,
+                        uncheckedTrackColor = Indigo700
+                    )
+                )
+
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = "Eliminar",
+                        tint = Rose400,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddEditReminderModal(
+    reminder: ReminderEntity?,
+    onDismiss: () -> Unit,
+    onSave: (title: String, type: String, daysOfWeek: String, timeOfDay: String, iconEmoji: String) -> Unit
+) {
+    var title by remember { mutableStateOf(reminder?.title ?: "") }
+    var type by remember { mutableStateOf(reminder?.type ?: ReminderType.DIARIO) }
+    var selectedDays by remember {
+        val initial = reminder?.daysOfWeek?.split(",")?.mapNotNull { it.trim().toIntOrNull() }?.toSet()
+            ?: setOf(1, 2, 3, 4, 5, 6, 7)
+        mutableStateOf(initial)
+    }
+    var timeOfDay by remember { mutableStateOf(reminder?.timeOfDay ?: "09:00") }
+    var iconEmoji by remember { mutableStateOf(reminder?.iconEmoji ?: "💊") }
+
+    val emojis = listOf("💊", "💧", "🏋️", "🥗", "⏰", "🌿", "⚡", "🧘", "☕", "🍎")
+    val daysMap = listOf(
+        1 to "L", 2 to "M", 3 to "X", 4 to "J", 5 to "V", 6 to "S", 7 to "D"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Indigo800,
+        shape = RoundedCornerShape(22.dp),
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (reminder != null) Icons.Default.Edit else Icons.Default.AddCircle,
+                    contentDescription = null,
+                    tint = Violet300,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = if (reminder != null) "Editar Recordatorio" else "Nueva Toma / Recordatorio",
+                    color = White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Título
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Nombre o hábito (ej. Creatina 5g)", color = Violet300) },
+                    placeholder = { Text("ej. Tomar magnesio, Creatina...", color = Gray500) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Violet400,
+                        unfocusedBorderColor = Indigo600,
+                        focusedTextColor = White,
+                        unfocusedTextColor = White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Selector de Emoji
+                Text("Icono / Emoji:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    emojis.forEach { emoji ->
+                        val isSelected = iconEmoji == emoji
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (isSelected) Violet400.copy(alpha = 0.35f) else Indigo900.copy(alpha = 0.6f)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isSelected) Violet400 else Indigo700,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable { iconEmoji = emoji }
+                        ) {
+                            Text(text = emoji, fontSize = 20.sp)
+                        }
+                    }
+                }
+
+                // Frecuencia: Diario, Semanal, Horario
+                Text("Frecuencia:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val types = listOf(
+                        ReminderType.DIARIO to "Diario",
+                        ReminderType.SEMANAL to "Semanal",
+                        ReminderType.HORARIO to "Horario"
+                    )
+                    types.forEach { (t, label) ->
+                        val isSelected = type == t
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (isSelected) Violet400 else Indigo900.copy(alpha = 0.7f)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isSelected) Violet300 else Indigo700,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable { type = t }
+                                .padding(vertical = 10.dp)
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (isSelected) Indigo900 else White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                // Configuración según Frecuencia
+                when (type) {
+                    ReminderType.DIARIO -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Indigo900.copy(alpha = 0.4f))
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                text = "📅 Se mostrará en tu panel todos los días.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Gray300,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    ReminderType.SEMANAL -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Días activos de la semana:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+                            Row(
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                daysMap.forEach { (dayNum, label) ->
+                                    val isDaySelected = selectedDays.contains(dayNum)
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (isDaySelected) Emerald400 else Indigo900.copy(alpha = 0.7f)
+                                            )
+                                            .border(
+                                                1.dp,
+                                                if (isDaySelected) Emerald400 else Indigo700,
+                                                CircleShape
+                                            )
+                                            .clickable {
+                                                selectedDays = if (isDaySelected) {
+                                                    if (selectedDays.size > 1) selectedDays - dayNum else selectedDays
+                                                } else {
+                                                    selectedDays + dayNum
+                                                }
+                                            }
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = if (isDaySelected) Indigo900 else White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = "Solo se mostrará en tu panel los días seleccionados.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Gray400,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    ReminderType.HORARIO -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Hora de la toma / aviso:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+                            OutlinedTextField(
+                                value = timeOfDay,
+                                onValueChange = { input ->
+                                    if (input.length <= 5) timeOfDay = input
+                                },
+                                label = { Text("Hora (HH:mm)", color = Violet300) },
+                                placeholder = { Text("09:00", color = Gray500) },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Violet400,
+                                    unfocusedBorderColor = Indigo600,
+                                    focusedTextColor = White,
+                                    unfocusedTextColor = White
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            // Sugerencias rápidas de horas
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                listOf("08:00", "09:30", "14:00", "20:30", "22:00").forEach { preset ->
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                if (timeOfDay == preset) Violet400.copy(alpha = 0.3f) else Indigo900.copy(alpha = 0.5f)
+                                            )
+                                            .border(
+                                                1.dp,
+                                                if (timeOfDay == preset) Violet400 else Indigo700,
+                                                RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable { timeOfDay = preset }
+                                            .padding(vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = preset,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (timeOfDay == preset) Violet300 else Gray300,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (title.isNotBlank()) {
+                        val daysString = selectedDays.sorted().joinToString(",")
+                        onSave(title.trim(), type, daysString, timeOfDay.trim(), iconEmoji)
+                    }
+                },
+                enabled = title.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = Violet400)
+            ) {
+                Text(
+                    text = if (reminder != null) "Actualizar" else "Guardar",
+                    color = Indigo900,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = Gray400)
+            }
+        }
+    )
 }
 
 // ─── Componente: Tarjeta de Perfil Avanzada ───────────────────────────────────

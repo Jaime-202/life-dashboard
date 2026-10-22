@@ -58,6 +58,34 @@ object DatabaseModule {
         }
     }
 
+    private val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `reminders` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `title` TEXT NOT NULL,
+                    `type` TEXT NOT NULL,
+                    `daysOfWeek` TEXT NOT NULL,
+                    `timeOfDay` TEXT NOT NULL,
+                    `iconEmoji` TEXT NOT NULL,
+                    `isEnabled` INTEGER NOT NULL,
+                    `createdAt` INTEGER NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS `reminder_logs` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `reminderId` INTEGER NOT NULL,
+                    `dateMillis` INTEGER NOT NULL,
+                    `isCompleted` INTEGER NOT NULL,
+                    `completedAt` INTEGER NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_reminder_logs_reminderId_dateMillis` ON `reminder_logs` (`reminderId`, `dateMillis`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_reminder_logs_dateMillis` ON `reminder_logs` (`dateMillis`)")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
@@ -66,7 +94,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "life_dashboard.db"
         )
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .fallbackToDestructiveMigration()
             .fallbackToDestructiveMigrationOnDowngrade()
             .build()
@@ -78,4 +106,5 @@ object DatabaseModule {
     @Provides fun provideAchievementDao(db: AppDatabase): AchievementDao = db.achievementDao()
     @Provides fun provideWeightDao(db: AppDatabase): WeightDao = db.weightDao()
     @Provides fun provideMealDao(db: AppDatabase): MealDao = db.mealDao()
+    @Provides fun provideReminderDao(db: AppDatabase): ReminderDao = db.reminderDao()
 }

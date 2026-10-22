@@ -41,6 +41,11 @@ fun NavGraph(navController: NavHostController) {
                     navController.navigate(Screen.Nutrition.route) {
                         launchSingleTop = true
                     }
+                },
+                onNavigateToSettings = {
+                    navController.navigate(Screen.Settings.route) {
+                        launchSingleTop = true
+                    }
                 }
             )
         }

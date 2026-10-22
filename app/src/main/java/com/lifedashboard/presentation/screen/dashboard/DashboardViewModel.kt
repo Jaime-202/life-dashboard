@@ -4,8 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lifedashboard.core.util.DateUtils.toStartOfDayMillis
 import com.lifedashboard.data.local.dao.HealthDao
+import com.lifedashboard.data.local.dao.ReminderDao
 import com.lifedashboard.data.local.dao.WeightDao
 import com.lifedashboard.data.local.dao.WorkoutDao
+import com.lifedashboard.data.local.entity.ReminderEntity
+import com.lifedashboard.data.local.entity.ReminderType
 import com.lifedashboard.data.local.entity.WeightEntryEntity
 import com.lifedashboard.data.remote.gemini.GeminiApiService
 import com.lifedashboard.data.repository.UserPreferencesRepository
@@ -22,6 +25,17 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
+
+data class DashboardReminderItem(
+    val id: Long,
+    val title: String,
+    val type: String,
+    val timeOfDay: String,
+    val daysOfWeek: String,
+    val iconEmoji: String,
+    val isCompleted: Boolean,
+    val subtitle: String
+)
 
 data class DashboardUiState(
     val userName: String = "Jaime",
@@ -51,7 +65,8 @@ data class DashboardUiState(
     val userHeightCm: Int = 175,
     val showAddWeightDialog: Boolean = false,
     val workoutDaysTarget: Int = 4,
-    val weeklyWorkoutsCount: Int = 0
+    val weeklyWorkoutsCount: Int = 0,
+    val todayReminders: List<DashboardReminderItem> = emptyList()
 )
 
 @HiltViewModel
@@ -60,6 +75,7 @@ class DashboardViewModel @Inject constructor(
     private val workoutDao: WorkoutDao,
     private val weightDao: WeightDao,
     private val mealDao: com.lifedashboard.data.local.dao.MealDao,
+    private val reminderDao: ReminderDao,
     private val calendarRepository: CalendarRepository,
     private val geminiService: GeminiApiService,
     private val evaluateAchievements: EvaluateRoutineAchievementUseCase,
@@ -75,6 +91,7 @@ class DashboardViewModel @Inject constructor(
         observeTodayMeals()
         observeWeights()
         observeCalendar()
+        observeReminders()
         buildProgressMap()
         viewModelScope.launch(Dispatchers.IO) { evaluateAchievements() }
     }
@@ -276,6 +293,65 @@ class DashboardViewModel @Inject constructor(
 
     fun setAddWeightDialogVisible(visible: Boolean) {
         _uiState.update { it.copy(showAddWeightDialog = visible) }
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private fun observeReminders() {
+        combine(
+            _uiState.map { it.selectedDate }.distinctUntilChanged(),
+            reminderDao.observeEnabled()
+        ) { selectedDate, enabledReminders ->
+            selectedDate to enabledReminders
+        }.flatMapLatest { (selectedDate, enabledReminders) ->
+            val dateMillis = selectedDate.toStartOfDayMillis()
+            reminderDao.observeLogsForDate(dateMillis).map { logs ->
+                val logsMap = logs.associateBy { it.reminderId }
+                val dayOfWeekNumber = selectedDate.dayOfWeek.value // 1 (Mon) .. 7 (Sun)
+
+                enabledReminders.filter { reminder ->
+                    when (reminder.type) {
+                        ReminderType.DIARIO -> true
+                        ReminderType.HORARIO -> true
+                        ReminderType.SEMANAL -> {
+                            val days = reminder.daysOfWeek.split(",")
+                                .mapNotNull { it.trim().toIntOrNull() }
+                            days.isEmpty() || days.contains(dayOfWeekNumber)
+                        }
+                        else -> true
+                    }
+                }.map { reminder ->
+                    val isDone = logsMap[reminder.id]?.isCompleted == true
+                    val subtitle = when (reminder.type) {
+                        ReminderType.HORARIO -> "⏰ ${reminder.timeOfDay}"
+                        ReminderType.DIARIO -> "📅 Todos los días"
+                        ReminderType.SEMANAL -> "📆 Semanal"
+                        else -> "Recordatorio"
+                    }
+                    DashboardReminderItem(
+                        id = reminder.id,
+                        title = reminder.title,
+                        type = reminder.type,
+                        timeOfDay = reminder.timeOfDay,
+                        daysOfWeek = reminder.daysOfWeek,
+                        iconEmoji = reminder.iconEmoji,
+                        isCompleted = isDone,
+                        subtitle = subtitle
+                    )
+                }.sortedWith(
+                    compareBy<DashboardReminderItem> { it.isCompleted }
+                        .thenBy { if (it.type == ReminderType.HORARIO) it.timeOfDay else "99:99" }
+                )
+            }
+        }.onEach { reminders ->
+            _uiState.update { it.copy(todayReminders = reminders) }
+        }.launchIn(viewModelScope)
+    }
+
+    fun toggleReminder(reminderId: Long, isCompleted: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dateMillis = _uiState.value.selectedDate.toStartOfDayMillis()
+            reminderDao.toggleCompletion(reminderId, dateMillis, isCompleted)
+        }
     }
 
     fun addWeightEntry(weight: Float, note: String?) {
