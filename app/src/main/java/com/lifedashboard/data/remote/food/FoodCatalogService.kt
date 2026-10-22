@@ -714,7 +714,9 @@ class FoodCatalogService @Inject constructor(
             FoodSourceCategory.BASICOS -> items.filter {
                 it.isGeneric ||
                 normalize(it.brand).contains("basico") ||
-                normalize(it.brand).contains("generico")
+                normalize(it.brand).contains("generico") ||
+                normalize(it.brand).contains("tradicional") ||
+                normalize(it.brand).contains("bedca")
             }
         }
     }
