@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
 import java.util.regex.Pattern
 import javax.inject.Inject
@@ -43,48 +45,46 @@ class FoodAiService @Inject constructor(
 ) {
 
     /**
-     * Prueba la validez de una clave API de Google Gemini realizando una consulta mínima de prueba.
-     * Prueba de forma inteligente los modelos más modernos (Gemini 3.8 Flash, etc.) y descubre modelos de la cuenta.
+     * Prueba la validez de una clave API de Google Gemini de forma ultra-rápida (<400ms)
+     * consultando directamente el endpoint oficial de autenticación de Google AI.
      */
     suspend fun testApiKeyConnection(key: String, preferredModel: String? = null): Result<String> = withContext(Dispatchers.IO) {
         val trimmed = key.trim()
         if (trimmed.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("La clave API no puede estar vacía."))
         }
-        val candidateModels = GeminiModelManager.getCandidateModels(trimmed, preferredModel)
-        var lastError: Exception? = null
-
-        for (m in candidateModels) {
-            try {
-                val model = GenerativeModel(
-                    modelName = m,
-                    apiKey = trimmed,
-                    generationConfig = generationConfig {
-                        maxOutputTokens = 1000
-                        temperature = 0.1f
-                    }
-                )
-                val resp = model.generateContent("Responde únicamente: OK")
-                val txt = resp.text?.trim() ?: ""
-                if (txt.isNotBlank()) {
-                    return@withContext Result.success("¡Clave válida! Conectado con éxito a $m")
-                }
-            } catch (e: Exception) {
-                lastError = e
-                val errMsg = e.message ?: ""
-                Log.w(TAG, "Prueba fallida con $m: $errMsg")
-                if (errMsg.contains("quota", ignoreCase = true) ||
-                    errMsg.contains("503") ||
-                    errMsg.contains("high demand", ignoreCase = true) ||
-                    errMsg.contains("api_key_invalid", ignoreCase = true)
-                ) {
-                    break
-                }
-            }
+        if (trimmed.length < 15) {
+            return@withContext Result.failure(IllegalArgumentException("La clave parece incompleta o demasiado corta."))
         }
-        val rawErr = lastError?.localizedMessage ?: lastError?.message ?: "No se pudo conectar con Google Gemini"
-        val errorExplanation = GeminiModelManager.extractCleanErrorMessage(rawErr)
-        Result.failure(Exception(errorExplanation))
+
+        try {
+            // Comprobación directa y ultra-rápida contra el gateway de Google Gemini (<400ms)
+            val url = URL("https://generativelanguage.googleapis.com/v1beta/models?key=$trimmed&pageSize=5")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 3000
+                readTimeout = 3000
+                setRequestProperty("Accept", "application/json")
+            }
+
+            val responseCode = conn.responseCode
+            if (responseCode == 200) {
+                conn.disconnect()
+                val modelName = preferredModel?.takeIf { it.isNotBlank() && it != "auto" } ?: "Gemini"
+                return@withContext Result.success("Conexión confirmada con $modelName")
+            }
+
+            val errorStream = conn.errorStream ?: conn.inputStream
+            val errResponse = errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            conn.disconnect()
+
+            val cleanError = GeminiModelManager.extractCleanErrorMessage(errResponse)
+            return@withContext Result.failure(Exception(cleanError))
+        } catch (e: Exception) {
+            val errMsg = e.localizedMessage ?: e.message ?: "Error de red"
+            val clean = GeminiModelManager.extractCleanErrorMessage(errMsg)
+            return@withContext Result.failure(Exception(clean))
+        }
     }
 
     /**

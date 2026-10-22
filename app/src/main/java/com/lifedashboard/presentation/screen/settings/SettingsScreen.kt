@@ -2843,6 +2843,22 @@ private fun EditApiKeyModal(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
+                        val buttonBg = when (testIsSuccess) {
+                            true -> Emerald400.copy(alpha = 0.25f)
+                            false -> Rose400.copy(alpha = 0.25f)
+                            null -> Indigo700
+                        }
+                        val buttonBorderColor = when (testIsSuccess) {
+                            true -> Emerald400
+                            false -> Rose400
+                            null -> Color.Transparent
+                        }
+                        val buttonTextColor = when (testIsSuccess) {
+                            true -> Emerald400
+                            false -> Rose400
+                            null -> White
+                        }
+
                         Button(
                             onClick = {
                                 if (keyInput.isBlank()) {
@@ -2851,12 +2867,13 @@ private fun EditApiKeyModal(
                                 }
                                 isTesting = true
                                 testResultText = null
+                                testIsSuccess = null
                                 coroutineScope.launch {
                                     val res = onTest(keyInput.trim(), activeModelToUse)
                                     isTesting = false
                                     if (res.isSuccess) {
                                         testIsSuccess = true
-                                        testResultText = res.getOrNull() ?: "Conexión exitosa"
+                                        testResultText = res.getOrNull() ?: "Conexión confirmada"
                                     } else {
                                         testIsSuccess = false
                                         testResultText = res.exceptionOrNull()?.message ?: "Error al conectar"
@@ -2864,18 +2881,32 @@ private fun EditApiKeyModal(
                                 }
                             },
                             enabled = !isTesting && keyInput.isNotBlank(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Indigo700, contentColor = White),
+                            colors = ButtonDefaults.buttonColors(containerColor = buttonBg, contentColor = buttonTextColor),
+                            border = if (buttonBorderColor != Color.Transparent) BorderStroke(1.dp, buttonBorderColor) else null,
                             shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            if (isTesting) {
-                                CircularProgressIndicator(color = Violet300, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Comprobando...", style = MaterialTheme.typography.labelSmall)
-                            } else {
-                                Icon(Icons.Default.CheckCircleOutline, contentDescription = null, modifier = Modifier.size(14.dp), tint = Violet300)
-                                Spacer(Modifier.width(6.dp))
-                                Text("Probar Clave", style = MaterialTheme.typography.labelSmall)
+                            when {
+                                isTesting -> {
+                                    CircularProgressIndicator(color = Violet300, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Comprobando...", style = MaterialTheme.typography.labelSmall)
+                                }
+                                testIsSuccess == true -> {
+                                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp), tint = Emerald400)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("¡Funciona! ✔", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                }
+                                testIsSuccess == false -> {
+                                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp), tint = Rose400)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Error ✖", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                }
+                                else -> {
+                                    Icon(Icons.Default.CheckCircleOutline, contentDescription = null, modifier = Modifier.size(14.dp), tint = Violet300)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Comprobar Clave", style = MaterialTheme.typography.labelSmall)
+                                }
                             }
                         }
 
@@ -2899,17 +2930,45 @@ private fun EditApiKeyModal(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isSuccess) Emerald400.copy(alpha = 0.2f) else Rose400.copy(alpha = 0.2f))
-                            .border(1.dp, if (isSuccess) Emerald400.copy(alpha = 0.5f) else Rose400.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                            .padding(8.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSuccess) Emerald400.copy(alpha = 0.15f) else Rose400.copy(alpha = 0.15f))
+                            .border(1.5.dp, if (isSuccess) Emerald400.copy(alpha = 0.8f) else Rose400.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+                            .padding(12.dp)
                     ) {
-                        Text(
-                            text = (if (isSuccess) "✅ " else "❌ ") + msg,
-                            color = if (isSuccess) Emerald400 else Rose400,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 11.sp
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isSuccess) Emerald400 else Rose400)
+                            ) {
+                                Icon(
+                                    imageVector = if (isSuccess) Icons.Default.Check else Icons.Default.Close,
+                                    contentDescription = if (isSuccess) "Válido" else "Error",
+                                    tint = if (isSuccess) Indigo900 else White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isSuccess) "¡API Key funcional y activa! (✔)" else "Clave no válida o sin conexión (✖)",
+                                    color = if (isSuccess) Emerald400 else Rose400,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = msg,
+                                    color = if (isSuccess) Gray100 else Gray300,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
                     }
                 }
             }
