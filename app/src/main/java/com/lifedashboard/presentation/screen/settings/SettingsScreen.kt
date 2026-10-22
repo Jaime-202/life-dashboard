@@ -30,6 +30,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
@@ -42,6 +43,8 @@ import androidx.health.connect.client.records.StepsRecord
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lifedashboard.core.notification.NotificationHelper
+import com.lifedashboard.core.notification.ReminderScheduler
 import com.lifedashboard.core.worker.WorkManagerScheduler
 import com.lifedashboard.data.local.dao.ReminderDao
 import com.lifedashboard.data.local.dao.WeightDao
@@ -381,7 +384,19 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun toggleHydrationReminder(enabled: Boolean) {
-        viewModelScope.launch { userPreferences.updateHydrationReminder(enabled) }
+        viewModelScope.launch {
+            userPreferences.updateHydrationReminder(enabled)
+            if (enabled) {
+                scheduler.scheduleHydrationReminder()
+            } else {
+                scheduler.cancelHydrationReminder()
+            }
+        }
+    }
+
+    fun sendTestNotification() {
+        NotificationHelper.showTestReminderNotification(context)
+        Toast.makeText(context, "Notificación de prueba enviada con sonido", Toast.LENGTH_SHORT).show()
     }
 
     fun toggleInactivityAlerts(enabled: Boolean) {
@@ -454,34 +469,45 @@ class SettingsViewModel @Inject constructor(
         iconEmoji: String
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            reminderDao.insert(
-                ReminderEntity(
-                    title = title.trim(),
-                    type = type,
-                    daysOfWeek = daysOfWeek,
-                    timeOfDay = timeOfDay,
-                    iconEmoji = iconEmoji,
-                    isEnabled = true
-                )
+            val entity = ReminderEntity(
+                title = title.trim(),
+                type = type,
+                daysOfWeek = daysOfWeek,
+                timeOfDay = timeOfDay,
+                iconEmoji = iconEmoji,
+                isEnabled = true
             )
+            val newId = reminderDao.insert(entity)
+            val savedReminder = entity.copy(id = newId)
+            ReminderScheduler.scheduleReminder(context, savedReminder)
         }
     }
 
     fun updateReminder(reminder: ReminderEntity) {
         viewModelScope.launch(Dispatchers.IO) {
             reminderDao.update(reminder)
+            ReminderScheduler.scheduleReminder(context, reminder)
         }
     }
 
     fun toggleReminderEnabled(id: Long, enabled: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             reminderDao.setEnabled(id, enabled)
+            val reminder = _state.value.reminders.find { it.id == id }?.copy(isEnabled = enabled)
+            if (reminder != null) {
+                if (enabled) {
+                    ReminderScheduler.scheduleReminder(context, reminder)
+                } else {
+                    ReminderScheduler.cancelReminder(context, id)
+                }
+            }
         }
     }
 
     fun deleteReminder(id: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             reminderDao.deleteReminderAndLogs(id)
+            ReminderScheduler.cancelReminder(context, id)
         }
     }
 }
@@ -669,6 +695,107 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         // ─── Hábitos & Recordatorios Inteligentes ──────────────────────────
         SectionHeader("Notificaciones & Hábitos")
         SettingsCard {
+            val notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+            if (!notificationsEnabled) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Rose400.copy(alpha = 0.15f))
+                        .border(1.dp, Rose400.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .padding(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.NotificationsOff, contentDescription = null, tint = Rose400, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Notificaciones desactivadas en Android",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Rose400,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Activa los avisos en Ajustes del teléfono para recibir tus recordatorios.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Gray300,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                val intent = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                    putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                }
+                                context.startActivity(intent)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Rose400),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("Activar", color = White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                HorizontalDivider(color = Indigo700)
+            }
+
+            // Fila para comprobar / testear avisos instantáneos
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Comprobar Notificaciones",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (notificationsEnabled) Emerald400.copy(alpha = 0.2f) else Rose400.copy(alpha = 0.2f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = if (notificationsEnabled) "Activas ✔" else "Desactivadas ✖",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (notificationsEnabled) Emerald400 else Rose400,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Envía una alerta de prueba con sonido a tu móvil ahora mismo",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Gray400
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = { viewModel.sendTestNotification() },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                    border = BorderStroke(1.dp, Violet400),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Icon(Icons.Default.NotificationsActive, contentDescription = null, modifier = Modifier.size(14.dp), tint = Violet300)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Probar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+            }
+            HorizontalDivider(color = Indigo700)
+
             SwitchSettingItem(
                 title           = "Recordatorios Diarios",
                 subtitle        = "Notificación matutina con el resumen de tus metas",
@@ -803,14 +930,33 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Tomas y Hábitos Diarios",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = White,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (state.reminders.isNotEmpty()) {
+                                Spacer(Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Emerald400.copy(alpha = 0.2f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "${state.reminders.count { it.isEnabled }} activas",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Emerald400,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
                         Text(
-                            text = "Tomas y Hábitos Diarios",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = White,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Configura creatina, magnesio, suplementos o tareas para marcar en tu Panel.",
+                            text = "Configura creatina, suplementos o tareas con avisos puntuales a tu móvil.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Gray400,
                             fontSize = 11.sp
@@ -1242,8 +1388,8 @@ private fun ReminderSettingsItemRow(
     onDelete: () -> Unit
 ) {
     val subtitle = when (reminder.type) {
-        ReminderType.DIARIO -> "Diario · Todos los días"
-        ReminderType.HORARIO -> "Horario diario · ${reminder.timeOfDay}"
+        ReminderType.DIARIO -> "Diario · Aviso a las ${reminder.timeOfDay}"
+        ReminderType.HORARIO -> "Diario a las ${reminder.timeOfDay}"
         ReminderType.SEMANAL -> {
             val daysMap = mapOf(
                 1 to "L", 2 to "M", 3 to "X", 4 to "J", 5 to "V", 6 to "S", 7 to "D"
@@ -1252,9 +1398,9 @@ private fun ReminderSettingsItemRow(
                 .mapNotNull { it.trim().toIntOrNull() }
                 .mapNotNull { daysMap[it] }
                 .joinToString(", ")
-            if (dayNames.isNotBlank()) "Semanal · $dayNames" else "Semanal"
+            if (dayNames.isNotBlank()) "Semanal ($dayNames) · ${reminder.timeOfDay}" else "Semanal · ${reminder.timeOfDay}"
         }
-        else -> "Recordatorio"
+        else -> "Aviso a las ${reminder.timeOfDay}"
     }
 
     Box(
@@ -1278,7 +1424,7 @@ private fun ReminderSettingsItemRow(
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(Violet400.copy(alpha = 0.15f))
                 ) {
@@ -1296,12 +1442,22 @@ private fun ReminderSettingsItemRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Gray400,
-                        fontSize = 11.sp
-                    )
+                    Spacer(Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (reminder.isEnabled) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
+                            contentDescription = null,
+                            tint = if (reminder.isEnabled) Amber400 else Gray500,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (reminder.isEnabled) Gray300 else Gray500,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             }
 
@@ -1467,127 +1623,126 @@ private fun AddEditReminderModal(
                     }
                 }
 
-                // Configuración según Frecuencia
-                when (type) {
-                    ReminderType.DIARIO -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Indigo900.copy(alpha = 0.4f))
-                                .padding(10.dp)
+                // Días activos de la semana (si es Semanal)
+                if (type == ReminderType.SEMANAL) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Días activos de la semana:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(
-                                text = "📅 Se mostrará en tu panel todos los días.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Gray300,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-
-                    ReminderType.SEMANAL -> {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Días activos de la semana:", style = MaterialTheme.typography.labelSmall, color = Gray400)
-                            Row(
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                daysMap.forEach { (dayNum, label) ->
-                                    val isDaySelected = selectedDays.contains(dayNum)
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                if (isDaySelected) Emerald400 else Indigo900.copy(alpha = 0.7f)
-                                            )
-                                            .border(
-                                                1.dp,
-                                                if (isDaySelected) Emerald400 else Indigo700,
-                                                CircleShape
-                                            )
-                                            .clickable {
-                                                selectedDays = if (isDaySelected) {
-                                                    if (selectedDays.size > 1) selectedDays - dayNum else selectedDays
-                                                } else {
-                                                    selectedDays + dayNum
-                                                }
+                            daysMap.forEach { (dayNum, label) ->
+                                val isDaySelected = selectedDays.contains(dayNum)
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isDaySelected) Emerald400 else Indigo900.copy(alpha = 0.7f)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (isDaySelected) Emerald400 else Indigo700,
+                                            CircleShape
+                                        )
+                                        .clickable {
+                                            selectedDays = if (isDaySelected) {
+                                                if (selectedDays.size > 1) selectedDays - dayNum else selectedDays
+                                            } else {
+                                                selectedDays + dayNum
                                             }
-                                    ) {
-                                        Text(
-                                            text = label,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = if (isDaySelected) Indigo900 else White,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
+                                        }
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (isDaySelected) Indigo900 else White,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
-                            Text(
-                                text = "Solo se mostrará en tu panel los días seleccionados.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Gray400,
-                                fontSize = 11.sp
-                            )
                         }
+                        Text(
+                            text = "Solo se mostrará en tu panel los días seleccionados.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Gray400,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                // Hora del Aviso / Notificación (para TODOS los tipos de recordatorio)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Alarm, contentDescription = null, tint = Violet300, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "Hora de la Notificación en el móvil:",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = White,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
 
-                    ReminderType.HORARIO -> {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Hora de la toma / aviso:", style = MaterialTheme.typography.labelSmall, color = Gray400)
-                            OutlinedTextField(
-                                value = timeOfDay,
-                                onValueChange = { input ->
-                                    if (input.length <= 5) timeOfDay = input
-                                },
-                                label = { Text("Hora (HH:mm)", color = Violet300) },
-                                placeholder = { Text("09:00", color = Gray500) },
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Violet400,
-                                    unfocusedBorderColor = Indigo600,
-                                    focusedTextColor = White,
-                                    unfocusedTextColor = White
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                    OutlinedTextField(
+                        value = timeOfDay,
+                        onValueChange = { input ->
+                            if (input.length <= 5) timeOfDay = input
+                        },
+                        label = { Text("Hora (HH:mm)", color = Violet300) },
+                        placeholder = { Text("09:00", color = Gray500) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Violet400,
+                            unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White,
+                            unfocusedTextColor = White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-                            // Sugerencias rápidas de horas
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier.fillMaxWidth()
+                    // Sugerencias rápidas de horas
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf("08:00", "09:30", "14:00", "19:00", "21:30").forEach { preset ->
+                            val isPresetSelected = timeOfDay == preset
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        if (isPresetSelected) Violet400.copy(alpha = 0.35f) else Indigo900.copy(alpha = 0.6f)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (isPresetSelected) Violet400 else Indigo700,
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .clickable { timeOfDay = preset }
+                                    .padding(vertical = 6.dp)
                             ) {
-                                listOf("08:00", "09:30", "14:00", "20:30", "22:00").forEach { preset ->
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(
-                                                if (timeOfDay == preset) Violet400.copy(alpha = 0.3f) else Indigo900.copy(alpha = 0.5f)
-                                            )
-                                            .border(
-                                                1.dp,
-                                                if (timeOfDay == preset) Violet400 else Indigo700,
-                                                RoundedCornerShape(8.dp)
-                                            )
-                                            .clickable { timeOfDay = preset }
-                                            .padding(vertical = 6.dp)
-                                    ) {
-                                        Text(
-                                            text = preset,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = if (timeOfDay == preset) Violet300 else Gray300,
-                                            fontSize = 10.sp
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = preset,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isPresetSelected) Violet300 else Gray300,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isPresetSelected) FontWeight.Bold else FontWeight.Normal
+                                )
                             }
                         }
                     }
+
+                    Text(
+                        text = "🔔 Tu teléfono te avisará puntualmente con sonido y la opción de marcar la toma directamente desde la notificación.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Gray400,
+                        fontSize = 11.sp
+                    )
                 }
             }
         },
@@ -2733,7 +2888,7 @@ private fun EditApiKeyModal(
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Obtener Clave Gratis en Google AI Studio", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }

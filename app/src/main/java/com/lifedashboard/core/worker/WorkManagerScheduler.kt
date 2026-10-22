@@ -21,6 +21,7 @@ class WorkManagerScheduler @Inject constructor(
         scheduleWidgetUpdates()
         symmetryFolderUri?.let { scheduleSymmetrySync(it) }
         scheduleBedtimeReminder()
+        scheduleHydrationReminder()
     }
 
     fun scheduleBedtimeReminder(
@@ -69,6 +70,22 @@ class WorkManagerScheduler @Inject constructor(
 
     fun cancelBedtimeReminder() {
         workManager.cancelUniqueWork(BedtimeReminderWorker.WORK_NAME)
+    }
+
+    fun scheduleHydrationReminder() {
+        val request = PeriodicWorkRequestBuilder<HydrationReminderWorker>(
+            2, java.util.concurrent.TimeUnit.HOURS
+        ).build()
+
+        workManager.enqueueUniquePeriodicWork(
+            HydrationReminderWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            request
+        )
+    }
+
+    fun cancelHydrationReminder() {
+        workManager.cancelUniqueWork(HydrationReminderWorker.WORK_NAME)
     }
 
     fun scheduleHealthConnectSync() {
