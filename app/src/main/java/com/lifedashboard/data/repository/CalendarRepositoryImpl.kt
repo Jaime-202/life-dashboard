@@ -15,10 +15,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -109,18 +111,14 @@ class CalendarRepositoryImpl @Inject constructor(
      */
     override suspend fun syncCalendarEvents(): Unit = withContext(Dispatchers.IO) {
         try {
-            val now     = System.currentTimeMillis()
-            val future  = now + TimeUnit.DAYS.toMillis(60)
+            // Desde el inicio de hoy: incluye los eventos de todo el día y los que están en curso
+            val start  = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val future = start + TimeUnit.DAYS.toMillis(60)
 
-            val entities = queryCalendarInstances(now, future)
+            val entities = queryCalendarInstances(start, future)
             Log.d(TAG, "Eventos leídos de CalendarContract: ${entities.size}")
 
-            // Limpiamos eventos muy antiguos (> 7 días en el pasado)
-            val cutoff = now - TimeUnit.DAYS.toMillis(7)
-            dao.deletePastEvents(cutoff)
-
-            // Guardamos los nuevos (upsert para no duplicar)
-            dao.upsertAll(entities)
+            dao.replaceAll(entities)
 
         } catch (e: SecurityException) {
             // Permiso READ_CALENDAR no concedido — la UI debe solicitarlo
@@ -173,21 +171,29 @@ class CalendarRepositoryImpl @Inject constructor(
      */
     private fun mapCursorToEntity(cursor: android.database.Cursor): CalendarEventEntity? {
         val title = cursor.getStringOrNull(Col.TITLE) ?: return null
+        val isAllDay = cursor.getInt(Col.ALL_DAY) == 1
+        val begin = cursor.getLong(Col.BEGIN)
 
         return CalendarEventEntity(
-            id                   = cursor.getLong(Col.EVENT_ID),
+            // Cada repetición comparte EVENT_ID: con él como clave solo sobreviviría la última
+            id                   = 31 * cursor.getLong(Col.EVENT_ID) + begin,
             title                = title,
             description          = cursor.getStringOrNull(Col.DESCRIPTION),
             location             = cursor.getStringOrNull(Col.LOCATION),
-            startTimeMillis      = cursor.getLong(Col.BEGIN),
-            endTimeMillis        = cursor.getLong(Col.END),
-            isAllDay             = cursor.getInt(Col.ALL_DAY) == 1,
+            startTimeMillis      = if (isAllDay) utcMidnightToLocal(begin) else begin,
+            endTimeMillis        = if (isAllDay) utcMidnightToLocal(cursor.getLong(Col.END)) else cursor.getLong(Col.END),
+            isAllDay             = isAllDay,
             calendarDisplayName  = cursor.getStringOrNull(Col.CAL_NAME) ?: "Sin nombre",
             calendarColor        = cursor.getInt(Col.CAL_COLOR),
             eventColor           = if (cursor.isNull(Col.EVENT_COLOR)) null
                                    else cursor.getInt(Col.EVENT_COLOR)
         )
     }
+
+    /** Los eventos de todo el día se guardan a medianoche UTC; la fecha es la que cuenta, no la hora. */
+    private fun utcMidnightToLocal(utcMillis: Long): Long =
+        Instant.ofEpochMilli(utcMillis).atZone(ZoneOffset.UTC).toLocalDate()
+            .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
     // ─── Extension helpers ────────────────────────────────────────────────────
 

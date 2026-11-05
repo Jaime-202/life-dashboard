@@ -29,6 +29,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.window.Dialog
 import com.lifedashboard.data.local.entity.WeightEntryEntity
 import com.lifedashboard.presentation.common.components.WeightEvolutionChart
+import com.lifedashboard.presentation.common.components.WeightHistoryModal
 import com.lifedashboard.domain.model.CalendarEvent
 import com.lifedashboard.domain.model.WorkoutType
 import com.lifedashboard.presentation.screen.dashboard.components.*
@@ -48,18 +49,28 @@ fun DashboardScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showAddWeightModal by remember { mutableStateOf(false) }
+    var showWeightHistoryModal by remember { mutableStateOf(false) }
 
     DashboardContent(
         state                 = state,
         onSelectDate          = { viewModel.selectDate(it) },
         onRefreshAi           = { viewModel.requestAiInsight() },
         onAddWeightClick      = { showAddWeightModal = true },
+        onViewWeightHistory   = { showWeightHistoryModal = true },
         onToggleReminder      = { id, completed -> viewModel.toggleReminder(id, completed) },
         onNavigateToHealth    = onNavigateToHealth,
         onNavigateToWorkout   = onNavigateToWorkout,
         onNavigateToNutrition = onNavigateToNutrition,
         onNavigateToSettings  = onNavigateToSettings
     )
+
+    if (showWeightHistoryModal) {
+        WeightHistoryModal(
+            history   = state.weightHistory,
+            onDismiss = { showWeightHistoryModal = false },
+            onDelete  = { id -> viewModel.deleteWeight(id) }
+        )
+    }
 
     if (showAddWeightModal) {
         DashboardAddWeightModal(
@@ -79,6 +90,7 @@ fun DashboardContent(
     onSelectDate: (LocalDate) -> Unit = {},
     onRefreshAi: () -> Unit = {},
     onAddWeightClick: () -> Unit = {},
+    onViewWeightHistory: () -> Unit = {},
     onToggleReminder: (Long, Boolean) -> Unit = { _, _ -> },
     onNavigateToHealth: (String) -> Unit = {},
     onNavigateToWorkout: () -> Unit = {},
@@ -193,7 +205,8 @@ fun DashboardContent(
                 latestWeightKg = state.latestWeightKg,
                 userHeightCm   = state.userHeightCm,
                 weightHistory  = state.weightHistory,
-                onAddWeight    = onAddWeightClick
+                onAddWeight    = onAddWeightClick,
+                onViewHistory  = onViewWeightHistory
             )
 
             // 3. Calendario de Actividad y consistencia
@@ -326,11 +339,37 @@ private fun DayHeroSection(
                         letterSpacing = 1.sp
                     )
                 }
-                Text(
-                    text     = "✦ Health Connect",
-                    fontSize = 11.sp,
-                    color    = Gray500
-                )
+
+                // Puntuación de Preparación (Discreta)
+                val readinessColor = when {
+                    state.readinessScore >= 85 -> Emerald400
+                    state.readinessScore >= 70 -> Cyan400
+                    state.readinessScore >= 55 -> Amber400
+                    else -> Rose400
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(readinessColor.copy(alpha = 0.16f))
+                        .border(1.dp, readinessColor.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = null,
+                            tint = readinessColor,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(Modifier.width(3.dp))
+                        Text(
+                            text = "Prep. ${state.readinessScore}% · ${state.readinessStatus}",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = readinessColor
+                        )
+                    }
+                }
             }
 
             Row(
@@ -379,6 +418,59 @@ private fun DayHeroSection(
                         onClick  = { onNavigateToHealth("CALORIAS") }
                     )
                 }
+            }
+
+            // Comparativa Semanal Discreta
+            val stepsDiffText = if (state.weeklyStepsDiffPercent >= 0) "+${state.weeklyStepsDiffPercent}%" else "${state.weeklyStepsDiffPercent}%"
+            val sleepDiffText = if (state.weeklySleepDiffHours >= 0) "+${String.format(Locale.US, "%.1f", state.weeklySleepDiffHours)}h" else "${String.format(Locale.US, "%.1f", state.weeklySleepDiffHours)}h"
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.TrendingUp,
+                    contentDescription = null,
+                    tint = Violet300,
+                    modifier = Modifier.size(11.dp)
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    text = "Semanal: ",
+                    fontSize = 11.sp,
+                    color = Gray400
+                )
+                Text(
+                    text = "$stepsDiffText pasos",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (state.weeklyStepsDiffPercent >= 0) Emerald400 else Rose400
+                )
+                Text(
+                    text = "  ·  ",
+                    fontSize = 11.sp,
+                    color = Gray600
+                )
+                Text(
+                    text = "$sleepDiffText sueño",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (state.weeklySleepDiffHours >= 0) Emerald400 else Amber400
+                )
+                Text(
+                    text = "  ·  ",
+                    fontSize = 11.sp,
+                    color = Gray600
+                )
+                Text(
+                    text = "${state.weeklyWorkoutsCount} ent.",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Violet300
+                )
             }
         }
     }
@@ -737,7 +829,8 @@ private fun DashboardWeightCard(
     latestWeightKg: Float?,
     userHeightCm: Int,
     weightHistory: List<WeightEntryEntity>,
-    onAddWeight: () -> Unit
+    onAddWeight: () -> Unit,
+    onViewHistory: () -> Unit
 ) {
     val displayWeight = latestWeightKg ?: 75.0f
     val imc = if (userHeightCm > 0) {
@@ -828,15 +921,32 @@ private fun DashboardWeightCard(
 
                 Spacer(Modifier.width(8.dp))
 
-                Button(
-                    onClick = onAddWeight,
-                    colors = ButtonDefaults.buttonColors(containerColor = Violet400),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = Indigo900, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Pesar", color = Indigo900, fontWeight = FontWeight.Bold, fontSize = 12.sp, softWrap = false, maxLines = 1)
+                    OutlinedButton(
+                        onClick = onViewHistory,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Violet300),
+                        border = BorderStroke(1.dp, Violet400.copy(alpha = 0.5f)),
+                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.History, contentDescription = "Ver historial", tint = Violet300, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Historial", color = Violet300, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, softWrap = false)
+                    }
+
+                    Button(
+                        onClick = onAddWeight,
+                        colors = ButtonDefaults.buttonColors(containerColor = Violet400),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = Indigo900, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Pesar", color = Indigo900, fontWeight = FontWeight.Bold, fontSize = 12.sp, softWrap = false, maxLines = 1)
+                    }
                 }
             }
 
@@ -921,6 +1031,22 @@ private fun DashboardWeightCard(
                         .fillMaxWidth()
                         .height(160.dp)
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    TextButton(onClick = onViewHistory) {
+                        Icon(Icons.Default.History, contentDescription = null, tint = Violet300, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "Ver historial completo (${weightHistory.size} registros) →",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Violet300,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
             } else {
                 Box(
                     contentAlignment = Alignment.Center,

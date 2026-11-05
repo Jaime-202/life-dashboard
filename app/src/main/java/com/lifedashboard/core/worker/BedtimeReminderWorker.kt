@@ -56,15 +56,12 @@ class BedtimeReminderWorker @AssistedInject constructor(
                 minutesBefore
             )
 
-            NotificationHelper.showBedtimeReminder(context, title, message)
-
-            // Reprogramar para la noche siguiente
-            WorkManagerScheduler(context).scheduleBedtimeReminder(
-                wakeUpHour = wakeUpHour,
-                wakeUpMinute = wakeUpMinute,
-                sleepTargetHours = sleepHours,
-                minutesBefore = minutesBefore
-            )
+            // REPLACE cancela este mismo worker, así que reprogramar debe ser lo último
+            try {
+                NotificationHelper.showBedtimeReminder(context, title, message)
+            } finally {
+                WorkManagerScheduler(context).syncBedtimeReminder(goals)
+            }
 
             Result.success()
         } catch (e: Exception) {

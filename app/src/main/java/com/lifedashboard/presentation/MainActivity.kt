@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import android.os.Build
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,10 +24,14 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.lifedashboard.core.worker.WidgetUpdateWorker
 import com.lifedashboard.core.worker.WorkManagerScheduler
+import com.lifedashboard.data.repository.UserGoals
+import com.lifedashboard.data.repository.UserPreferencesRepository
+import com.lifedashboard.domain.repository.CalendarRepository
 import com.lifedashboard.presentation.navigation.*
 import com.lifedashboard.presentation.theme.*
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -35,34 +40,80 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var workManagerScheduler: WorkManagerScheduler
-    @Inject lateinit var userPreferences: com.lifedashboard.data.repository.UserPreferencesRepository
+    @Inject lateinit var userPreferences: UserPreferencesRepository
+    @Inject lateinit var calendarRepository: CalendarRepository
+
+    /** Destino pendiente de abrir (notificación o widget), también con la app ya abierta. */
+    private val pendingNavigation = mutableStateOf<Intent?>(null)
+    private var lastRefreshMillis = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Iniciar workers en background
-        workManagerScheduler.scheduleAll()
-        workManagerScheduler.runHealthSyncNow()
+        if (savedInstanceState == null) {
+            pendingNavigation.value = intent
+            lifecycleScope.launch {
+                workManagerScheduler.scheduleAll(userPreferences.userGoals.first())
+            }
+        }
 
         setContent {
-            val goals by userPreferences.userGoals.collectAsState(initial = com.lifedashboard.data.repository.UserGoals())
+            val goals by userPreferences.userGoals.collectAsState(initial = UserGoals())
             LifeDashboardTheme(themeMode = goals.themeMode) {
-                LifeDashboardApp()
+                LifeDashboardApp(
+                    navigationIntent = pendingNavigation.value,
+                    onNavigationHandled = { pendingNavigation.value = null }
+                )
             }
         }
     }
 
     override fun onResume() {
         super.onResume()
+        refreshDataIfStale()
         lifecycleScope.launch(Dispatchers.IO) {
             WidgetUpdateWorker.updateAllWidgets(applicationContext)
         }
     }
+
+    /**
+     * Refresca al volver a la app. Es lo que garantiza datos al día cuando Health Connect
+     * no permite la lectura en segundo plano.
+     */
+    private fun refreshDataIfStale() {
+        val now = System.currentTimeMillis()
+        if (now - lastRefreshMillis < MIN_REFRESH_INTERVAL_MILLIS) return
+        lastRefreshMillis = now
+
+        lifecycleScope.launch {
+            if (userPreferences.userGoals.first().syncFrequency != "MANUAL") {
+                workManagerScheduler.runHealthSyncNow()
+            }
+            val canReadCalendar = ContextCompat.checkSelfPermission(
+                this@MainActivity,
+                Manifest.permission.READ_CALENDAR
+            ) == PackageManager.PERMISSION_GRANTED
+            if (canReadCalendar) calendarRepository.syncCalendarEvents()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingNavigation.value = intent
+    }
+
+    private companion object {
+        const val MIN_REFRESH_INTERVAL_MILLIS = 5 * 60 * 1000L
+    }
 }
 
 @Composable
-private fun LifeDashboardApp() {
+private fun LifeDashboardApp(
+    navigationIntent: Intent?,
+    onNavigationHandled: () -> Unit
+) {
     val navController = rememberNavController()
     val navBackStack by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStack?.destination?.route
@@ -71,6 +122,22 @@ private fun LifeDashboardApp() {
     val notificationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { /* El usuario responde al permiso */ }
+
+    LaunchedEffect(navigationIntent) {
+        if (navigationIntent == null) return@LaunchedEffect
+        val targetTab = navigationIntent.getStringExtra("tab")
+        val targetRoute = when (navigationIntent.getStringExtra("screen")) {
+            "health" -> Screen.Health.createRoute(targetTab ?: "PASOS")
+            "nutrition" -> Screen.Nutrition.route
+            "workout" -> Screen.Workout.route
+            "settings" -> Screen.Settings.route
+            else -> null
+        }
+        if (targetRoute != null) {
+            navController.navigate(targetRoute) { launchSingleTop = true }
+        }
+        onNavigationHandled()
+    }
 
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

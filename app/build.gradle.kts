@@ -15,6 +15,11 @@ val localProps = Properties().apply {
     if (f.exists()) load(f.inputStream())
 }
 
+// Guarda el esquema de cada versión de la base de datos para poder comprobar las migraciones
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 android {
     namespace = "com.lifedashboard"
     compileSdk = 35
@@ -63,6 +68,10 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 
     packaging {

@@ -33,6 +33,7 @@ class MarkReminderCompletedReceiver : BroadcastReceiver() {
         }
 
         if (reminderId != 0L) {
+            ReminderScheduler.cancelSnooze(context, reminderId)
             val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {

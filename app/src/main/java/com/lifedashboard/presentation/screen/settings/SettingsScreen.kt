@@ -35,6 +35,12 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.lifedashboard.core.health.HealthConnectAccess
+import com.lifedashboard.core.health.HealthConnectStatus
+import com.lifedashboard.core.util.EnergyCalculator
+import com.lifedashboard.core.util.Sex
+import com.lifedashboard.data.repository.DataExportRepository
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.DistanceRecord
@@ -55,6 +61,7 @@ import com.lifedashboard.data.local.entity.WeightEntryEntity
 import com.lifedashboard.data.repository.UserPreferencesRepository
 import com.lifedashboard.domain.repository.CalendarRepository
 import com.lifedashboard.presentation.common.components.WeightEvolutionChart
+import com.lifedashboard.presentation.common.components.WeightHistoryModal
 import com.lifedashboard.presentation.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -62,6 +69,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -80,6 +89,8 @@ data class SettingsState(
     val primaryGoal: String = "SALUD_GENERAL",
     val weightKg: Float = 75.0f,
     val heightCm: Int = 175,
+    val ageYears: Int = 25,
+    val sex: String = "HOMBRE",
     val themeMode: ThemeMode = ThemeMode.OSCURO,
     val showHeroRings: Boolean = true,
     val showAiInsight: Boolean = true,
@@ -97,7 +108,7 @@ data class SettingsState(
     val caloriesTarget: Float = 500f, // Meta de calorías activas quemadas
     val workoutDaysTarget: Int = 4,
     val workoutMinutesTarget: Int = 180,
-    val healthConnectGranted: Boolean = false,
+    val healthConnectStatus: HealthConnectStatus = HealthConnectStatus.NOT_GRANTED,
     val calendarGranted: Boolean = false,
     val weightHistory: List<WeightEntryEntity> = emptyList(),
     val bedtimeReminderEnabled: Boolean = true,
@@ -121,6 +132,7 @@ class SettingsViewModel @Inject constructor(
     private val weightDao: WeightDao,
     private val reminderDao: ReminderDao,
     private val foodAiService: com.lifedashboard.data.remote.food.FoodAiService,
+    private val dataExportRepository: DataExportRepository,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context
 ) : ViewModel() {
     private val _state = MutableStateFlow(SettingsState())
@@ -134,17 +146,9 @@ class SettingsViewModel @Inject constructor(
                     "MIDNIGHT", "SISTEMA" -> ThemeMode.MIDNIGHT
                     else      -> ThemeMode.OSCURO
                 }
-                val validW = if (goals.weightKg > 30f) goals.weightKg else 75f
-                val validH = if (goals.heightCm > 100) goals.heightCm else 175
-                val bmr = (10f * validW) + (6.25f * validH) - (5f * 25f) + 5f
-                val activityMult = when (goals.fitnessLevel) {
-                    "PRINCIPIANTE" -> 1.25f
-                    "INTERMEDIO"   -> 1.375f
-                    "AVANZADO"     -> 1.55f
-                    "ATLETA"       -> 1.725f
-                    else           -> 1.35f
-                }
-                val tdee = bmr * activityMult
+                val energy = EnergyCalculator.targets(
+                    goals.weightKg, goals.heightCm, goals.fitnessLevel, goals.primaryGoal, goals.ageYears, goals.sex
+                )
 
                 _state.value = _state.value.copy(
                     userName             = goals.userName,
@@ -152,6 +156,8 @@ class SettingsViewModel @Inject constructor(
                     primaryGoal          = goals.primaryGoal,
                     weightKg             = goals.weightKg,
                     heightCm             = goals.heightCm,
+                    ageYears             = goals.ageYears,
+                    sex                  = goals.sex,
                     themeMode            = currentTheme,
                     showHeroRings        = goals.showHeroRings,
                     showAiInsight        = goals.showAiInsight,
@@ -177,8 +183,8 @@ class SettingsViewModel @Inject constructor(
                     carbsTargetGrams     = goals.carbsTargetGrams,
                     fatTargetGrams       = goals.fatTargetGrams,
                     waterTargetMl        = goals.waterTargetMl,
-                    bmrKcal              = bmr,
-                    tdeeKcal             = tdee
+                    bmrKcal              = energy.bmr,
+                    tdeeKcal             = energy.tdee
                 )
             }
             .launchIn(viewModelScope)
@@ -215,14 +221,8 @@ class SettingsViewModel @Inject constructor(
     fun updateWakeUpTime(hour: Int, minute: Int) {
         viewModelScope.launch {
             userPreferences.updateWakeUpTime(hour, minute)
-            if (_state.value.bedtimeReminderEnabled) {
-                scheduler.scheduleBedtimeReminder(
-                    wakeUpHour = hour,
-                    wakeUpMinute = minute,
-                    sleepTargetHours = _state.value.sleepTargetHours,
-                    minutesBefore = _state.value.bedtimeReminderMinutesBefore
-                )
-            }
+            // Afecta tanto al aviso de ir a dormir como al resumen matutino
+            scheduler.scheduleAll(userPreferences.userGoals.first())
         }
     }
 
@@ -235,71 +235,50 @@ class SettingsViewModel @Inject constructor(
                 note = note?.takeIf { it.isNotBlank() }
             )
             weightDao.upsert(entry)
-            val currentGoal = _state.value.primaryGoal
-            val currentHeight = _state.value.heightCm
+            val st = _state.value
             userPreferences.updateFitnessProfile(
-                level = _state.value.fitnessLevel,
-                goal = currentGoal,
+                level = st.fitnessLevel,
+                goal = st.primaryGoal,
                 weight = weight,
-                height = currentHeight
+                height = st.heightCm,
+                ageYears = st.ageYears,
+                sex = st.sex
             )
 
             // Recalcular calorías y macros automáticamente basados en el nuevo peso
-            val validHeight = if (currentHeight > 100) currentHeight else 175
-            val bmr = (10f * weight) + (6.25f * validHeight) - (5f * 25f) + 5f
-            val tdee = bmr * 1.35f
-            val targetCalories = when (currentGoal) {
-                "PERDIDA_PESO", "GRASA" -> (tdee - 450f).coerceAtLeast(1400f)
-                "VOLUMEN", "MUSCULO" -> tdee + 300f
-                else -> tdee
-            }
-            val protein = (weight * 2.0f).coerceIn(90f, 240f)
-            val fat = (weight * 0.85f).coerceIn(40f, 110f)
-            val remainingKcal = targetCalories - (protein * 4f + fat * 9f)
-            val carbs = (remainingKcal / 4f).coerceAtLeast(50f)
-
-            userPreferences.updateCalorieAndMacroTargets(
-                calories = targetCalories,
-                protein = protein,
-                carbs = carbs,
-                fat = fat
-            )
+            applyEnergyTargets(weight, st.heightCm, st.fitnessLevel, st.primaryGoal, st.ageYears, st.sex)
             com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
         }
+    }
+
+    private suspend fun applyEnergyTargets(
+        weight: Float, height: Int, level: String, goal: String, ageYears: Int, sex: String
+    ) {
+        val targets = EnergyCalculator.targets(weight, height, level, goal, ageYears, sex)
+        userPreferences.updateCalorieAndMacroTargets(
+            calories = targets.calories,
+            protein = targets.protein,
+            carbs = targets.carbs,
+            fat = targets.fat
+        )
     }
 
     fun deleteWeightEntry(id: Long) {
         viewModelScope.launch {
             weightDao.deleteById(id)
+            weightDao.getLatestWeight()?.let { userPreferences.updateWeight(it.weightKg) }
         }
     }
 
-    fun updateProfile(name: String, level: String, goal: String, weight: Float, height: Int) {
+    fun updateProfile(
+        name: String, level: String, goal: String, weight: Float, height: Int, ageYears: Int, sex: String
+    ) {
         viewModelScope.launch {
             if (name.isNotBlank()) userPreferences.updateUserName(name.trim())
-            userPreferences.updateFitnessProfile(level, goal, weight, height)
+            userPreferences.updateFitnessProfile(level, goal, weight, height, ageYears, sex)
 
-            // Cálculo automático de calorías y macronutrientes según Mifflin-St Jeor y objetivo (pérdida grasa / volumen / mant.)
-            val validWeight = if (weight > 30f) weight else 75f
-            val validHeight = if (height > 100) height else 175
-            val bmr = (10f * validWeight) + (6.25f * validHeight) - (5f * 25f) + 5f
-            val tdee = bmr * 1.35f
-            val targetCalories = when (goal) {
-                "PERDIDA_PESO", "GRASA" -> (tdee - 450f).coerceAtLeast(1400f)
-                "VOLUMEN", "MUSCULO" -> tdee + 300f
-                else -> tdee
-            }
-            val protein = (validWeight * 2.0f).coerceIn(90f, 240f)
-            val fat = (validWeight * 0.85f).coerceIn(40f, 110f)
-            val remainingKcal = targetCalories - (protein * 4f + fat * 9f)
-            val carbs = (remainingKcal / 4f).coerceAtLeast(50f)
-
-            userPreferences.updateCalorieAndMacroTargets(
-                calories = targetCalories,
-                protein = protein,
-                carbs = carbs,
-                fat = fat
-            )
+            // Cálculo automático de calorías y macronutrientes según Mifflin-St Jeor y objetivo
+            applyEnergyTargets(weight, height, level, goal, ageYears, sex)
             com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
         }
     }
@@ -329,6 +308,7 @@ class SettingsViewModel @Inject constructor(
         if (target > 0f) {
             viewModelScope.launch {
                 userPreferences.updateSleepTarget(target)
+                scheduler.syncBedtimeReminder(userPreferences.userGoals.first())
                 com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
             }
         }
@@ -368,16 +348,11 @@ class SettingsViewModel @Inject constructor(
             Manifest.permission.READ_CALENDAR
         ) == PackageManager.PERMISSION_GRANTED
 
-        val healthStatus = try {
-            HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
-        } catch (e: Exception) {
-            false
+        _state.update { it.copy(calendarGranted = calendarPermission) }
+        viewModelScope.launch {
+            val status = HealthConnectAccess.status(context.applicationContext)
+            _state.update { it.copy(healthConnectStatus = status) }
         }
-
-        _state.value = _state.value.copy(
-            calendarGranted = calendarPermission,
-            healthConnectGranted = healthStatus
-        )
     }
 
     fun setThemeMode(mode: ThemeMode) {
@@ -463,56 +438,45 @@ class SettingsViewModel @Inject constructor(
     fun resetToDefaults() {
         viewModelScope.launch {
             userPreferences.resetToDefaults()
-            scheduler.scheduleAll()
+            scheduler.scheduleAll(userPreferences.userGoals.first())
             com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
             Toast.makeText(context, "Ajustes restablecidos a los valores por defecto", Toast.LENGTH_SHORT).show()
         }
     }
 
     fun onHealthConnectConnect(context: Context) {
-        _state.value = _state.value.copy(healthConnectGranted = true)
-        scheduler.runHealthSyncNow()
-        Toast.makeText(context, "Sincronizando con Health Connect", Toast.LENGTH_SHORT).show()
+        checkPermissions(context)
+        syncHealthAndReport()
+    }
+
+    private fun syncHealthAndReport() {
+        viewModelScope.launch {
+            val outcome = scheduler.syncHealthNowAndAwait()
+            checkPermissions(context)
+            Toast.makeText(context, outcome.message, Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun onCalendarPermissionGranted(context: Context) {
-        _state.value = _state.value.copy(calendarGranted = true)
-        CoroutineScope(Dispatchers.IO).launch {
+        _state.update { it.copy(calendarGranted = true) }
+        viewModelScope.launch {
             calendarRepository.syncCalendarEvents()
+            Toast.makeText(context, "Calendario sincronizado", Toast.LENGTH_SHORT).show()
         }
-        Toast.makeText(context, "Calendario sincronizado", Toast.LENGTH_SHORT).show()
     }
 
     fun forceSyncAll(context: Context) {
-        scheduler.runHealthSyncNow()
-        CoroutineScope(Dispatchers.IO).launch {
-            calendarRepository.syncCalendarEvents()
-        }
         Toast.makeText(context, "Sincronizando fuentes de datos…", Toast.LENGTH_SHORT).show()
+        viewModelScope.launch { calendarRepository.syncCalendarEvents() }
+        syncHealthAndReport()
     }
 
-    fun exportData(context: Context) {
-        val summary = """
-            {
-              "user": "${_state.value.userName}",
-              "fitness_level": "${_state.value.fitnessLevel}",
-              "primary_goal": "${_state.value.primaryGoal}",
-              "weight_kg": ${_state.value.weightKg},
-              "height_cm": ${_state.value.heightCm},
-              "targets": {
-                "steps": ${_state.value.stepsTarget},
-                "sleep_hours": ${_state.value.sleepTargetHours},
-                "calories": ${_state.value.caloriesTarget},
-                "workout_days": ${_state.value.workoutDaysTarget}
-              }
-            }
-        """.trimIndent()
-        val sendIntent = Intent().apply {
-            action = Intent.ACTION_SEND
-            putExtra(Intent.EXTRA_TEXT, summary)
-            type = "application/json"
+    fun exportData(uri: Uri) {
+        viewModelScope.launch {
+            val result = dataExportRepository.exportTo(uri)
+            val message = if (result.isSuccess) "Datos exportados" else "No se pudieron exportar los datos"
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
-        context.startActivity(Intent.createChooser(sendIntent, "Exportar Datos de Life Dashboard"))
     }
 
     fun addReminder(
@@ -589,26 +553,33 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     var showWaterModal by remember { mutableStateOf(false) }
     var showResetConfirmDialog by remember { mutableStateOf(false) }
 
-    val healthPermissions = setOf(
-        HealthPermission.getReadPermission(StepsRecord::class),
-        HealthPermission.getReadPermission(DistanceRecord::class),
-        HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
-        HealthPermission.getReadPermission(SleepSessionRecord::class),
-        HealthPermission.getReadPermission(ExerciseSessionRecord::class),
-    )
+    val healthPermissions = remember { HealthConnectAccess.permissionsToRequest(context) }
 
     val healthPermissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
     ) { grantedPermissions ->
-        if (grantedPermissions.containsAll(healthPermissions)) {
-            viewModel.onHealthConnectConnect(context)
-        } else {
-            Toast.makeText(context, "Permisos de salud parciales o denegados", Toast.LENGTH_SHORT).show()
+        when {
+            // Con permisos parciales se sincroniza igualmente lo que se pueda leer
+            HealthConnectAccess.READ_PERMISSIONS.any { it in grantedPermissions } -> {
+                if (!grantedPermissions.containsAll(healthPermissions)) {
+                    Toast.makeText(context, "Permisos parciales: faltarán algunos datos", Toast.LENGTH_SHORT).show()
+                }
+                viewModel.onHealthConnectConnect(context)
+            }
+            else -> Toast.makeText(context, "Permisos de salud denegados", Toast.LENGTH_SHORT).show()
         }
     }
 
-    LaunchedEffect(Unit) {
+    // Se comprueba al volver a la pantalla: los permisos pueden cambiarse fuera de la app
+    LifecycleResumeEffect(Unit) {
         viewModel.checkPermissions(context)
+        onPauseOrDispose { }
+    }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) viewModel.exportData(uri)
     }
 
     val calendarPermissionLauncher = rememberLauncherForActivityResult(
@@ -1099,8 +1070,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 icon      = Icons.Default.Favorite,
                 iconColor = Rose400,
                 title     = "Health Connect",
-                subtitle  = if (state.healthConnectGranted) "Conectado y sincronizando"
-                            else "Toca para vincular Health Connect",
+                subtitle  = when (state.healthConnectStatus) {
+                    HealthConnectStatus.CONNECTED -> "Conectado, también en segundo plano"
+                    HealthConnectStatus.PARTIAL -> "Faltan permisos: pulsa Conectar para completarlos"
+                    HealthConnectStatus.NOT_GRANTED -> "Pulsa Conectar para vincular Health Connect"
+                    HealthConnectStatus.UNAVAILABLE -> "No disponible en este dispositivo"
+                },
                 trailing  = {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(
@@ -1179,11 +1154,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             SettingsItem(
                 icon      = Icons.Default.Share,
                 iconColor = Cyan400,
-                title     = "Exportar Resumen Biométrico",
-                subtitle  = "Copia de seguridad en formato JSON estructurado",
+                title     = "Exportar Todos los Datos",
+                subtitle  = "Salud, comidas, peso, entrenos y tomas en un archivo JSON",
                 trailing  = {
                     OutlinedButton(
-                        onClick = { viewModel.exportData(context) },
+                        onClick = { exportLauncher.launch("vital-datos-${java.time.LocalDate.now()}.json") },
                         colors  = ButtonDefaults.outlinedButtonColors(contentColor = Cyan400),
                         border  = BorderStroke(1.dp, Cyan400),
                         shape   = RoundedCornerShape(8.dp),
@@ -1248,14 +1223,16 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
 
     if (showProfileModal) {
         EnhancedProfileModal(
+            currentAge    = state.ageYears,
+            currentSex    = state.sex,
             currentName   = state.userName,
             currentLevel  = state.fitnessLevel,
             currentGoal   = state.primaryGoal,
             currentWeight = state.weightKg,
             currentHeight = state.heightCm,
             onDismiss     = { showProfileModal = false },
-            onSave        = { name, level, goal, weight, height ->
-                viewModel.updateProfile(name, level, goal, weight, height)
+            onSave        = { name, level, goal, weight, height, age, sex ->
+                viewModel.updateProfile(name, level, goal, weight, height, age, sex)
                 showProfileModal = false
                 Toast.makeText(context, "Perfil biométrico actualizado", Toast.LENGTH_SHORT).show()
             }
@@ -2250,118 +2227,7 @@ private fun AddWeightEntryModal(
     )
 }
 
-@Composable
-private fun WeightHistoryModal(
-    history: List<WeightEntryEntity>,
-    onDismiss: () -> Unit,
-    onDelete: (Long) -> Unit
-) {
-    val dateFormat = remember { SimpleDateFormat("d MMM yyyy, HH:mm", Locale("es")) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor   = Indigo800,
-        shape            = RoundedCornerShape(24.dp),
-        title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.History,
-                        contentDescription = null,
-                        tint = Violet300,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Historial de Pesajes", color = White, fontWeight = FontWeight.Bold)
-                }
-                Text(
-                    text = "${history.size}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Gray400
-                )
-            }
-        },
-        text = {
-            if (history.isEmpty()) {
-                Text(
-                    text = "No hay registros guardados en tu historial.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Gray400,
-                    modifier = Modifier.padding(vertical = 16.dp)
-                )
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 380.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    history.forEach { entry ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Indigo900.copy(alpha = 0.6f))
-                                .border(1.dp, Indigo700.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "${String.format(Locale.US, "%.1f", entry.weightKg)} kg",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = White,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = dateFormat.format(Date(entry.dateMillis)),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Gray400,
-                                    fontSize = 11.sp
-                                )
-                                if (!entry.note.isNullOrBlank()) {
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        text = entry.note,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Violet300,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-
-                            IconButton(
-                                onClick = { onDelete(entry.id) },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.DeleteOutline,
-                                    contentDescription = "Eliminar pesaje",
-                                    tint = Rose400,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onDismiss,
-                colors  = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)
-            ) {
-                Text("Cerrar", fontWeight = FontWeight.Bold)
-            }
-        }
-    )
-}
 
 // ─── Modal: Editar Perfil Completo ────────────────────────────────────────────
 
@@ -2372,14 +2238,18 @@ private fun EnhancedProfileModal(
     currentGoal: String,
     currentWeight: Float,
     currentHeight: Int,
+    currentAge: Int,
+    currentSex: String,
     onDismiss: () -> Unit,
-    onSave: (String, String, String, Float, Int) -> Unit
+    onSave: (String, String, String, Float, Int, Int, String) -> Unit
 ) {
     var nameInput by remember { mutableStateOf(currentName) }
     var selectedLevel by remember { mutableStateOf(currentLevel) }
     var selectedGoal by remember { mutableStateOf(currentGoal) }
     var weightInput by remember { mutableStateOf(currentWeight.toInt().toString()) }
     var heightInput by remember { mutableStateOf(currentHeight.toString()) }
+    var ageInput by remember { mutableStateOf(currentAge.toString()) }
+    var selectedSex by remember { mutableStateOf(Sex.normalize(currentSex)) }
 
     val levels = listOf(
         "PRINCIPIANTE" to "Principiante",
@@ -2472,6 +2342,24 @@ private fun EnhancedProfileModal(
                         ),
                         modifier = Modifier.weight(1f)
                     )
+                    OutlinedTextField(
+                        value         = ageInput,
+                        onValueChange = { ageInput = it.filter { c -> c.isDigit() } },
+                        label         = { Text("Edad") },
+                        singleLine    = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors        = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Violet400, unfocusedBorderColor = Indigo600,
+                            focusedTextColor = White, unfocusedTextColor = White
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Text("Sexo (para el cálculo metabólico):", style = MaterialTheme.typography.labelMedium, color = Gray300)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    OptionChip("Hombre", selectedSex == Sex.MALE, Modifier.weight(1f)) { selectedSex = Sex.MALE }
+                    OptionChip("Mujer", selectedSex == Sex.FEMALE, Modifier.weight(1f)) { selectedSex = Sex.FEMALE }
                 }
             }
         },
@@ -2480,7 +2368,9 @@ private fun EnhancedProfileModal(
                 onClick = {
                     val w = weightInput.toFloatOrNull() ?: currentWeight
                     val h = heightInput.toIntOrNull() ?: currentHeight
-                    onSave(nameInput, selectedLevel, selectedGoal, w, h)
+                    val age = (ageInput.toIntOrNull() ?: currentAge)
+                        .coerceIn(EnergyCalculator.MIN_AGE, EnergyCalculator.MAX_AGE)
+                    onSave(nameInput, selectedLevel, selectedGoal, w, h, age, selectedSex)
                 },
                 colors  = ButtonDefaults.buttonColors(containerColor = Violet400, contentColor = Indigo900)
             ) {

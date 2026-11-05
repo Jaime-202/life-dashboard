@@ -17,7 +17,7 @@ interface CalendarEventDao {
 
     @Query("""
         SELECT * FROM calendar_events
-        WHERE startTimeMillis >= :nowMillis
+        WHERE endTimeMillis >= :nowMillis
         ORDER BY startTimeMillis ASC
         LIMIT :limit
     """)
@@ -26,7 +26,7 @@ interface CalendarEventDao {
     /** Versión suspend (snapshot) para usar en DataAggregatorUseCase */
     @Query("""
         SELECT * FROM calendar_events
-        WHERE startTimeMillis >= :nowMillis
+        WHERE endTimeMillis >= :nowMillis
         ORDER BY startTimeMillis ASC
         LIMIT :limit
     """)
@@ -41,4 +41,11 @@ interface CalendarEventDao {
 
     @Query("DELETE FROM calendar_events")
     suspend fun deleteAll()
+
+    /** La caché refleja el calendario actual: lo borrado o movido en el dispositivo desaparece. */
+    @Transaction
+    suspend fun replaceAll(events: List<CalendarEventEntity>) {
+        deleteAll()
+        upsertAll(events)
+    }
 }

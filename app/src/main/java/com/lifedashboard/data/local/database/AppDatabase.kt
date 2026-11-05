@@ -18,8 +18,8 @@ import com.lifedashboard.data.local.entity.*
         ReminderEntity::class,
         ReminderLogEntity::class
     ],
-    version = 8,
-    exportSchema = false
+    version = 9,
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun healthDao(): HealthDao

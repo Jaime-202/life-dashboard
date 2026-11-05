@@ -28,6 +28,15 @@ interface MealDao {
     @Query("SELECT * FROM meals WHERE dateMillis >= :startMillis AND dateMillis <= :endMillis ORDER BY createdAt ASC")
     suspend fun getMealsForDay(startMillis: Long, endMillis: Long): List<MealEntryEntity>
 
+    @Query("SELECT * FROM meals ORDER BY dateMillis ASC, createdAt ASC")
+    suspend fun getAll(): List<MealEntryEntity>
+
     @Query("SELECT * FROM meals ORDER BY createdAt DESC LIMIT :limit")
     fun observeRecentMeals(limit: Int = 50): Flow<List<MealEntryEntity>>
+
+    @Query("SELECT * FROM meals WHERE isFavorite = 1 GROUP BY name ORDER BY createdAt DESC")
+    fun observeFavoriteMeals(): Flow<List<MealEntryEntity>>
+
+    @Query("UPDATE meals SET isFavorite = :isFavorite WHERE id = :id")
+    suspend fun updateFavoriteStatus(id: Long, isFavorite: Boolean)
 }

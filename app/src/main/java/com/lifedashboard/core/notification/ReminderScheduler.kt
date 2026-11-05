@@ -8,13 +8,52 @@ import android.os.Build
 import android.util.Log
 import com.lifedashboard.data.local.entity.ReminderEntity
 import com.lifedashboard.data.local.entity.ReminderType
-import java.util.Calendar
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 object ReminderScheduler {
     private const val TAG = "ReminderScheduler"
+    private const val ACTION_FIRE_SNOOZED = "com.lifedashboard.FIRE_SNOOZED_REMINDER"
+    private const val EXTRA_REMINDER_ID = "reminder_id"
+    private const val MAX_DAYS_AHEAD = 8L
 
     /**
-     * Programa o actualiza la alarma exacta en AlarmManager para un recordatorio.
+     * Próxima vez que debe sonar un recordatorio, estrictamente posterior a [now].
+     * Los días de la semana usan ISO (1 = lunes ... 7 = domingo).
+     */
+    fun nextOccurrence(
+        type: String,
+        daysOfWeek: String,
+        timeOfDay: String,
+        now: LocalDateTime
+    ): LocalDateTime {
+        val parts = timeOfDay.split(":")
+        val hour = parts.getOrNull(0)?.toIntOrNull()?.takeIf { it in 0..23 } ?: 9
+        val minute = parts.getOrNull(1)?.toIntOrNull()?.takeIf { it in 0..59 } ?: 0
+        val activeDays = if (type == ReminderType.SEMANAL) parseDays(daysOfWeek) else emptySet()
+
+        val today = now.toLocalDate().atTime(hour, minute)
+        for (offset in 0..MAX_DAYS_AHEAD) {
+            val candidate = today.plusDays(offset)
+            val dayMatches = activeDays.isEmpty() || candidate.dayOfWeek.value in activeDays
+            if (dayMatches && candidate.isAfter(now)) return candidate
+        }
+        return today.plusDays(1)
+    }
+
+    /** Indica si un recordatorio se aplica en un día concreto (1 = lunes ... 7 = domingo). */
+    fun appliesOnDay(type: String, daysOfWeek: String, isoDayOfWeek: Int): Boolean {
+        if (type != ReminderType.SEMANAL) return true
+        val days = parseDays(daysOfWeek)
+        return days.isEmpty() || isoDayOfWeek in days
+    }
+
+    private fun parseDays(daysOfWeek: String): Set<Int> =
+        daysOfWeek.split(",").mapNotNull { it.trim().toIntOrNull() }.filter { it in 1..7 }.toSet()
+
+    /**
+     * Programa o actualiza la alarma de un recordatorio. Los datos del aviso se leen de la base de
+     * datos al dispararse, así que aquí basta con identificar el recordatorio.
      */
     fun scheduleReminder(context: Context, reminder: ReminderEntity) {
         if (!reminder.isEnabled) {
@@ -22,125 +61,56 @@ object ReminderScheduler {
             return
         }
 
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-
-        // Extraer hora y minuto de "HH:mm"
-        val parts = reminder.timeOfDay.split(":")
-        val hour = parts.getOrNull(0)?.toIntOrNull() ?: 9
-        val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
-
-        val calendar = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-
-        val now = System.currentTimeMillis()
-
-        when (reminder.type) {
-            ReminderType.SEMANAL -> {
-                val activeDays = reminder.daysOfWeek
-                    .split(",")
-                    .mapNotNull { it.trim().toIntOrNull() }
-                    .toSet()
-
-                if (activeDays.isNotEmpty()) {
-                    var attempts = 0
-                    while (attempts < 14) {
-                        val dayOfWeekIso = when (calendar.get(Calendar.DAY_OF_WEEK)) {
-                            Calendar.MONDAY -> 1
-                            Calendar.TUESDAY -> 2
-                            Calendar.WEDNESDAY -> 3
-                            Calendar.THURSDAY -> 4
-                            Calendar.FRIDAY -> 5
-                            Calendar.SATURDAY -> 6
-                            Calendar.SUNDAY -> 7
-                            else -> 1
-                        }
-                        if (activeDays.contains(dayOfWeekIso) && calendar.timeInMillis > now) {
-                            break
-                        }
-                        calendar.add(Calendar.DAY_OF_YEAR, 1)
-                        attempts++
-                    }
-                } else {
-                    if (calendar.timeInMillis <= now) {
-                        calendar.add(Calendar.DAY_OF_YEAR, 1)
-                    }
-                }
-            }
-            else -> { // DIARIO o HORARIO
-                if (calendar.timeInMillis <= now) {
-                    calendar.add(Calendar.DAY_OF_YEAR, 1)
-                }
-            }
-        }
-
-        val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
-            putExtra("reminder_id", reminder.id)
-            putExtra("title", reminder.title)
-            putExtra("emoji", reminder.iconEmoji)
-            putExtra("time_of_day", reminder.timeOfDay)
-            putExtra("type", reminder.type)
-            putExtra("days_of_week", reminder.daysOfWeek)
-        }
-
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            reminder.id.toInt(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        val trigger = nextOccurrence(
+            reminder.type,
+            reminder.daysOfWeek,
+            reminder.timeOfDay,
+            LocalDateTime.now()
         )
+        val triggerAtMillis = trigger.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    calendar.timeInMillis,
-                    pendingIntent
-                )
-            } else {
-                alarmManager.setExact(
-                    AlarmManager.RTC_WAKEUP,
-                    calendar.timeInMillis,
-                    pendingIntent
-                )
-            }
-            Log.d(TAG, "Alarma programada con éxito para '${reminder.title}' (${reminder.timeOfDay}) en ${calendar.time}")
-        } catch (e: SecurityException) {
-            Log.w(TAG, "Permiso de alarma exacta no concedido, recurriendo a alarma estándar: ${e.message}")
-            try {
-                alarmManager.setAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    calendar.timeInMillis,
-                    pendingIntent
-                )
-            } catch (e2: Exception) {
-                Log.e(TAG, "Error programando alarma", e2)
-            }
-        }
+        setAlarm(context, triggerAtMillis, regularPendingIntent(context, reminder.id))
+        Log.d(TAG, "Alarma programada para el recordatorio #${reminder.id} en $trigger")
+    }
+
+    /** Vuelve a avisar de un recordatorio dentro de un rato sin alterar su programación habitual. */
+    fun scheduleSnooze(context: Context, reminderId: Long, triggerAtMillis: Long) {
+        setAlarm(context, triggerAtMillis, snoozePendingIntent(context, reminderId))
     }
 
     /**
-     * Cancela la alarma pendiente asociada al ID del recordatorio.
+     * Programa una alarma exacta si el sistema lo permite y, si no, una aproximada:
+     * mejor un aviso con unos minutos de margen que ninguno.
      */
+    fun setAlarm(context: Context, triggerAtMillis: Long, pendingIntent: PendingIntent) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val canBeExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
+        try {
+            if (canBeExact) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+            } else {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+            }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Alarma exacta denegada, se usa una aproximada: ${e.message}")
+            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+        }
+    }
+
+    /** Cancela tanto la alarma habitual como un posible aplazamiento pendiente. */
     fun cancelReminder(context: Context, reminderId: Long) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val intent = Intent(context, ReminderAlarmReceiver::class.java)
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            reminderId.toInt(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        alarmManager.cancel(pendingIntent)
+        alarmManager.cancel(regularPendingIntent(context, reminderId))
+        alarmManager.cancel(snoozePendingIntent(context, reminderId))
         Log.d(TAG, "Alarma cancelada para reminderId=$reminderId")
     }
 
-    /**
-     * Reprograma todos los recordatorios activos (por ejemplo tras reinicio o actualización).
-     */
+    fun cancelSnooze(context: Context, reminderId: Long) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        alarmManager.cancel(snoozePendingIntent(context, reminderId))
+    }
+
+    /** Reprograma todos los recordatorios activos (por ejemplo tras reinicio o actualización). */
     fun rescheduleAll(context: Context, reminders: List<ReminderEntity>) {
         for (reminder in reminders) {
             if (reminder.isEnabled) {
@@ -149,5 +119,35 @@ object ReminderScheduler {
                 cancelReminder(context, reminder.id)
             }
         }
+    }
+
+    fun isSnoozeIntent(intent: Intent): Boolean = intent.action == ACTION_FIRE_SNOOZED
+
+    fun reminderIdFrom(intent: Intent): Long = intent.getLongExtra(EXTRA_REMINDER_ID, 0L)
+
+    private fun regularPendingIntent(context: Context, reminderId: Long): PendingIntent {
+        val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
+            putExtra(EXTRA_REMINDER_ID, reminderId)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            reminderId.toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    // La acción distinta impide que el aplazamiento sustituya a la alarma habitual
+    private fun snoozePendingIntent(context: Context, reminderId: Long): PendingIntent {
+        val intent = Intent(context, ReminderAlarmReceiver::class.java).apply {
+            action = ACTION_FIRE_SNOOZED
+            putExtra(EXTRA_REMINDER_ID, reminderId)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            reminderId.toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 }

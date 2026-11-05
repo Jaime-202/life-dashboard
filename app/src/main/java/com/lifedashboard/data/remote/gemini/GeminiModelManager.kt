@@ -10,16 +10,21 @@ import java.net.URL
 object GeminiModelManager {
     private const val TAG = "GeminiModelManager"
 
-    const val DEFAULT_MODEL = "gemini-3.8-flash"
+    const val DEFAULT_MODEL = "gemini-flash-lite-latest"
 
     /**
-     * Lista priorizada de modelos de respaldo modernos para Gemini.
+     * Lista priorizada de modelos de respaldo ultra-rápidos y modernos para Gemini.
      * Solo modelos probados de generación de texto y multimodal.
      */
     val FALLBACK_MODELS = listOf(
-        "gemini-3.8-flash",
-        "gemini-3.7-flash"
+        "gemini-flash-lite-latest",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash"
     )
+
+    // Caché en memoria para evitar llamadas de red bloqueantes en cada consulta
+    @Volatile
+    private var cachedModels: Pair<String, List<String>>? = null
 
     /**
      * Verifica que un modelo sea exclusivamente para generación de texto/contenido
@@ -30,7 +35,7 @@ object GeminiModelManager {
         if (!lower.contains("gemini")) return false
         val excluded = listOf(
             "-tts", "tts", "-image", "imagen", "-embed", "embedding",
-            "-realtime", "-live", "-audio", "3.8-flash-lite"
+            "-realtime", "-live", "-audio"
         )
         return excluded.none { lower.contains(it) }
     }
@@ -39,9 +44,10 @@ object GeminiModelManager {
      * Modelos predefinidos recomendados para selector en la interfaz de usuario.
      */
     val PRESET_MODELS = listOf(
-        "gemini-3.8-flash" to "⚡ Gemini 3.8 Flash (Recomendado)",
-        "gemini-3.7-flash" to "✨ Gemini 3.7 Flash",
-        "auto" to "🎯 Auto-detectar de mi cuenta"
+        "gemini-flash-lite-latest" to "⚡ Gemini Flash-Lite (Ultra Rápido, ~1s)",
+        "gemini-3.5-flash-lite" to "🚀 Gemini 3.5 Flash-Lite",
+        "gemini-3.8-flash" to "✨ Gemini 3.8 Flash (Razonamiento profundo)",
+        "auto" to "🎯 Auto-detectar (Rápido)"
     )
 
     /**
@@ -56,13 +62,15 @@ object GeminiModelManager {
             candidates.add(preferred)
         }
 
-        // Modelo por defecto principal
+        // Modelo por defecto principal (ultra-rápido, ~1 segundo sin thinking excesivo)
         candidates.add(DEFAULT_MODEL)
+        candidates.add("gemini-3.5-flash-lite")
 
-        // Descubrimiento dinámico de la cuenta si hay API key (añadimos solo los 2 mejores)
-        if (apiKey.isNotBlank()) {
-            val discovered = fetchAvailableModels(apiKey)
-            for (m in discovered.take(2)) {
+        // Usar modelos descubiertos de la caché si existen (sin bloquear la petición en la red)
+        val trimmedKey = apiKey.trim()
+        val cached = cachedModels
+        if (cached != null && cached.first == trimmedKey) {
+            for (m in cached.second.take(2)) {
                 candidates.add(m)
             }
         }
@@ -82,13 +90,21 @@ object GeminiModelManager {
     suspend fun fetchAvailableModels(apiKey: String): List<String> = withContext(Dispatchers.IO) {
         val trimmed = apiKey.trim()
         if (trimmed.isBlank()) return@withContext emptyList()
+
+        val cached = cachedModels
+        if (cached != null && cached.first == trimmed && cached.second.isNotEmpty()) {
+            return@withContext cached.second
+        }
+
         try {
-            val url = URL("https://generativelanguage.googleapis.com/v1beta/models?key=$trimmed")
+            val url = URL("https://generativelanguage.googleapis.com/v1beta/models")
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 4000
-                readTimeout = 4000
+                connectTimeout = 3000
+                readTimeout = 3000
                 setRequestProperty("Accept", "application/json")
+                // En cabecera y no en la URL, que puede acabar en registros y trazas de error
+                setRequestProperty("x-goog-api-key", trimmed)
             }
 
             val responseCode = conn.responseCode
@@ -115,7 +131,9 @@ object GeminiModelManager {
                 }
 
                 if (discovered.isNotEmpty()) {
-                    return@withContext prioritizeModels(discovered)
+                    val prioritized = prioritizeModels(discovered)
+                    cachedModels = trimmed to prioritized
+                    return@withContext prioritized
                 }
             } else {
                 conn.disconnect()
@@ -127,7 +145,7 @@ object GeminiModelManager {
     }
 
     /**
-     * Ordena los modelos encontrados dando preferencia absoluta a Gemini 3.8 Flash.
+     * Ordena los modelos encontrados dando preferencia a modelos Flash-Lite ultra-rápidos.
      */
     private fun prioritizeModels(models: List<String>): List<String> {
         return models.filter { isCleanTextGenerationModel(it) }
@@ -135,16 +153,15 @@ object GeminiModelManager {
                 fun score(name: String): Int {
                     val lower = name.lowercase().trim()
                     return when {
-                        lower == "gemini-3.8-flash" -> 110
-                        lower == "gemini-3.8-flash-lite" -> 100
-                        lower.startsWith("gemini-3.8") -> 95
-                        lower == "gemini-3.7-flash" -> 85
-                        lower.startsWith("gemini-3.7") -> 80
-                        lower.startsWith("gemini-3.6") -> 70
-                        lower.startsWith("gemini-3.5") -> 60
-                        lower.contains("flash") -> 40
-                        lower.contains("pro") -> 30
-                        else -> 10
+                        lower == "gemini-flash-lite-latest" -> 120
+                        lower == "gemini-3.5-flash-lite"    -> 115
+                        lower == "gemini-3.1-flash-lite"    -> 110
+                        lower == "gemini-3.8-flash"         -> 100
+                        lower == "gemini-3.7-flash"         -> 90
+                        lower.contains("flash-lite")        -> 85
+                        lower.contains("flash")             -> 70
+                        lower.contains("pro")               -> 30
+                        else                                -> 10
                     }
                 }
                 score(b).compareTo(score(a))

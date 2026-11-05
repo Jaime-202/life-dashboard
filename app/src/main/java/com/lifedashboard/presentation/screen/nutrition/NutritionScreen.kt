@@ -2,7 +2,6 @@ package com.lifedashboard.presentation.screen.nutrition
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,6 +22,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.core.content.FileProvider
+import com.lifedashboard.core.util.ImageUtils
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,10 +40,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -56,7 +65,9 @@ import com.lifedashboard.presentation.theme.*
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.Date
 import java.util.Locale
+import java.text.SimpleDateFormat
 
 @Composable
 fun NutritionScreen(
@@ -68,36 +79,53 @@ fun NutritionScreen(
 
     // Estado para diálogo de búsqueda y añadido manual
     var showSearchDialog by remember { mutableStateOf(false) }
-    var selectedMealTypeForAdd by remember { mutableStateOf("COMIDA") }
+    var selectedMealTypeForAdd by rememberSaveable { mutableStateOf("COMIDA") }
     var editingMealItem by remember { mutableStateOf<MealEntryEntity?>(null) }
     var showQuickAddDialog by remember { mutableStateOf(false) }
     var showCustomTargetsDialog by remember { mutableStateOf(false) }
     var showApiKeyModal by remember { mutableStateOf(false) }
 
     // Launchers para tomar foto con la cámara y seleccionar de la galería
+    val photoScope = rememberCoroutineScope()
+    val stagePhoto: (Uri) -> Unit = { uri ->
+        photoScope.launch {
+            val bitmap = withContext(Dispatchers.IO) { ImageUtils.decodeForAnalysis(context, uri) }
+            if (bitmap != null) {
+                viewModel.setStagedPhoto(bitmap, selectedMealTypeForAdd)
+            } else {
+                Toast.makeText(context, "No se pudo abrir la imagen", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // A resolución completa: la miniatura de la cámara es demasiado pequeña para que la IA distinga el plato.
+    // Se conserva como texto para sobrevivir a que el sistema cierre la app mientras la cámara está abierta.
+    var pendingPhotoUri by rememberSaveable { mutableStateOf<String?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview()
-    ) { bitmap: Bitmap? ->
-        if (bitmap != null) {
-            viewModel.setStagedPhoto(bitmap, selectedMealTypeForAdd)
+        contract = ActivityResultContracts.TakePicture()
+    ) { saved ->
+        val uri = pendingPhotoUri?.let(Uri::parse)
+        if (saved && uri != null) stagePhoto(uri)
+    }
+    val launchCamera: () -> Unit = {
+        try {
+            val photoDir = File(context.cacheDir, "photos").apply { mkdirs() }
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                File(photoDir, "meal_capture.jpg")
+            )
+            pendingPhotoUri = uri.toString()
+            cameraLauncher.launch(uri)
+        } catch (e: Exception) {
+            Toast.makeText(context, "No se pudo abrir la cámara", Toast.LENGTH_SHORT).show()
         }
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        if (uri != null) {
-            try {
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val bitmap = BitmapFactory.decodeStream(stream)
-                    if (bitmap != null) {
-                        viewModel.setStagedPhoto(bitmap, selectedMealTypeForAdd)
-                    }
-                }
-            } catch (e: Exception) {
-                // error abriendo imagen
-            }
-        }
+        if (uri != null) stagePhoto(uri)
     }
 
     // Lanzador directo del escáner de códigos de barras y QR de Google Play Services
@@ -151,7 +179,7 @@ fun NutritionScreen(
             onTakePhoto = {
                 viewModel.closeTextAiDialog()
                 selectedMealTypeForAdd = state.textAiMealType
-                cameraLauncher.launch(null)
+                launchCamera()
             },
             onPickGallery = {
                 viewModel.closeTextAiDialog()
@@ -206,6 +234,12 @@ fun NutritionScreen(
             selectedCategory = state.selectedCategory,
             results = state.searchResults,
             isSearching = state.isSearching,
+            recentMeals = state.recentMeals,
+            onRepeatRecentMeal = { meal ->
+                viewModel.repeatMealToToday(meal, selectedMealTypeForAdd)
+                showSearchDialog = false
+                Toast.makeText(context, "Añadido: ${meal.name} a $selectedMealTypeForAdd de hoy", Toast.LENGTH_SHORT).show()
+            },
             onQueryChange = { viewModel.onSearchQueryChange(it) },
             onCategorySelect = { viewModel.onCategorySelect(it) },
             onScanBarcode = {
@@ -343,6 +377,22 @@ fun NutritionScreen(
                 )
             }
 
+            // ─── Acceso Rápido: Comidas Favoritas ─────────────────────────
+            if (state.favoriteMeals.isNotEmpty()) {
+                item {
+                    FavoriteMealsCard(
+                        favoriteMeals = state.favoriteMeals,
+                        onAddFavorite = { fav ->
+                            viewModel.addFavoriteToToday(fav)
+                            Toast.makeText(context, "Añadido: ${fav.name} a tus comidas de hoy", Toast.LENGTH_SHORT).show()
+                        },
+                        onToggleFavorite = { fav ->
+                            viewModel.toggleFavorite(fav)
+                        }
+                    )
+                }
+            }
+
             // ─── Secciones de Comida ──────────────────────────────────────
             items(MealSectionType.entries.toTypedArray()) { section ->
                 MealSectionCard(
@@ -368,6 +418,9 @@ fun NutritionScreen(
                     },
                     onDeleteMeal = { mealId ->
                         viewModel.deleteMeal(mealId)
+                    },
+                    onToggleFavorite = { meal ->
+                        viewModel.toggleFavorite(meal)
                     }
                 )
             }
@@ -484,7 +537,7 @@ private fun NutritionHeader(
             }
         }
 
-        // Píldora interactiva de Estado de la Inteligencia Artificial (Google Gemini)
+        // Píldora de Estado y Acceso de la Inteligencia Artificial (Google Gemini)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -508,11 +561,11 @@ private fun NutritionHeader(
                         imageVector = if (hasGeminiApiKey) Icons.Default.AutoAwesome else Icons.Default.Key,
                         contentDescription = null,
                         tint = if (hasGeminiApiKey) Violet300 else Amber400,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(15.dp)
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = if (hasGeminiApiKey) "Gemini 3.8 Flash · Activo" else "Modo Local · Activar Gemini 3.8 IA",
+                        text = if (hasGeminiApiKey) "Gemini Flash-Lite IA (Ultra Rápida)" else "Activar Gemini IA",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (hasGeminiApiKey) Violet200 else Amber400,
                         fontWeight = FontWeight.SemiBold,
@@ -520,9 +573,8 @@ private fun NutritionHeader(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Spacer(Modifier.width(6.dp))
                 Text(
-                    text = if (hasGeminiApiKey) "Configurar" else "Activar",
+                    text = if (hasGeminiApiKey) "Configurar ⚙" else "Configurar ⚡",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (hasGeminiApiKey) Violet300 else Amber400,
                     fontWeight = FontWeight.Bold,
@@ -825,6 +877,103 @@ private fun CompactMacroCard(
 // ─── Tarjeta de Sección de Comida Rediseñada ──────────────────────────────────
 
 @Composable
+private fun FavoriteMealsCard(
+    favoriteMeals: List<MealEntryEntity>,
+    onAddFavorite: (MealEntryEntity) -> Unit,
+    onToggleFavorite: (MealEntryEntity) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Indigo800)
+            .border(1.dp, Violet400.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(14.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = null,
+                        tint = Amber400,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Comidas Favoritas",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Text(
+                    text = "${favoriteMeals.size} guardadas",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Gray400,
+                    fontSize = 11.sp
+                )
+            }
+
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(favoriteMeals) { fav ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Indigo900.copy(alpha = 0.8f))
+                            .border(1.dp, Indigo700, RoundedCornerShape(14.dp))
+                            .clickable { onAddFavorite(fav) }
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            FoodThumbnail(name = fav.name, brand = fav.brand, imageUrl = fav.imageUrl, size = 32.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = fav.name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = White,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "${fav.calories.toInt()} kcal · ${fav.grams.toInt()}g",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Amber400,
+                                    fontSize = 10.sp
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(Violet400.copy(alpha = 0.25f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Añadir a hoy",
+                                    tint = Violet300,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun MealSectionCard(
     section: MealSectionType,
     meals: List<MealEntryEntity>,
@@ -833,7 +982,8 @@ private fun MealSectionCard(
     onAiClick: () -> Unit,
     onQuickAddClick: () -> Unit,
     onEditMeal: (MealEntryEntity) -> Unit,
-    onDeleteMeal: (Long) -> Unit
+    onDeleteMeal: (Long) -> Unit,
+    onToggleFavorite: (MealEntryEntity) -> Unit
 ) {
     val sectionKcal = meals.sumOf { it.calories.toDouble() }.toInt()
     val sectionP = meals.sumOf { it.protein.toDouble() }.toInt()
@@ -934,7 +1084,8 @@ private fun MealSectionCard(
                         MealItemRow(
                             meal = meal,
                             onEdit = { onEditMeal(meal) },
-                            onDelete = { onDeleteMeal(meal.id) }
+                            onDelete = { onDeleteMeal(meal.id) },
+                            onToggleFavorite = { onToggleFavorite(meal) }
                         )
                     }
                 }
@@ -1025,7 +1176,8 @@ private fun MealSectionCard(
 private fun MealItemRow(
     meal: MealEntryEntity,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onToggleFavorite: () -> Unit
 ) {
     Row(
         verticalAlignment     = Alignment.CenterVertically,
@@ -1078,7 +1230,21 @@ private fun MealItemRow(
                     }
                     Text("·", color = Gray600, fontSize = 10.sp)
                 }
-                Text("${meal.grams.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                val unitInfo = remember(meal.name, meal.brand, meal.grams) {
+                    FoodCatalogService.detectFoodUnit(meal.name, meal.brand, meal.grams)
+                }
+                val quantityText = remember(meal.grams, unitInfo) {
+                    val count = if (unitInfo.gramsPerUnit > 0f) meal.grams / unitInfo.gramsPerUnit else 1f
+                    val isWholeOrHalf = (count * 2).let { kotlin.math.abs(it - kotlin.math.round(it)) < 0.12f }
+                    if (unitInfo.isUnitApplicable && unitInfo.gramsPerUnit in 8f..500f && isWholeOrHalf && count in 0.4f..15f && unitInfo.unitLabelSingular != "unidad") {
+                        val countStr = if (count % 1f == 0f) count.toInt().toString() else "%.1f".format(Locale.US, count)
+                        val unitStr = if (count <= 1f) unitInfo.unitLabelSingular else unitInfo.unitLabelPlural
+                        "$countStr $unitStr"
+                    } else {
+                        "${meal.grams.toInt()}g"
+                    }
+                }
+                Text(quantityText, style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp, maxLines = 1, softWrap = false)
                 Text("·", color = Gray600, fontSize = 10.sp)
                 Text(
                     text = "P:${meal.protein.toInt()}g C:${meal.carbs.toInt()}g G:${meal.fat.toInt()}g",
@@ -1115,6 +1281,17 @@ private fun MealItemRow(
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
+                    onClick  = onToggleFavorite,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = if (meal.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                        contentDescription = if (meal.isFavorite) "Quitar de favoritos" else "Marcar como favorito",
+                        tint = if (meal.isFavorite) Amber400 else Gray500,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+                IconButton(
                     onClick  = onEdit,
                     modifier = Modifier.size(24.dp)
                 ) {
@@ -1131,7 +1308,12 @@ private fun MealItemRow(
     }
 }
 
-// ─── Diálogo para Editar la Porción en Gramos ──────────────────────────────────
+// ─── Diálogo para Editar la Porción (Unidades y Gramos) ────────────────────────
+
+private enum class PortionEditMode {
+    UNITS,
+    GRAMS
+}
 
 @Composable
 private fun EditPortionDialog(
@@ -1140,8 +1322,16 @@ private fun EditPortionDialog(
     onDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val unitInfo = remember(meal.name, meal.brand) {
+        FoodCatalogService.detectFoodUnit(meal.name, meal.brand, meal.grams)
+    }
+
+    var editMode by remember {
+        mutableStateOf(if (unitInfo.isUnitApplicable && unitInfo.gramsPerUnit in 8f..500f) PortionEditMode.UNITS else PortionEditMode.GRAMS)
+    }
+
     var gramsInput by remember(meal.grams) { mutableStateOf("${meal.grams.toInt()}") }
-    val parsedGrams = gramsInput.toFloatOrNull() ?: meal.grams
+    val parsedGrams = (gramsInput.toFloatOrNull() ?: meal.grams).coerceAtLeast(1f)
     val ratio = if (meal.grams > 0f) parsedGrams / meal.grams else 1f
 
     val baseCalories = if (meal.calories > 0f || meal.name.contains("agua", ignoreCase = true)) {
@@ -1154,6 +1344,8 @@ private fun EditPortionDialog(
     val previewProtein = "%.1f".format(Locale.US, (meal.protein * ratio).coerceAtLeast(0f))
     val previewCarbs = "%.1f".format(Locale.US, (meal.carbs * ratio).coerceAtLeast(0f))
     val previewFat = "%.1f".format(Locale.US, (meal.fat * ratio).coerceAtLeast(0f))
+
+    val currentUnits = if (unitInfo.gramsPerUnit > 0f) parsedGrams / unitInfo.gramsPerUnit else 1f
 
     Dialog(onDismissRequest = onDismiss) {
         Box(
@@ -1175,7 +1367,7 @@ private fun EditPortionDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.weight(1f)
                     ) {
-                        FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = meal.imageUrl, size = 38.dp)
+                        FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = meal.imageUrl, size = 42.dp)
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text(
@@ -1196,48 +1388,186 @@ private fun EditPortionDialog(
                     }
                 }
 
-                Text(
-                    text = "Ajusta la cantidad en gramos consumida para recalcular las calorías y macros automáticamente:",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Gray300
-                )
+                // Selector de modo de cálculo: [Por Unidades / Piezas] vs [Por Gramos exactos]
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Indigo900)
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (editMode == PortionEditMode.UNITS) Violet400 else Color.Transparent)
+                            .clickable { editMode = PortionEditMode.UNITS }
+                            .padding(vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "📦 Por Unidades",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (editMode == PortionEditMode.UNITS) Indigo900 else Gray400
+                        )
+                    }
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (editMode == PortionEditMode.GRAMS) Violet400 else Color.Transparent)
+                            .clickable { editMode = PortionEditMode.GRAMS }
+                            .padding(vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "⚖️ Por Gramos",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (editMode == PortionEditMode.GRAMS) Indigo900 else Gray400
+                        )
+                    }
+                }
 
-                // Input de gramos con teclado numérico
-                OutlinedTextField(
-                    value = gramsInput,
-                    onValueChange = { gramsInput = it },
-                    label = { Text("Porción consumida (gramos)", color = Gray400) },
-                    trailingIcon = { Text("g", color = Gray400, modifier = Modifier.padding(end = 12.dp)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Violet400,
-                        unfocusedBorderColor = Indigo600,
-                        focusedTextColor = White,
-                        unfocusedTextColor = White
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                // Chips de ajuste rápido
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                    listOf("-50", "-20", "+20", "+50").forEach { diffStr ->
-                        val diff = diffStr.toInt()
-                        Box(
-                            contentAlignment = Alignment.Center,
+                if (editMode == PortionEditMode.UNITS) {
+                    // Controles de ajuste por unidad
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // Stepper central grande
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Indigo700)
-                                .clickable {
-                                    val current = gramsInput.toIntOrNull() ?: meal.grams.toInt()
-                                    val updated = (current + diff).coerceAtLeast(5)
-                                    gramsInput = "$updated"
-                                }
-                                .padding(vertical = 8.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Indigo900)
+                                .border(1.dp, Indigo700, RoundedCornerShape(16.dp))
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
                         ) {
-                            Text("${diffStr}g", style = MaterialTheme.typography.labelSmall, color = Gray100, fontWeight = FontWeight.Bold)
+                            IconButton(
+                                onClick = {
+                                    val step = if (currentUnits > 2f) 1.0f else 0.5f
+                                    val newUnits = (currentUnits - step).coerceAtLeast(0.5f)
+                                    gramsInput = "${(newUnits * unitInfo.gramsPerUnit).toInt()}"
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(Indigo700)
+                            ) {
+                                Icon(Icons.Default.Remove, contentDescription = "Menos", tint = White)
+                            }
+
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                val countStr = if (currentUnits % 1f == 0f) currentUnits.toInt().toString() else "%.1f".format(Locale.US, currentUnits)
+                                val unitStr = if (currentUnits <= 1f) unitInfo.unitLabelSingular else unitInfo.unitLabelPlural
+                                Text(
+                                    text = "$countStr $unitStr",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = White
+                                )
+                                Text(
+                                    text = "≈ ${parsedGrams.toInt()}g",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Gray400
+                                )
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    val step = if (currentUnits >= 2f) 1.0f else 0.5f
+                                    val newUnits = (currentUnits + step).coerceAtMost(25f)
+                                    gramsInput = "${(newUnits * unitInfo.gramsPerUnit).toInt()}"
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(Indigo700)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Más", tint = White)
+                            }
+                        }
+
+                        // Pills rápidas de unidades
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                            listOf(0.5f, 1f, 2f, 3f, 4f).forEach { u ->
+                                val isSelected = kotlin.math.abs(currentUnits - u) < 0.1f
+                                val label = if (u == 0.5f) "½ ${unitInfo.unitLabelSingular}" else "${u.toInt()} ${if (u == 1f) unitInfo.unitLabelSingular else unitInfo.unitLabelPlural}"
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) Violet400.copy(alpha = 0.25f) else Indigo700)
+                                        .border(if (isSelected) 1.dp else 0.dp, if (isSelected) Violet400 else Color.Transparent, RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            gramsInput = "${(u * unitInfo.gramsPerUnit).toInt()}"
+                                        }
+                                        .padding(vertical = 7.dp)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isSelected) Violet300 else Gray200,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "💡 Equivalencia: 1 ${unitInfo.unitLabelSingular} equivale a ~${unitInfo.gramsPerUnit.toInt()}g",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Gray400
+                        )
+                    }
+                } else {
+                    // Controles de ajuste por gramos
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = gramsInput,
+                            onValueChange = { gramsInput = it },
+                            label = { Text("Gramos exactos consumidos", color = Gray400) },
+                            trailingIcon = { Text("g", color = Gray400, modifier = Modifier.padding(end = 12.dp)) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Violet400,
+                                unfocusedBorderColor = Indigo600,
+                                focusedTextColor = White,
+                                unfocusedTextColor = White
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Chips de ajuste rápido en gramos
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                            listOf("-50", "-20", "+20", "+50").forEach { diffStr ->
+                                val diff = diffStr.toInt()
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Indigo700)
+                                        .clickable {
+                                            val current = gramsInput.toIntOrNull() ?: meal.grams.toInt()
+                                            val updated = (current + diff).coerceAtLeast(5)
+                                            gramsInput = "$updated"
+                                        }
+                                        .padding(vertical = 8.dp)
+                                ) {
+                                    Text("${diffStr}g", style = MaterialTheme.typography.labelSmall, color = Gray100, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 }
@@ -1265,9 +1595,9 @@ private fun EditPortionDialog(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Proteínas: ${previewProtein}g", style = MaterialTheme.typography.labelSmall, color = Violet300)
-                            Text("Carbos: ${previewCarbs}g", style = MaterialTheme.typography.labelSmall, color = Cyan400)
-                            Text("Grasas: ${previewFat}g", style = MaterialTheme.typography.labelSmall, color = Amber400)
+                            Text("P: ${previewProtein}g", style = MaterialTheme.typography.labelSmall, color = Violet300, fontWeight = FontWeight.SemiBold)
+                            Text("C: ${previewCarbs}g", style = MaterialTheme.typography.labelSmall, color = Cyan400, fontWeight = FontWeight.SemiBold)
+                            Text("G: ${previewFat}g", style = MaterialTheme.typography.labelSmall, color = Amber400, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -1279,11 +1609,12 @@ private fun EditPortionDialog(
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Rose400),
                         border = BorderStroke(1.dp, Rose400.copy(alpha = 0.5f)),
                         shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Eliminar", color = Rose400)
+                        Text("Eliminar", color = Rose400, maxLines = 1)
                     }
 
                     Button(
@@ -1843,7 +2174,7 @@ private fun PhotoAiDialog(
                             Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = if (hasGeminiApiKey) Violet300 else Amber400, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = if (hasGeminiApiKey) "Gemini 3.8 Flash Vision Activo" else "Modo Básico · Toca para vincular tu Gemini API Key gratis",
+                                text = if (hasGeminiApiKey) "Gemini Flash-Lite Vision Activo" else "Modo Básico · Toca para vincular tu Gemini API Key gratis",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (hasGeminiApiKey) Violet200 else Amber400,
                                 fontWeight = FontWeight.SemiBold,
@@ -2100,6 +2431,8 @@ private fun SearchFoodDialog(
     selectedCategory: FoodSourceCategory,
     results: List<FoodCatalogItem>,
     isSearching: Boolean,
+    recentMeals: List<MealEntryEntity> = emptyList(),
+    onRepeatRecentMeal: (MealEntryEntity) -> Unit = {},
     onQueryChange: (String) -> Unit,
     onCategorySelect: (FoodSourceCategory) -> Unit,
     onScanBarcode: () -> Unit,
@@ -2246,6 +2579,15 @@ private fun SearchFoodDialog(
                                 }
                             }
 
+                            val unitInfo = remember(item.id) {
+                                if (item.servingSizeGrams > 0f && item.servingSizeGrams != 100f) {
+                                    FoodCatalogService.detectFoodUnit(item.name, item.brand, item.servingSizeGrams)
+                                        .copy(gramsPerUnit = item.servingSizeGrams)
+                                } else {
+                                    FoodCatalogService.detectFoodUnit(item.name, item.brand, 100f)
+                                }
+                            }
+
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("Cantidad:", style = MaterialTheme.typography.bodyMedium, color = Gray300)
                                 Spacer(Modifier.width(10.dp))
@@ -2263,6 +2605,46 @@ private fun SearchFoodDialog(
                                     modifier = Modifier.width(90.dp).height(46.dp)
                                 )
                                 Text(" gramos", style = MaterialTheme.typography.bodyMedium, color = Gray400)
+                            }
+
+                            // Pills de selección rápida por unidades y gramos
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                            ) {
+                                val uGrams = unitInfo.gramsPerUnit.toInt()
+                                val quickOptions = mutableListOf<Pair<String, Int>>()
+                                if (unitInfo.isUnitApplicable && uGrams > 0) {
+                                    quickOptions.add("1 ${unitInfo.unitLabelSingular}" to uGrams)
+                                    quickOptions.add("2 ${unitInfo.unitLabelPlural}" to (uGrams * 2))
+                                    if (uGrams >= 50) {
+                                        quickOptions.add("½ ${unitInfo.unitLabelSingular}" to (uGrams / 2))
+                                    }
+                                }
+                                quickOptions.add("100g" to 100)
+                                quickOptions.add("150g" to 150)
+                                quickOptions.add("200g" to 200)
+
+                                quickOptions.forEach { (lbl, gVal) ->
+                                    val isSelected = inputGrams == gVal.toString()
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isSelected) Violet400 else Indigo700)
+                                            .clickable { inputGrams = "$gVal" }
+                                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = lbl,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (isSelected) Indigo900 else Gray200,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
                             }
 
                             // Macros calculados
@@ -2300,6 +2682,45 @@ private fun SearchFoodDialog(
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        if (query.isBlank() && recentMeals.isNotEmpty()) {
+                            item {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(Icons.Default.History, contentDescription = null, tint = Violet300, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("De tu historial reciente", style = MaterialTheme.typography.labelSmall, color = Violet300, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    LazyRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        items(recentMeals.take(8)) { rec ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(Indigo700)
+                                                    .clickable { onRepeatRecentMeal(rec) }
+                                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(rec.name, style = MaterialTheme.typography.labelSmall, color = White, maxLines = 1)
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text("${rec.calories.toInt()} kcal", style = MaterialTheme.typography.labelSmall, color = Amber400, fontWeight = FontWeight.Bold)
+                                                    Spacer(Modifier.width(4.dp))
+                                                    Text("+", color = Violet300, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    HorizontalDivider(color = Indigo700, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+                                }
+                            }
+                        }
+
                         if (results.isEmpty() && !isSearching) {
                             item {
                                 Box(
@@ -2375,6 +2796,24 @@ private fun SearchFoodDialog(
                                             Text("${safeKcal100.toInt()} kcal/100g", style = MaterialTheme.typography.labelSmall, color = Amber400, fontSize = 11.sp, maxLines = 1, softWrap = false)
                                             Text("·", color = Gray500)
                                             Text("P:${food.proteinPer100g.toInt()}g", style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 11.sp, maxLines = 1, softWrap = false)
+                                            if (food.servingDescription.isNotBlank() && food.servingDescription != "100g") {
+                                                Text("·", color = Gray500)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(Violet400.copy(alpha = 0.18f))
+                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                ) {
+                                                    Text(
+                                                        text = food.servingDescription,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = Violet300,
+                                                        fontSize = 9.sp,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
 
@@ -3248,7 +3687,7 @@ private fun TextAiMealDialog(
                             Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = if (hasGeminiApiKey) Violet300 else Amber400, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = if (hasGeminiApiKey) "Gemini 3.8 Flash Conectado · IA Activa" else "Motor Local Básico · Toca para vincular tu Gemini API Key gratis",
+                                text = if (hasGeminiApiKey) "Gemini Flash-Lite Conectado · IA Rápida" else "Motor Local Básico · Toca para vincular tu Gemini API Key gratis",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (hasGeminiApiKey) Violet200 else Amber400,
                                 fontWeight = FontWeight.SemiBold,
@@ -3359,7 +3798,7 @@ private fun TextAiMealDialog(
                     ) {
                         CircularProgressIndicator(color = Violet400, strokeWidth = 3.dp)
                         Text(
-                            text = if (hasGeminiApiKey) "Gemini 3.8 Flash está calculando alimentos, porciones y calorías..." else "Analizando alimentos y macros con el motor local...",
+                            text = if (hasGeminiApiKey) "Gemini Flash-Lite está calculando alimentos, porciones y calorías..." else "Analizando alimentos y macros con el motor local...",
                             style = MaterialTheme.typography.bodySmall,
                             color = Violet300,
                             textAlign = TextAlign.Center
@@ -3721,6 +4160,306 @@ private fun NutritionApiKeyDialog(
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Guardar", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Componente: Tarjeta de Acceso Rápido al Historial de Comidas ─────────────
+
+@Composable
+private fun RecentMealsHistoryCard(
+    recentMeals: List<MealEntryEntity>,
+    onOpenHistory: () -> Unit,
+    onRepeatMeal: (MealEntryEntity) -> Unit
+) {
+    if (recentMeals.isEmpty()) return
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Indigo800)
+            .border(1.dp, Indigo700, RoundedCornerShape(20.dp))
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Violet400.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.History, contentDescription = null, tint = Violet300, modifier = Modifier.size(17.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "Historial de Comidas",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                TextButton(onClick = onOpenHistory) {
+                    Text("Ver todo (${recentMeals.size}) →", color = Violet300, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(recentMeals.take(6)) { meal ->
+                    Box(
+                        modifier = Modifier
+                            .width(175.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Indigo900.copy(alpha = 0.7f))
+                            .border(1.dp, Indigo700.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                            .padding(10.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = meal.imageUrl, size = 34.dp)
+                                Spacer(Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = meal.name,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = White,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "${meal.calories.toInt()} kcal",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Amber400,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+
+                            Button(
+                                onClick = { onRepeatMeal(meal) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Violet400.copy(alpha = 0.2f)),
+                                border = BorderStroke(0.5.dp, Violet400.copy(alpha = 0.5f)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.fillMaxWidth().height(28.dp)
+                            ) {
+                                Text("+ Repetir a hoy", color = Violet200, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Diálogo Completo de Historial de Comidas ─────────────────────────────────
+
+@Composable
+private fun FoodHistoryDialog(
+    recentMeals: List<MealEntryEntity>,
+    currentMealType: String,
+    onDismiss: () -> Unit,
+    onRepeatMeal: (MealEntryEntity, String) -> Unit,
+    onDeleteMeal: (Long) -> Unit
+) {
+    var selectedTargetMealType by remember { mutableStateOf(currentMealType) }
+    val dateFormat = remember { SimpleDateFormat("d MMM, HH:mm", Locale("es")) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.88f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Indigo800)
+                .border(1.dp, Violet400.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
+                .padding(18.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Header
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.History, contentDescription = null, tint = Violet300, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Historial de Comidas",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = White
+                        )
+                    }
+
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Gray400, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Text(
+                    text = "Alimentos y platos registrados anteriormente. Toca '+ Añadir a Hoy' para repetir cualquier comida al instante sin tener que buscarla.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Gray300,
+                    fontSize = 11.sp
+                )
+
+                // Selector de a qué comida de hoy añadir
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    Text("Añadir a:", style = MaterialTheme.typography.labelSmall, color = Gray400)
+                    MealSectionType.entries.forEach { sec ->
+                        val isSel = sec.key == selectedTargetMealType
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSel) Violet400 else Indigo700)
+                                .clickable { selectedTargetMealType = sec.key }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "${sec.iconEmoji} ${sec.title}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSel) Indigo900 else Gray300,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Indigo700, thickness = 1.dp)
+
+                if (recentMeals.isEmpty()) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) {
+                        Text(
+                            text = "Aún no tienes comidas registradas en tu historial.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Gray400
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(recentMeals) { meal ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Indigo900.copy(alpha = 0.7f))
+                                    .border(1.dp, Indigo700.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                    .padding(10.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    FoodThumbnail(name = meal.name, brand = meal.brand, imageUrl = meal.imageUrl, size = 46.dp)
+                                    Spacer(Modifier.width(10.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = meal.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = White,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            text = buildAnnotatedString {
+                                                withStyle(SpanStyle(color = Amber400, fontWeight = FontWeight.Bold)) {
+                                                    append("${meal.calories.toInt()} kcal")
+                                                }
+                                                withStyle(SpanStyle(color = Gray500)) {
+                                                    append(" · ")
+                                                }
+                                                withStyle(SpanStyle(color = Violet300)) {
+                                                    append("P:${meal.protein.toInt()}g ")
+                                                }
+                                                withStyle(SpanStyle(color = Cyan400)) {
+                                                    append("C:${meal.carbs.toInt()}g ")
+                                                }
+                                                withStyle(SpanStyle(color = Amber400)) {
+                                                    append("G:${meal.fat.toInt()}g")
+                                                }
+                                            },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 10.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            text = "${dateFormat.format(Date(meal.createdAt))} · ${meal.mealType.lowercase().replaceFirstChar { it.uppercase() }}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Gray500,
+                                            fontSize = 9.sp
+                                        )
+                                    }
+
+                                    Spacer(Modifier.width(8.dp))
+
+                                    Column(
+                                        horizontalAlignment = Alignment.End,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Button(
+                                            onClick = { onRepeatMeal(meal, selectedTargetMealType) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Violet400),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(30.dp)
+                                        ) {
+                                            Text("+ Añadir", color = Indigo900, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                        }
+
+                                        IconButton(
+                                            onClick = { onDeleteMeal(meal.id) },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.DeleteOutline,
+                                                contentDescription = "Eliminar del historial",
+                                                tint = Gray500,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -14,6 +14,9 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE isEnabled = 1 ORDER BY createdAt DESC")
     fun observeEnabled(): Flow<List<ReminderEntity>>
 
+    @Query("SELECT * FROM reminders WHERE id = :id")
+    suspend fun getById(id: Long): ReminderEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(reminder: ReminderEntity): Long
 

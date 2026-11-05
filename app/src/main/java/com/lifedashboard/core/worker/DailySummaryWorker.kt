@@ -38,13 +38,15 @@ class DailySummaryWorker @AssistedInject constructor(
                 activeKcal
             )
 
-            NotificationHelper.showDailySummary(context, title, message)
-
-            // Reprogramar para la mañana siguiente
-            WorkManagerScheduler(context).scheduleDailySummaryReminder(
-                wakeUpHour = goals.wakeUpHour,
-                wakeUpMinute = goals.wakeUpMinute
-            )
+            // REPLACE cancela este mismo worker, así que reprogramar debe ser lo último
+            try {
+                NotificationHelper.showDailySummary(context, title, message)
+            } finally {
+                WorkManagerScheduler(context).scheduleDailySummaryReminder(
+                    wakeUpHour = goals.wakeUpHour,
+                    wakeUpMinute = goals.wakeUpMinute
+                )
+            }
 
             Result.success()
         } catch (e: Exception) {

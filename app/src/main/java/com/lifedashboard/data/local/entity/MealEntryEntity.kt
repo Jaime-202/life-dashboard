@@ -8,7 +8,8 @@ import androidx.room.PrimaryKey
     tableName = "meals",
     indices = [
         Index(value = ["dateMillis"]),
-        Index(value = ["mealType"])
+        Index(value = ["mealType"]),
+        Index(value = ["isFavorite"])
     ]
 )
 data class MealEntryEntity(
@@ -25,5 +26,6 @@ data class MealEntryEntity(
     val fat: Float,                    // Grasas en gramos
     val notes: String = "",            // Observaciones o notas adicionales
     val imageUrl: String? = null,      // Foto del producto o plato
+    val isFavorite: Boolean = false,   // Marcado como comida favorita
     val createdAt: Long = System.currentTimeMillis()
 )
