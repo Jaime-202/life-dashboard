@@ -50,10 +50,12 @@ class EveningReviewWorker @AssistedInject constructor(
                 "Es momento de desacelerar, atenuar las pantallas y relajarte. ¡Un descanso óptimo es la clave para rendir mañana!"
             }
 
-            NotificationHelper.showDailySummary(context, title, message)
-
-            // Reprogramar para la noche siguiente a las 21:30
-            WorkManagerScheduler(context).scheduleEveningReviewReminder()
+            // REPLACE cancela este mismo worker, así que reprogramar debe ser lo último
+            try {
+                NotificationHelper.showDailySummary(context, title, message)
+            } finally {
+                WorkManagerScheduler(context).scheduleEveningReviewReminder()
+            }
 
             Result.success()
         } catch (e: Exception) {

@@ -30,6 +30,18 @@ class NutritionRepository @Inject constructor(
         return mealDao.observeMealsForDay(startMillis, endMillis)
     }
 
+    fun observeRecentMeals(limit: Int = 100): Flow<List<MealEntryEntity>> {
+        return mealDao.observeRecentMeals(limit)
+    }
+
+    fun observeFavoriteMeals(): Flow<List<MealEntryEntity>> {
+        return mealDao.observeFavoriteMeals()
+    }
+
+    suspend fun setFavorite(mealId: Long, isFavorite: Boolean) {
+        mealDao.updateFavoriteStatus(mealId, isFavorite)
+    }
+
     suspend fun insertMeal(meal: MealEntryEntity): Long {
         val id = mealDao.insertMeal(meal)
         com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)

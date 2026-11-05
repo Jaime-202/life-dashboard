@@ -1,13 +1,13 @@
 # ⚡ Vital — Life Dashboard
 
-> **Plataforma Integral de Salud, Nutrición Inteligente con IA Multimodal (Gemini 3.8 Flash), Hábitos, Peso y Rendimiento para Android, con Sincronización en Segundo Plano y Widgets Glassmorphic.**
+> **Plataforma integral de salud, nutrición con IA multimodal (Google Gemini), hábitos, peso y rendimiento para Android, con sincronización en segundo plano y widgets glassmorphic. Local-first y sin telemetría.**
 
 [![Android](https://img.shields.io/badge/Platform-Android%209.0%2B%20(API%2028%2B)-3DDC84.svg?style=flat&logo=android)](https://www.android.com)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org)
-[![Compose](https://img.shields.io/badge/Jetpack%20Compose-BOM%202024.09.00-4285F4.svg?style=flat&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
-[![Health Connect](https://img.shields.io/badge/Health%20Connect-1.1.0--alpha11-EA4335.svg?style=flat&logo=googlefit)](https://developer.android.com/health-and-fitness/guides/health-connect)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.1.0-7F52FF.svg?style=flat&logo=kotlin)](https://kotlinlang.org)
+[![Compose](https://img.shields.io/badge/Jetpack%20Compose-BOM%202024.12.01-4285F4.svg?style=flat&logo=jetpackcompose)](https://developer.android.com/jetpack/compose)
+[![Health Connect](https://img.shields.io/badge/Health%20Connect-1.1.0--alpha10-EA4335.svg?style=flat&logo=googlefit)](https://developer.android.com/health-and-fitness/guides/health-connect)
 [![Glance](https://img.shields.io/badge/Jetpack%20Glance-Widgets%201.1.1-00C853.svg?style=flat)](https://developer.android.com/jetpack/compose/glance)
-[![Google Gemini](https://img.shields.io/badge/AI%20Engine-Gemini%203.8%20Flash-8E24AA.svg?style=flat&logo=google)](https://aistudio.google.com)
+[![Google Gemini](https://img.shields.io/badge/AI%20Engine-Gemini%20Flash--Lite-8E24AA.svg?style=flat&logo=google)](https://aistudio.google.com)
 [![Room DB](https://img.shields.io/badge/Database-Room%202.6.1%20SQLite-4CAF50.svg?style=flat)](https://developer.android.com/training/data-storage/room)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -25,7 +25,7 @@ Centraliza en un único ecosistema la monitorización biométrica en tiempo real
 
 ### 🥗 1. Comida y Nutrición Inteligente con IA (Gemini 3.8 Flash + Motor Local)
 
-* **Reconocimiento Visual de Platos con Gemini 3.8 Flash:**
+* **Reconocimiento Visual de Platos con Google Gemini:**
   - Captura una foto directamente con la cámara del dispositivo o elígela de la galería.
   - El motor multimodal analiza la imagen reconociendo ingredientes, guarniciones y porciones, devolviendo una estimación detallada de gramos, calorías totales, proteínas, hidratos de carbono y grasas.
   - Incluye soporte para **contexto adicional antes del análisis** (por ejemplo: *"son 2 cucharadas de aceite de oliva y salsa de soja sin azúcar"*).
@@ -48,7 +48,7 @@ Centraliza en un único ecosistema la monitorización biométrica en tiempo real
   - Conexión directa con la API de **Open Food Facts** para importar automáticamente la información nutricional, marca e imagen del producto.
 
 * **Calculador Científico de Ingesta y Macros (Mifflin-St Jeor):**
-  - Estimación precisa de la Tasa Metabólica Basal (BMR) y Gasto Energético Total Diario (TDEE).
+  - Estimación de la Tasa Metabólica Basal (BMR) y el Gasto Energético Total Diario (TDEE) a partir de tu perfil completo: **peso, altura, edad y sexo**, además del nivel de actividad.
   - Ajuste instantáneo según objetivo (Déficit / Pérdida de grasa, Mantenimiento normocalórico o Superávit / Volumen muscular) y distribución óptima de macronutrientes.
 
 ---
@@ -126,14 +126,16 @@ La aplicación sigue los principios de **Clean Architecture** y el patrón ofici
 ```
 app/src/main/java/com/lifedashboard/
 ├── core/
-│   ├── scheduler/              # Orquestador central de tareas en segundo plano
-│   └── worker/                 # HealthConnectSyncWorker, WidgetUpdateWorker, BedtimeNotificationWorker
+│   ├── health/                 # HealthConnectAccess (permisos) y HealthConnectMapper
+│   ├── notification/           # ReminderScheduler, NotificationHelper y BroadcastReceivers
+│   ├── util/                   # Cálculos de energía y preparación, utilidades de imagen y fecha
+│   └── worker/                 # WorkManagerScheduler + Workers (sync, widgets, recordatorios)
 ├── data/
 │   ├── local/                  # Room Database (Entidades, DAOs y Migraciones de esquema)
 │   ├── remote/
 │   │   ├── food/               # FoodCatalogService, FoodAiService, RealFoodImageResolver
 │   │   └── gemini/             # GeminiApiService, GeminiModelManager (descubrimiento dinámico)
-│   └── repository/             # Repositorios: Health, Nutrition, Workout, Calendar, UserPreferences
+│   └── repository/             # Repositorios: Nutrition, Calendar, UserPreferences, DataExport
 ├── domain/
 │   ├── model/                  # Modelos puros de dominio (HealthSummary, UserGoals, MealEntry)
 │   └── usecase/                # Casos de uso (cálculo de ingesta, balance calórico, estimaciones)
@@ -155,16 +157,17 @@ app/src/main/java/com/lifedashboard/
 
 | Capa / Módulo | Tecnología Utilizada |
 | :--- | :--- |
-| **Lenguaje** | Kotlin 2.0.21 |
-| **UI Framework** | Jetpack Compose (BOM 2024.09.00) + Material 3 |
-| **Inyección de Dependencias** | Dagger Hilt 2.52 con Hilt WorkManager integration |
-| **Persistencia Local** | AndroidX Room Database 2.6.1 con soporte para Coroutines y Flow |
-| **Preferencias Clave-Valor** | Jetpack DataStore Preferences 1.1.1 |
-| **Segundo Plano / Background** | AndroidX WorkManager 2.9.1 (`@HiltWorker`) |
-| **Salud y Biometría** | AndroidX Health Connect Client SDK (`1.1.0-alpha11`) |
+| **Lenguaje** | Kotlin 2.1.0 |
+| **UI Framework** | Jetpack Compose (BOM 2024.12.01) + Material 3 |
+| **Inyección de Dependencias** | Dagger Hilt 2.54 con integración Hilt + WorkManager |
+| **Persistencia Local** | AndroidX Room 2.6.1 con Coroutines y Flow |
+| **Preferencias Clave-Valor** | Jetpack DataStore Preferences 1.1.2 |
+| **Segundo Plano / Background** | AndroidX WorkManager 2.10.0 (`@HiltWorker`) |
+| **Salud y Biometría** | AndroidX Health Connect Client SDK (`1.1.0-alpha10`), incluye lectura en segundo plano |
 | **Widgets** | Jetpack Glance AppWidget 1.1.1 |
-| **Inteligencia Artificial** | Google Gemini API (`gemini-3.8-flash` con auto-descubrimiento y multi-tier fallback) |
-| **Red y Parsing** | OkHttp 4.12, Retrofit-ready JSON parsing, Gson |
+| **Inteligencia Artificial** | Google Gemini (modelo `gemini-flash-lite-latest` por defecto, con auto-descubrimiento y fallback en cascada) |
+| **Red y Parsing** | `HttpURLConnection` + `org.json`, serialización con `kotlinx.serialization` |
+| **Imágenes** | Coil 2.7 (carga de fotos de alimentos) |
 | **Visión y Códigos de Barras** | Google Code Scanner (Play Services) + Open Food Facts API |
 
 ---
@@ -175,7 +178,19 @@ app/src/main/java/com/lifedashboard/
 * **Seguridad de Credenciales:**
   - El proyecto está preparado para su publicación en repositorios públicos.
   - Ninguna clave API o credencial sensible se almacena en el control de versiones (Git).
-  - Las claves opcionales de Gemini se gestionan de forma segura a través de `local.properties` (ignorado en `.gitignore`) o mediante el diálogo cifrado de ajustes dentro de la propia aplicación en `DataStore`.
+  - Las claves opcionales de Gemini se gestionan a través de `local.properties` (ignorado en `.gitignore`) o mediante el diálogo de ajustes dentro de la propia aplicación en `DataStore`.
+  - La clave viaja en la cabecera `x-goog-api-key`, nunca en la URL, para que no acabe en registros ni en trazas de error.
+  - La exportación de datos genera un JSON con tu historial de salud, nutrición, peso, entrenamientos y recordatorios; **nunca incluye la clave de la API**.
+
+### Permisos solicitados
+| Permiso | Para qué |
+| :--- | :--- |
+| `health.READ_*` (pasos, distancia, calorías, sueño, ejercicio) | Leer tus datos biométricos de Health Connect |
+| `health.READ_HEALTH_DATA_IN_BACKGROUND` | Mantener los datos y widgets al día con la app cerrada |
+| `READ_CALENDAR` | Mostrar tus próximos eventos (lectura local, sin cuenta ni internet) |
+| `POST_NOTIFICATIONS` | Avisos de tomas, resumen diario y recordatorio de descanso |
+| `USE_EXACT_ALARM` / `SCHEDULE_EXACT_ALARM` | Disparar los avisos a la hora exacta |
+| `RECEIVE_BOOT_COMPLETED` | Reprogramar los avisos tras reiniciar el dispositivo |
 
 ---
 
@@ -221,9 +236,18 @@ app/src/main/java/com/lifedashboard/
    ```
 
 4. **Instalar en un dispositivo conectado:**
+   > El proyecto redirige el directorio de compilación al temporal del sistema (ver `build.gradle.kts`),
+   > así que el APK se genera en `%TEMP%/life_dashboard_build/app/outputs/apk/` en Windows (o `$TMPDIR` en Unix).
    ```bash
-   adb install -r app/build/outputs/apk/debug/app-debug.apk
+   adb install -r "$TMPDIR/life_dashboard_build/app/outputs/apk/debug/app-debug.apk"
    ```
+
+### Ejecutar los tests unitarios
+```bash
+./gradlew testDebugUnitTest
+```
+Cubren la lógica pura: cálculo de energía (BMR/TDEE con edad y sexo), puntuación de preparación,
+programación de recordatorios y clasificación de entrenamientos de Health Connect.
 
 ---
 

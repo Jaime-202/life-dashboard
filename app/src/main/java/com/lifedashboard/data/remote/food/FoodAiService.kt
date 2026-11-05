@@ -59,12 +59,14 @@ class FoodAiService @Inject constructor(
 
         try {
             // Comprobación directa y ultra-rápida contra el gateway de Google Gemini (<400ms)
-            val url = URL("https://generativelanguage.googleapis.com/v1beta/models?key=$trimmed&pageSize=5")
+            val url = URL("https://generativelanguage.googleapis.com/v1beta/models?pageSize=5")
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 3000
                 readTimeout = 3000
                 setRequestProperty("Accept", "application/json")
+                // En cabecera y no en la URL, que puede acabar en registros y trazas de error
+                setRequestProperty("x-goog-api-key", trimmed)
             }
 
             val responseCode = conn.responseCode
@@ -229,27 +231,44 @@ class FoodAiService @Inject constructor(
             Analiza cuidadosamente la imagen adjunta.$extra$contextInfo
             
             Tu objetivo:
-            1. AUDITORÍA EXHAUSTIVA DE ELEMENTOS (NUNCA OMITIR ALIMENTOS NI BEBIDAS):
+            1. PLATOS COMBINADOS Y GUARNICIONES ("X CON Y") Y RACIONES NORMALES:
+               - Si en la foto o en la descripción hay un plato combinado o plato con guarnición (ej: pechuga de pollo con patatas, entrecot con ensalada, pescado con verduras, salmón con arroz, tortilla con ensalada):
+                 * Desglosa de forma clara y separada cada componente en una entrada INDEPENDIENTE del array JSON:
+                   - Alimento principal (pechuga, ternera, salmón, etc.) con su ración normal (~150-180g).
+                   - Cada guarnición (patatas al horno/fritas, ensalada mixta, arroz blanco, verduras) con su ración normal (~150-180g).
+                   - Bebida, pan o postre con sus raciones normales.
+               - Si es un plato tradicional ya cocinado todo junto (tortilla de patatas, paella, lentejas estofadas, cocido), regístralo como un plato completo preparado (1 ración estándar) y no lo separes en patatas o cebolla crudas.
+            2. AUDITORÍA EXHAUSTIVA DE ELEMENTOS (NUNCA OMITIR ALIMENTOS NI BEBIDAS):
                - Desglosa individualmente CADA componente, plato, bebida, pan, salsa o postre presente en la foto o mencionado en la descripción.
                - Si en la foto o en la descripción hay un plato principal, una bebida, pan o postre, DEBES crear una entrada INDEPENDIENTE en el array JSON para CADA UNO de ellos.
                - CADA BEBIDA (agua, cerveza, café, refresco, vino, zumo...) DEBE ser un elemento independiente.
                - CADA POSTRE O FRUTA (manzana, yogur, plátano, fruta...) DEBE ser un elemento independiente.
                - ACOMPAÑAMIENTOS Y SALSAS notables (pan, patatas fritas, ensalada lateral, mayonesa, alioli...) DEBEN ser elementos independientes en el JSON para permitir al usuario editarlos o eliminarlos por separado.
-            2. REGLA ESTRICTA SOBRE EL CAFÉ:
+            3. REGLA ESTRICTA SOBRE EL CAFÉ:
                - NUNCA supongas si un café lleva más o menos leche según la hora o la comida (ni en el desayuno ni después de comer).
                - Si se detecta o pide café solo sin especificar leche, trátalo como café solo estándar (~2 a 4 kcal).
                - Si se indica o detecta café con leche, cortado, manchado o capuchino, calcula los gramos y calorías de café + leche correspondientes a esa bebida exacta sin alterar las proporciones según la hora.
             3. PLATOS COMPUESTOS TRADICIONALES:
                - Platos típicos españoles (ej: tortilla de patatas, paella, lentejas estofadas con chorizo, cocido madrileño, lasaña, etc.): regístralos como el plato preparado completo (una ración con sus calorías y macronutrientes totales). NO los desgloses en ingredientes crudos aislados (no pongas cebolla cruda, patata cruda, etc.).
-            4. DICCIONARIO DE MEDIDAS Y RACIONES EN ESPAÑA:
-               - Un tercio o botellín de cerveza: 330 ml (~140-165 kcal con alcohol; ~75-85 kcal sin alcohol 0,0%).
-               - Una caña de cerveza: 200 ml (~85-100 kcal con alcohol).
-               - Un doble: 350-400 ml de cerveza (~160-180 kcal con alcohol).
-               - Un pincho o montadito: 120-150 g.
-               - Una ración: ~250-350 g; media ración: ~150-180 g.
-               - Un chorro o chorrito de aceite de oliva: 10 a 15 ml (~90 a 130 kcal).
-               - Un tazón: ~250-300 ml; una taza: ~150-200 ml; un vaso / copa: ~200-250 ml.
-               - Un puñado (frutos secos): ~25-30 g.
+            4. CÁLCULO Y COMPRENSIÓN AVANZADA DE UNIDADES Y PRODUCTOS DE SUPERMERCADO:
+               - Cuando en la descripción o en la imagen se identifiquen alimentos por UNIDAD, PIEZA, LATA, REBANADA, TARRINA, TAZA, VASO, PAQUETE, etc., DEBES interpretar y convertir esa unidad a su peso neto real en gramos, e indicar la unidad en el nombre del alimento (ej: "Huevos fritos (2 unidades)", "Atún claro al natural Hacendado (1 lata)", "Pan de molde integral Carrefour (2 rebanadas)", "Yogur de proteínas fresa Hacendado (1 tarrina)").
+               - TABLA DE EQUIVALENCIAS DE UNIDADES (GENÉRICO Y SUPERMERCADO ESPAÑOL):
+                 * Huevos: 1 ud = ~60g; 2 uds = ~120g; 3 uds = ~180g.
+                 * Latas de conserva de supermercado (atún Hacendado/Carrefour/Día, mejillones, berberechos, maíz): 1 lata individual = ~60g escurrido (~80g con líquido).
+                 * Pan de molde (Hacendado, Carrefour, Bimbo): 1 rebanada = 28-30g; 2 rebanadas = 56-60g.
+                 * Tostadas de pan / biscotes: 1 tostada = 12-15g.
+                 * Yogures y postres lácteos (Hacendado, Danone, Milbona): 1 tarrina/vasito = 120-125g; copa de proteínas = 200g; tarrina queso fresco batido individual = 120g (tarrina grande = 500g).
+                 * Leche y bebidas vegetales: 1 vaso = 200-250 ml; 1 tazón = 300 ml; 1 brick = 1000 ml.
+                 * Frutas por pieza: 1 manzana, pera o naranja = 150-180g; 1 plátano = 120g; 1 kiwi o mandarina = 75g; medio aguacate = 80-90g.
+                 * Lonchas de embutido / pavo / jamón / queso (Hacendado, etc.): 1 loncha = 20-25g; paquete lonchas completo = 100-120g.
+                 * Cerveza y refrescos: 1 lata = 330 ml; 1 tercio/botellín = 330 ml; 1 quinto/botellita = 200 ml; 1 caña = 200 ml; 1 doble = 350-400 ml.
+                 * Cucharadas soperas (aceite de oliva, etc.): 1 cucharada = 12-15 ml (~110-130 kcal para aceite); 1 cucharadita = 5 ml.
+                 * Tortitas de arroz o maíz (Hacendado, etc.): 1 tortita = 8-9g; 2 tortitas = 16-18g.
+                 * Onzas de chocolate: 1 onza/pastilla = 10-12g; 1 tableta = 100g.
+                 * Filetes de pechuga / ternera / pescado: 1 filete = 120-150g; 1 hamburguesa = 120-150g.
+                 * Bricks de caldo o gazpacho: 1 vaso = 200-250 ml; brick completo = 1000 ml.
+                 * Puñado (frutos secos): ~25-30g.
+                 * Platos preparados típicos: 1 ración/plato = 250-350g; media ración = 150-180g.
             5. REGLA ESTRICTA DE MARCA VS GENÉRICO:
                - Si en la foto se aprecia un producto de marca o envase comercial, o el usuario indica en su descripción que proviene de una marca/supermercado concreto (ej: "Hacendado", "Mercadona", "Carrefour", "Día", "Alcampo", "Lidl", "Danone", "Asturiana", etc.), asigna exactamente esa marca en "brand" (ej: "Hacendado", "Carrefour", "Día", "Lidl") y pon "isGeneric": false.
                - Si el alimento es comida casera, no empaquetada, o NO se especifica marca alguna, asígnalo como genérico: pon "brand": "Genérico" y "isGeneric": true.
@@ -308,38 +327,68 @@ class FoodAiService @Inject constructor(
         try {
             val contextInfo = formatMealContext(mealType, existingItemsContext)
             val prompt = """
-                Eres un nutricionista experto en gastronomía española, supermercados (Mercadona/Hacendado, Carrefour, Día, Alcampo, Lidl, etc.) y cálculo de macronutrientes.
+                Eres un nutricionista experto en gastronomía española, supermercados (Mercadona/Hacendado, Carrefour, Día, Alcampo, Lidl, etc.) y cálculo exacto de macronutrientes.
                 El usuario ha registrado en lenguaje natural lo que ha comido: "$trimmed"$contextInfo
                 
-                Tu objetivo:
-                1. AUDITORÍA EXHAUSTIVA DE ELEMENTOS (NUNCA OMITIR ALIMENTOS NI BEBIDAS):
+                Tu objetivo primordial:
+                1. PLATOS COMBINADOS Y GUARNICIONES ("X CON Y"):
+                   - Si el usuario dice "X con Y" (ej: "pechuga de pollo con patatas", "entrecot con ensalada", "arroz con atún y huevo frito", "salmón con verduras salteadas", "merluza con patatas panaderas", "tortilla de patatas con ensalada mixta", "lentejas con arroz"):
+                     * Desglosa de forma clara y separada cada alimento en el array JSON:
+                       - 1 entrada para el alimento principal (ej. Pechuga de pollo a la plancha, Entrecot, Salmón a la plancha, etc.).
+                       - 1 entrada para cada guarnición o acompañamiento (ej. Patatas al horno, Ensalada mixta, Arroz blanco, Verduras salteadas).
+                       - 1 entrada para pan, bebidas, salsas o postres si se mencionan.
+                   - Si es un plato tradicional de cocción conjunta (ej: "Tortilla de patatas", "Paella valenciana", "Lentejas estofadas con chorizo", "Cocido madrileño", "Lasaña de carne", "Gazpacho andaluz"): regístralo como un plato completo preparado (1 ración estándar) y NO lo dividas en patatas crudas, cebolla cruda o huevo crudo.
+                
+                2. CÁLCULO DE LA RACIÓN NORMAL (SI NO SE INDICAN GRAMOS EXACTOS):
+                   - Si el usuario no indica gramos numéricos exactos, DEBES calcular y asignar la RACIÓN NORMAL habitual de consumo para un adulto en España:
+                     * Pechuga de pollo o pavo: ración normal ~150-160g (~250-264 kcal, ~48-50g P)
+                     * Filete de ternera / entrecot: ración normal ~160-180g (~300-375 kcal, ~36-40g P)
+                     * Pescado blanco o azul (merluza, salmón, dorada, lubina): ración normal ~150-170g (~150-240 kcal)
+                     * Patatas de guarnición (al horno, cocidas o fritas): ración normal ~150-180g (~130-280 kcal)
+                     * Arroz blanco o pasta (guarnición cocida): ración normal ~150-180g (como plato principal ~200-250g)
+                     * Ensalada mixta (lechuga, tomate, cebolla, aceite): ración normal ~150g (~90-120 kcal)
+                     * Verduras salteadas o al vapor (brócoli, judías, calabacín, setas): ración normal ~150-180g (~60-90 kcal)
+                     * Pan común de barra: ración normal ~40-50g (~110-130 kcal) o 2 rebanadas molde (~56-60g)
+                     * Legumbres preparadas (lentejas, garbanzos): ración normal ~300-350g (~350-420 kcal)
+                     * Tortilla de patatas: ración normal ~180g (~280-320 kcal)
+                
+                3. AUDITORÍA EXHAUSTIVA DE ELEMENTOS (NUNCA OMITIR ALIMENTOS NI BEBIDAS):
                    - Escanea minuciosamente toda la descripción del usuario.
-                   - Si el usuario menciona múltiples platos, guarniciones, panes, bebidas, postres o salsas (ej: "arroz con pollo, ensalada mixta, dos rebanadas de pan, una cerveza y de postre una manzana"), DEBES devolver una entrada INDEPENDIENTE en el array JSON para CADA UNO de ellos (en el ejemplo: exactamente 5 entradas independientes).
-                   - NUNCA descartes ni omitas alimentos secundarios:
-                     * CADA BEBIDA (agua, cerveza, refresco, café, leche, vino, zumo...) DEBE ser un elemento independiente.
-                     * CADA POSTRE O FRUTA (manzana, yogur, plátano, fruta...) DEBE ser un elemento independiente.
-                     * CADA ACOMPAÑAMIENTO O PAN (pan blanco, integral, patatas fritas, ensalada lateral...) DEBE ser un elemento independiente.
-                     * SALSAS O EXTRAS NOTORIOS (mayonesa, alioli, kétchup, queso rallado, aceite extra...) DEBEN ser elementos independientes.
-                2. REGLA ESTRICTA SOBRE EL CAFÉ:
-                   - NUNCA supongas si un café lleva más o menos leche según la hora o la comida (ni en el desayuno ni después de comer).
+                   - Si el usuario menciona múltiples platos, guarniciones, panes, bebidas, postres o salsas (ej: "arroz con pollo, ensalada mixta, dos rebanadas de pan, una cerveza y de postre una manzana"), DEBES devolver una entrada INDEPENDIENTE en el array JSON para CADA UNO de ellos.
+                   - CADA BEBIDA (agua, cerveza, refresco, café, leche, vino, zumo...) DEBE ser un elemento independiente.
+                   - CADA POSTRE O FRUTA (manzana, yogur, plátano, fruta...) DEBE ser un elemento independiente.
+                   - CADA ACOMPAÑAMIENTO O PAN (pan blanco, integral, patatas fritas, ensalada lateral...) DEBE ser un elemento independiente.
+                   - SALSAS O EXTRAS NOTORIOS (mayonesa, alioli, kétchup, queso rallado, aceite extra...) DEBEN ser elementos independientes.
+                
+                4. REGLA ESTRICTA SOBRE EL CAFÉ:
                    - Si el usuario dice "café" a secas sin especificar leche, trátalo como café solo estándar (~2 a 4 kcal).
-                   - Si el usuario dice "café con leche", "cortado", "manchado" o "capuchino", calcula los gramos y calorías de café + leche correspondientes a esa bebida exacta sin alterar las proporciones según la hora.
-                3. PLATOS COMPUESTOS TRADICIONALES:
-                   - Platos cocinados tradicionales españoles (ej: "Tortilla de patatas", "Paella valenciana", "Lentejas estofadas con chorizo", "Cocido madrileño", "Lasaña de carne", "Gazpacho andaluz", "Arroz a la cubana"): regístralos como el plato preparado completo (una ración con sus calorías y macronutrientes totales). NO los desgloses en ingredientes crudos aislados (no pongas cebolla cruda, patata cruda, etc.).
-                4. DICCIONARIO DE MEDIDAS Y RACIONES EN ESPAÑA:
-                   - "Un tercio" o "un botellín": 330 ml de cerveza (~140-165 kcal con alcohol; ~75-85 kcal sin alcohol 0,0%).
-                   - "Una caña": 200 ml de cerveza (~85-100 kcal con alcohol).
-                   - "Un doble": 350-400 ml de cerveza (~160-180 kcal con alcohol).
-                   - "Un pincho" o "un montadito": ración de tapa española (~120-150 g).
-                   - "Una ración": ~250-350 g; "media ración": ~150-180 g.
-                   - "Un chorro" o "un chorrito de aceite de oliva": ~10 a 15 ml (~90 a 130 kcal).
-                   - "Un tazón": ~250-300 ml; "una taza": ~150-200 ml; "un vaso": ~200-250 ml.
-                   - "Un puñado" (frutos secos): ~25-30 g.
-                   - Si el usuario especificó cantidades (ej: "2 huevos", "150g de pollo", "media pizza"), calcula el peso exacto. Si no indicó cantidad, asume la ración estándar habitual para adultos en España.
-                5. REGLA ESTRICTA DE MARCA VS GENÉRICO:
+                   - Si dice "café con leche", "cortado", "manchado" o "capuchino", calcula los gramos y calorías de café + leche correspondientes a esa bebida exacta sin alterar las proporciones según la hora.
+                
+                5. CÁLCULO Y COMPRENSIÓN AVANZADA DE UNIDADES Y PRODUCTOS DE SUPERMERCADO:
+                   - Cuando el usuario indique alimentos por UNIDAD, PIEZA, LATA, REBANADA, TARRINA, TAZA, VASO, PAQUETE, etc., DEBES interpretar y convertir esa unidad a su peso neto real en gramos, e indicar la unidad en el nombre del alimento (ej: "Huevos fritos (2 unidades)", "Atún claro al natural Hacendado (1 lata)", "Pan de molde integral Carrefour (2 rebanadas)", "Yogur de proteínas fresa Hacendado (1 tarrina)").
+                   - TABLA DE EQUIVALENCIAS DE UNIDADES (GENÉRICO Y SUPERMERCADO ESPAÑOL):
+                     * Huevos: 1 ud = ~60g; 2 uds = ~120g; 3 uds = ~180g.
+                     * Latas de conserva de supermercado (atún Hacendado/Carrefour/Día, mejillones, berberechos, maíz): 1 lata individual = ~60g escurrido (~80g con líquido).
+                     * Pan de molde (Hacendado, Carrefour, Bimbo): 1 rebanada = 28-30g; 2 rebanadas = 56-60g.
+                     * Tostadas de pan / biscotes: 1 tostada = 12-15g.
+                     * Yogures y postres lácteos (Hacendado, Danone, Milbona): 1 tarrina/vasito = 120-125g; copa de proteínas = 200g; tarrina queso fresco batido individual = 120g (tarrina grande = 500g).
+                     * Leche y bebidas vegetales: 1 vaso = 200-250 ml; 1 tazón = 300 ml; 1 brick = 1000 ml.
+                     * Frutas por pieza: 1 manzana, pera o naranja = 150-180g; 1 plátano = 120g; 1 kiwi o mandarina = 75g; medio aguacate = 80-90g.
+                     * Lonchas de embutido / pavo / jamón / queso (Hacendado, etc.): 1 loncha = 20-25g; paquete lonchas completo = 100-120g.
+                     * Cerveza y refrescos: 1 lata = 330 ml; 1 tercio/botellín = 330 ml; 1 quinto/botellita = 200 ml; 1 caña = 200 ml; 1 doble = 350-400 ml.
+                     * Cucharadas soperas (aceite de oliva, etc.): 1 cucharada = 12-15 ml (~110-130 kcal para aceite); 1 cucharadita = 5 ml.
+                     * Tortitas de arroz o maíz (Hacendado, etc.): 1 tortita = 8-9g; 2 tortitas = 16-18g.
+                     * Onzas de chocolate: 1 onza/pastilla = 10-12g; 1 tableta = 100g.
+                     * Filetes de pechuga / ternera / pescado: 1 filete = 120-150g; 1 hamburguesa = 120-150g.
+                     * Bricks de caldo o gazpacho: 1 vaso = 200-250 ml; brick completo = 1000 ml.
+                     * Puñado (frutos secos): ~25-30g.
+                     * Platos preparados típicos: 1 ración/plato = 250-350g; media ración = 150-180g.
+                
+                6. REGLA ESTRICTA DE MARCA VS GENÉRICO:
                    - Si el usuario indica o menciona que un producto viene de una marca o supermercado específico (por ejemplo: "hacendado", "mercadona", "carrefour", "día", "dia", "alcampo", "lidl", "danone", "central lechera asturiana", etc.), asigna exactamente esa marca en el campo "brand" (ej: "Hacendado", "Carrefour", "Día", "Lidl") y pon "isGeneric": false.
                    - Si el usuario NO menciona ninguna marca o supermercado para ese producto (ej: "arroz blanco", "2 huevos fritos", "pechuga de pollo"), asígnalo como genérico: pon "brand": "Genérico" y "isGeneric": true.
-                6. REGLA DE CALORÍAS REALES (NINGÚN ALIMENTO TIENE 0 KCAL EXCEPTO AGUA):
+                
+                7. REGLA DE CALORÍAS REALES (NINGÚN ALIMENTO TIENE 0 KCAL EXCEPTO AGUA):
                    - Café solo (expreso o americano): ~2 a 4 kcal por taza (~2 kcal/100ml). NUNCA pongas 0 calorías.
                    - Cerveza con alcohol (lata/botellín 330ml): ~140-165 kcal (~43-48 kcal/100ml). NUNCA pongas 0 calorías.
                    - Cerveza 0,0% sin alcohol (330ml): ~75-85 kcal (~24 kcal/100ml). NUNCA pongas 0 calorías.
@@ -350,14 +399,14 @@ class FoodAiService @Inject constructor(
                 Responde ÚNICAMENTE con un array JSON válido:
                 [
                   {
-                    "name": "Tortilla de patatas",
+                    "name": "Pechuga de pollo a la plancha",
                     "brand": "Genérico",
                     "isGeneric": true,
-                    "grams": 180.0,
-                    "calories": 277.0,
-                    "protein": 9.9,
-                    "carbs": 24.3,
-                    "fat": 15.8
+                    "grams": 160.0,
+                    "calories": 264.0,
+                    "protein": 49.6,
+                    "carbs": 0.0,
+                    "fat": 5.8
                   }
                 ]
             """.trimIndent()
@@ -582,28 +631,62 @@ class FoodAiService @Inject constructor(
         val lower = text.lowercase(Locale.ROOT)
         val items = mutableListOf<DetectedFoodItem>()
 
-        // 1. Extraer multiplicadores de cantidad (ej: "2 huevos", "150g de pollo", "un plato de lentejas")
+        // 1. Extraer multiplicadores de cantidad y unidades (ej: "2 huevos", "1 lata de atún", "3 rebanadas de pan", "150g de pollo")
         fun findGramsOrMultiplier(segment: String, defaultGrams: Float, unitMultiplier: Float = 1f): Float {
+            val s = segment.lowercase(Locale.ROOT)
             // Buscar gramos explícitos: ej "150g" o "150 gramos"
-            val gramMatch = Pattern.compile("(\\d+)\\s*(?:g|gr|gramos|ml)", Pattern.CASE_INSENSITIVE).matcher(segment)
+            val gramMatch = Pattern.compile("(\\d+)\\s*(?:g|gr|gramos|ml|cl)", Pattern.CASE_INSENSITIVE).matcher(s)
             if (gramMatch.find()) {
                 val g = gramMatch.group(1)?.toFloatOrNull()
                 if (g != null && g > 0) return g
             }
 
-            // Buscar unidades: ej "2", "3", "dos", "tres"
-            val countMatch = Pattern.compile("\\b(\\d+)\\b").matcher(segment)
-            if (countMatch.find()) {
-                val count = countMatch.group(1)?.toFloatOrNull()
-                if (count != null && count in 1f..10f) return count * defaultGrams
+            // Detectar multiplicador numérico
+            val count: Float = run {
+                val countMatch = Pattern.compile("\\b(\\d+(?:[.,]\\d+)?)\\b").matcher(s)
+                if (countMatch.find()) {
+                    countMatch.group(1)?.replace(',', '.')?.toFloatOrNull() ?: 1f
+                } else when {
+                    s.contains("dos") || s.contains("par de") -> 2f
+                    s.contains("tres") -> 3f
+                    s.contains("cuatro") -> 4f
+                    s.contains("cinco") -> 5f
+                    s.contains("seis") -> 6f
+                    s.contains("medio") || s.contains("media") -> 0.5f
+                    s.contains("un ") || s.contains("una ") || s.contains("uno ") -> 1f
+                    else -> 1f
+                }
             }
 
-            if (segment.contains("dos") || segment.contains("par de")) return defaultGrams * 2f
-            if (segment.contains("tres")) return defaultGrams * 3f
-            if (segment.contains("cuatro")) return defaultGrams * 4f
-            if (segment.contains("medio") || segment.contains("media")) return defaultGrams * 0.5f
-
-            return defaultGrams * unitMultiplier
+            // Detectar tipo de unidad de medida
+            return when {
+                s.contains("lata") -> {
+                    val unitW = if (s.contains("cerveza") || s.contains("refresco") || s.contains("coca")) 330f else 60f
+                    count * unitW
+                }
+                s.contains("rebanada") -> count * 28f
+                s.contains("loncha") -> count * 25f
+                s.contains("huevo") -> count * 60f
+                s.contains("tostada") -> count * 15f
+                s.contains("yogur") || s.contains("tarrina") -> {
+                    val unitW = if (s.contains("copa") || s.contains("batido")) 200f else 125f
+                    count * unitW
+                }
+                s.contains("vaso") -> count * 200f
+                s.contains("taza") -> count * 150f
+                s.contains("tazón") || s.contains("tazon") -> count * 300f
+                s.contains("cucharada") || s.contains("cda") -> count * 14f
+                s.contains("cucharadita") || s.contains("cdita") -> count * 5f
+                s.contains("tortita") -> count * 9f
+                s.contains("onza") -> count * 10f
+                s.contains("paquete") || s.contains("barqueta") -> count * 120f
+                s.contains("filete") -> count * 130f
+                s.contains("hamburguesa") -> count * 130f
+                s.contains("tercio") || s.contains("botellín") -> count * 330f
+                s.contains("caña") -> count * 200f
+                count in 1f..15f && count != 1f -> count * defaultGrams
+                else -> defaultGrams * unitMultiplier
+            }
         }
 
         // Proteger expresiones culinarias compuestas habituales para no partirlas por "con"
@@ -747,7 +830,12 @@ class FoodAiService @Inject constructor(
                     val factor = grams / 100f
                     items.add(DetectedFoodItem("Hamburguesa de ternera", grams, 245f * factor, 21f * factor, 0.8f * factor, 17.5f * factor))
                 }
-                clause.contains("ternera") || clause.contains("filete") || clause.contains("entrecot") -> {
+                clause.contains("solomillo") || clause.contains("entrecot") || clause.contains("chuleta") || clause.contains("chuleton") || clause.contains("chuletón") -> {
+                    val grams = findGramsOrMultiplier(clause, 180f)
+                    val factor = grams / 100f
+                    items.add(DetectedFoodItem("Entrecot / Solomillo a la plancha", grams, 210f * factor, 25f * factor, 0f, 12f * factor))
+                }
+                clause.contains("ternera") || clause.contains("filete") || clause.contains("carne") -> {
                     val grams = findGramsOrMultiplier(clause, 160f)
                     val factor = grams / 100f
                     items.add(DetectedFoodItem("Filete de ternera magra", grams, 175f * factor, 26f * factor, 0f, 7.5f * factor))
@@ -873,14 +961,39 @@ class FoodAiService @Inject constructor(
                 }
                 // Ensalada y verduras
                 clause.contains("ensalada") -> {
-                    val grams = findGramsOrMultiplier(clause, 180f)
+                    val grams = findGramsOrMultiplier(clause, 150f)
                     val factor = grams / 100f
-                    items.add(DetectedFoodItem("Ensalada mixta fresca", grams, 65f * factor, 3f * factor, 4f * factor, 3.5f * factor))
+                    items.add(DetectedFoodItem("Ensalada mixta fresca", grams, 65f * factor, 2.5f * factor, 4f * factor, 4.5f * factor))
+                }
+                clause.contains("verdura") || clause.contains("verduras") || clause.contains("salteado") || clause.contains("menestra") -> {
+                    val grams = findGramsOrMultiplier(clause, 160f)
+                    val factor = grams / 100f
+                    items.add(DetectedFoodItem("Verduras salteadas o al vapor", grams, 45f * factor, 2.5f * factor, 7f * factor, 0.8f * factor))
                 }
                 clause.contains("brocoli") || clause.contains("brócoli") -> {
                     val grams = findGramsOrMultiplier(clause, 150f)
                     val factor = grams / 100f
                     items.add(DetectedFoodItem("Brócoli al vapor", grams, 35f * factor, 2.4f * factor, 7.2f * factor, 0.4f * factor))
+                }
+                clause.contains("champin") || clause.contains("champiñ") || clause.contains("seta") || clause.contains("setas") || clause.contains("hongo") -> {
+                    val grams = findGramsOrMultiplier(clause, 150f)
+                    val factor = grams / 100f
+                    items.add(DetectedFoodItem("Champiñones / Setas a la plancha", grams, 38f * factor, 3.8f * factor, 4.5f * factor, 0.5f * factor))
+                }
+                clause.contains("esparrago") || clause.contains("espárrago") || clause.contains("esparragos") || clause.contains("espárragos") -> {
+                    val grams = findGramsOrMultiplier(clause, 140f)
+                    val factor = grams / 100f
+                    items.add(DetectedFoodItem("Espárragos trigueros a la plancha", grams, 25f * factor, 2.8f * factor, 3.2f * factor, 0.2f * factor))
+                }
+                clause.contains("judia") || clause.contains("judía") || clause.contains("vainas") -> {
+                    val grams = findGramsOrMultiplier(clause, 180f)
+                    val factor = grams / 100f
+                    items.add(DetectedFoodItem("Judías verdes cocidas", grams, 35f * factor, 2.0f * factor, 7.5f * factor, 0.2f * factor))
+                }
+                clause.contains("calabacin") || clause.contains("calabacín") || clause.contains("berenjena") -> {
+                    val grams = findGramsOrMultiplier(clause, 160f)
+                    val factor = grams / 100f
+                    items.add(DetectedFoodItem("Calabacín / Berenjena a la plancha", grams, 32f * factor, 1.8f * factor, 5.5f * factor, 0.4f * factor))
                 }
                 clause.contains("tomate") -> {
                     val grams = findGramsOrMultiplier(clause, 120f)

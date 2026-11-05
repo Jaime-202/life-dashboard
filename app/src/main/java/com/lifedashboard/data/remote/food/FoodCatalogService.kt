@@ -34,6 +34,13 @@ data class QuadrupleCalories(
     val fat: Float
 )
 
+data class DetectedUnitInfo(
+    val unitLabelSingular: String,
+    val unitLabelPlural: String,
+    val gramsPerUnit: Float,
+    val isUnitApplicable: Boolean
+)
+
 data class FoodCatalogItem(
     val id: String,
     val name: String,
@@ -726,8 +733,8 @@ class FoodCatalogService @Inject constructor(
      */
     private fun queryByBarcode(barcode: String): FoodCatalogItem? {
         val endpoints = listOf(
-            "https://world.openfoodfacts.net/api/v0/product/$barcode.json",
-            "https://es.openfoodfacts.net/api/v0/product/$barcode.json"
+            "https://world.openfoodfacts.org/api/v0/product/$barcode.json",
+            "https://es.openfoodfacts.org/api/v0/product/$barcode.json"
         )
         for (urlString in endpoints) {
             var connection: HttpURLConnection? = null
@@ -774,11 +781,11 @@ class FoodCatalogService @Inject constructor(
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
 
         if (brandTag.isNotBlank()) {
-            endpoints.add("https://es.openfoodfacts.net/cgi/search.pl?search_terms=$encodedQuery&tagtype_0=brands&tag_contains_0=contains&tag_0=$brandTag&action=process&json=1&page_size=40")
-            endpoints.add("https://es.openfoodfacts.net/cgi/search.pl?search_terms=${URLEncoder.encode("$query $brandTag", "UTF-8")}&search_simple=1&action=process&json=1&page_size=35")
+            endpoints.add("https://es.openfoodfacts.org/cgi/search.pl?search_terms=$encodedQuery&tagtype_0=brands&tag_contains_0=contains&tag_0=$brandTag&action=process&json=1&page_size=40")
+            endpoints.add("https://es.openfoodfacts.org/cgi/search.pl?search_terms=${URLEncoder.encode("$query $brandTag", "UTF-8")}&search_simple=1&action=process&json=1&page_size=35")
         } else {
-            endpoints.add("https://es.openfoodfacts.net/cgi/search.pl?search_terms=$encodedQuery&search_simple=1&action=process&json=1&page_size=40")
-            endpoints.add("https://world.openfoodfacts.net/cgi/search.pl?search_terms=$encodedQuery&search_simple=1&action=process&json=1&page_size=35")
+            endpoints.add("https://es.openfoodfacts.org/cgi/search.pl?search_terms=$encodedQuery&search_simple=1&action=process&json=1&page_size=40")
+            endpoints.add("https://world.openfoodfacts.org/cgi/search.pl?search_terms=$encodedQuery&search_simple=1&action=process&json=1&page_size=35")
         }
 
         for (urlString in endpoints) {
@@ -1061,6 +1068,133 @@ class FoodCatalogService @Inject constructor(
                 // Default
                 else ->
                     QuadrupleCalories(50f, 2f, 8f, 1f)
+            }
+        }
+
+        fun detectFoodUnit(name: String, brand: String = "", currentGrams: Float = 100f): DetectedUnitInfo {
+            val lower = "$name $brand".lowercase(java.util.Locale.ROOT)
+
+            // 1. Extraer si el nombre ya incluye un gramaje por unidad explícito, ej: "(~60g)", "(125g)", "1 ud (~50g)"
+            val regexParenthesisGram = Regex("""\(~?(\d+(?:\.\d+)?)\s*g\)""").find(lower)
+            if (regexParenthesisGram != null) {
+                val g = regexParenthesisGram.groupValues[1].toFloatOrNull()
+                if (g != null && g > 0f) {
+                    val (sing, plur) = when {
+                        lower.contains("lata") -> "lata" to "latas"
+                        lower.contains("rebanada") -> "rebanada" to "rebanadas"
+                        lower.contains("tostada") -> "tostada" to "tostadas"
+                        lower.contains("loncha") -> "loncha" to "lonchas"
+                        lower.contains("yogur") || lower.contains("tarrina") -> "tarrina" to "tarrinas"
+                        lower.contains("vaso") -> "vaso" to "vasos"
+                        lower.contains("huevo") -> "huevo" to "huevos"
+                        lower.contains("tortita") -> "tortita" to "tortitas"
+                        else -> "unidad" to "unidades"
+                    }
+                    return DetectedUnitInfo(sing, plur, g, true)
+                }
+            }
+
+            // 2. Mapeo específico por alimento o producto
+            return when {
+                // Huevos
+                lower.contains("huevo") ->
+                    DetectedUnitInfo("huevo", "huevos", 60f, true)
+
+                // Latas de conserva de supermercado (atún, sardinas, mejillones, etc.)
+                lower.contains("atun") || lower.contains("atún") || lower.contains("bonito") ||
+                lower.contains("sardina") || lower.contains("mejillon") || lower.contains("mejillón") ||
+                lower.contains("caballa") || lower.contains("berberecho") ->
+                    DetectedUnitInfo("lata", "latas", 60f, true)
+
+                // Pan de molde, rebanadas
+                lower.contains("pan de molde") || lower.contains("rebanada") || lower.contains("hogaza") ->
+                    DetectedUnitInfo("rebanada", "rebanadas", 28f, true)
+
+                // Tostadas / biscotes
+                lower.contains("tostada") || lower.contains("biscote") ->
+                    DetectedUnitInfo("tostada", "tostadas", 15f, true)
+
+                // Tortitas de arroz / maíz
+                lower.contains("tortita") ->
+                    DetectedUnitInfo("tortita", "tortitas", 9f, true)
+
+                // Panecillos, croissants, bollos
+                lower.contains("panecillo") || lower.contains("bollo") || lower.contains("croissant") || lower.contains("muffin") ->
+                    DetectedUnitInfo("pieza", "piezas", 60f, true)
+
+                // Yogures y postres lácteos
+                lower.contains("yogur") || lower.contains("kefir") || lower.contains("kéfir") ||
+                lower.contains("danone") || lower.contains("actimel") || lower.contains("natillas") ->
+                    DetectedUnitInfo("yogur", "yogures", 125f, true)
+
+                // Tarrinas de queso batido o hummus
+                lower.contains("hummus") || lower.contains("queso fresco batido") || lower.contains("tarrina") ->
+                    DetectedUnitInfo("tarrina", "tarrinas", 200f, true)
+
+                // Lonchas de pavo, jamón cocido, jamón serrano, queso en lonchas
+                lower.contains("loncha") || (lower.contains("pavo") && (lower.contains("pechuga") || lower.contains("braseada"))) ||
+                ((lower.contains("jamon") || lower.contains("jamón")) && !lower.contains("hueso")) ||
+                (lower.contains("queso") && (lower.contains("havarti") || lower.contains("gouda") || lower.contains("edam") || lower.contains("sandwich") || lower.contains("lonchas"))) ->
+                    DetectedUnitInfo("loncha", "lonchas", 25f, true)
+
+                // Frutas por pieza
+                lower.contains("platano") || lower.contains("plátano") || lower.contains("banana") ->
+                    DetectedUnitInfo("plátano", "plátanos", 120f, true)
+
+                lower.contains("manzana") ->
+                    DetectedUnitInfo("manzana", "manzanas", 160f, true)
+
+                lower.contains("pera") ->
+                    DetectedUnitInfo("pera", "peras", 150f, true)
+
+                lower.contains("naranja") || lower.contains("mandarina") ->
+                    DetectedUnitInfo("naranja", "naranjas", 140f, true)
+
+                lower.contains("kiwi") ->
+                    DetectedUnitInfo("kiwi", "kiwis", 80f, true)
+
+                lower.contains("aguacate") ->
+                    DetectedUnitInfo("medio aguacate", "medios aguacates", 80f, true)
+
+                // Leche, bebidas vegetales, café
+                lower.contains("leche") || lower.contains("bebida de avena") || lower.contains("bebida de soja") ||
+                lower.contains("bebida de almendra") || lower.contains("zumo") || lower.contains("cafe") || lower.contains("café") ->
+                    DetectedUnitInfo("vaso", "vasos", 200f, true)
+
+                // Cervezas y refrescos
+                lower.contains("coca-cola") || lower.contains("pepsi") || lower.contains("fanta") ||
+                lower.contains("aquarius") || lower.contains("monster") || lower.contains("red bull") ||
+                lower.contains("cerveza") || lower.contains("mahou") || lower.contains("estrella") || lower.contains("cruzcampo") ->
+                    DetectedUnitInfo("lata", "latas", 330f, true)
+
+                // Aceite de oliva, miel, crema de cacahuete
+                lower.contains("aceite") || lower.contains("miel") || lower.contains("crema de cacahuete") || lower.contains("mantequilla") ->
+                    DetectedUnitInfo("cucharada", "cucharadas", 15f, true)
+
+                // Barritas
+                lower.contains("barrita") ->
+                    DetectedUnitInfo("barrita", "barritas", 40f, true)
+
+                // Scoops / cazos de proteína en polvo
+                lower.contains("proteina") || lower.contains("proteína") || lower.contains("whey") || lower.contains("creatina") ->
+                    DetectedUnitInfo("cazo (scoop)", "cazos", 30f, true)
+
+                // Hamburguesas, filetes
+                lower.contains("hamburguesa") || lower.contains("burger") ->
+                    DetectedUnitInfo("hamburguesa", "hamburguesas", 130f, true)
+
+                lower.contains("filete") || lower.contains("pechuga de pollo") ->
+                    DetectedUnitInfo("filete", "filetes", 130f, true)
+
+                // Galletas
+                lower.contains("galleta") || lower.contains("oreo") || lower.contains("maria") || lower.contains("maría") ->
+                    DetectedUnitInfo("galleta", "galletas", 12f, true)
+
+                // Por defecto
+                else -> {
+                    val g = if (currentGrams in 10f..400f) currentGrams else 100f
+                    DetectedUnitInfo("unidad", "unidades", g, true)
+                }
             }
         }
     }

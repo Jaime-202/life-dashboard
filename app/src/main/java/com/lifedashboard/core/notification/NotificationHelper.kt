@@ -122,7 +122,7 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Acción directa "✔ Marcar como tomado" sin abrir la app
+        // Acción 1: "✔ Tomada" sin abrir la app
         val markIntent = Intent(context, MarkReminderCompletedReceiver::class.java).apply {
             putExtra("reminder_id", reminderId)
             putExtra("notification_id", notificationId)
@@ -131,6 +131,22 @@ object NotificationHelper {
             context,
             reminderId.toInt(),
             markIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Acción 2: "⏰ Posponer 15m"
+        val snoozeIntent = Intent(context, SnoozeReminderReceiver::class.java).apply {
+            action = SnoozeReminderReceiver.ACTION_SNOOZE_REMINDER
+            putExtra("reminder_id", reminderId)
+            putExtra("notification_id", notificationId)
+            putExtra("title", title)
+            putExtra("emoji", iconEmoji)
+            putExtra("time_of_day", timeOfDay)
+        }
+        val snoozePendingIntent = PendingIntent.getBroadcast(
+            context,
+            (reminderId + 50000).toInt(),
+            snoozeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -149,8 +165,15 @@ object NotificationHelper {
             .addAction(
                 NotificationCompat.Action.Builder(
                     null,
-                    "✔ Marcar como tomado",
+                    "✔ Tomada",
                     markPendingIntent
+                ).build()
+            )
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    null,
+                    "⏰ Posponer 15m",
+                    snoozePendingIntent
                 ).build()
             )
             .build()
@@ -232,6 +255,13 @@ object NotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(openPendingIntent)
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    null,
+                    "📊 Ver Panel",
+                    openPendingIntent
+                ).build()
+            )
             .build()
 
         try {
@@ -247,12 +277,26 @@ object NotificationHelper {
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("screen", "health")
+            putExtra("tab", "SUENO")
         }
 
         val pendingIntent = PendingIntent.getActivity(
             context,
-            0,
+            NOTIFICATION_BEDTIME_ID,
             intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Acción rápida: "⏰ 15 min más"
+        val snoozeIntent = Intent(context, SnoozeReminderReceiver::class.java).apply {
+            action = SnoozeReminderReceiver.ACTION_SNOOZE_BEDTIME
+            putExtra("notification_id", NOTIFICATION_BEDTIME_ID)
+        }
+        val snoozePending = PendingIntent.getBroadcast(
+            context,
+            NOTIFICATION_BEDTIME_ID + 50,
+            snoozeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -265,6 +309,20 @@ object NotificationHelper {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    null,
+                    "💤 Modo Sueño",
+                    pendingIntent
+                ).build()
+            )
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    null,
+                    "⏰ 15m más",
+                    snoozePending
+                ).build()
+            )
             .build()
 
         try {

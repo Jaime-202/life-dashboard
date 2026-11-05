@@ -1,5 +1,7 @@
 package com.lifedashboard.presentation.screen.health
 
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -34,6 +36,7 @@ import com.lifedashboard.data.local.entity.HealthDataEntity
 import com.lifedashboard.data.repository.UserPreferencesRepository
 import com.lifedashboard.presentation.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -53,14 +56,18 @@ data class HealthUiState(
     val stepsTarget: Int = 10000,
     val sleepTarget: Float = 8.0f,
     val caloriesTarget: Int = 500, // Meta de calorías activas quemadas
-    val isSyncing: Boolean = false
+    val isSyncing: Boolean = false,
+    val userWeightKg: Float = 75.0f,
+    val userHeightCm: Int = 175,
+    val primaryGoal: String = "SALUD_GENERAL"
 )
 
 @HiltViewModel
 class HealthViewModel @Inject constructor(
     private val healthDao: HealthDao,
     private val userPreferences: UserPreferencesRepository,
-    private val scheduler: WorkManagerScheduler
+    private val scheduler: WorkManagerScheduler,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HealthUiState())
@@ -80,7 +87,10 @@ class HealthViewModel @Inject constructor(
                     it.copy(
                         stepsTarget    = goals.stepsTarget,
                         sleepTarget    = goals.sleepTargetHours,
-                        caloriesTarget = goals.activeCaloriesTarget.toInt()
+                        caloriesTarget = goals.activeCaloriesTarget.toInt(),
+                        userWeightKg   = goals.weightKg,
+                        userHeightCm   = goals.heightCm,
+                        primaryGoal    = goals.primaryGoal
                     )
                 }
             }
@@ -88,11 +98,12 @@ class HealthViewModel @Inject constructor(
     }
 
     fun triggerSync() {
+        if (_uiState.value.isSyncing) return
         viewModelScope.launch {
             _uiState.update { it.copy(isSyncing = true) }
-            scheduler.runHealthSyncNow()
-            kotlinx.coroutines.delay(1200)
+            val outcome = scheduler.syncHealthNowAndAwait()
             _uiState.update { it.copy(isSyncing = false) }
+            Toast.makeText(context, outcome.message, Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -314,9 +325,11 @@ private fun ModernTabSelector(
 
 @Composable
 private fun PasosSubSection(state: HealthUiState) {
-    val todaySteps = state.last14Days.firstOrNull()?.steps ?: 0
-    val todayDistKm = if ((state.last14Days.firstOrNull()?.distanceMeters ?: 0f) > 0f) {
-        (state.last14Days.firstOrNull()?.distanceMeters ?: 0f) / 1000f
+    val todayMillis = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val todayEntity = state.last14Days.find { it.dateMillis == todayMillis } ?: state.last14Days.firstOrNull()
+    val todaySteps = todayEntity?.steps ?: 0
+    val todayDistKm = if ((todayEntity?.distanceMeters ?: 0f) > 0f) {
+        (todayEntity?.distanceMeters ?: 0f) / 1000f
     } else {
         todaySteps * 0.00075f
     }
@@ -324,7 +337,15 @@ private fun PasosSubSection(state: HealthUiState) {
     val activeMinutes = (todaySteps / 100).coerceAtLeast(0)
 
     val progress = (todaySteps.toFloat() / state.stepsTarget).coerceIn(0f, 1f)
+    val recent7Days = state.last14Days.take(7).reversed()
     val metDaysThisWeek = state.last14Days.take(7).count { it.steps >= state.stepsTarget }
+    val currentStreak = run {
+        var streak = 0
+        for (item in state.last14Days) {
+            if (item.steps >= state.stepsTarget) streak++ else break
+        }
+        streak
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         // Hero Card de Pasos
@@ -356,12 +377,14 @@ private fun PasosSubSection(state: HealthUiState) {
 
         // Tarjeta de Consistencia y Racha
         ConsistencyCard(
-            title     = "Racha de Pasos Semanal",
-            subtitle  = if (metDaysThisWeek >= 5) "¡Excelente ritmo! Has cumplido la meta $metDaysThisWeek de los últimos 7 días."
-                        else "Has alcanzado tu objetivo $metDaysThisWeek de 7 días esta semana. ¡Sigue sumando pasos!",
-            color     = RingSteps,
-            badgeText = "$metDaysThisWeek / 7 días",
-            icon      = Icons.Default.EmojiEvents
+            title       = "Consistencia y Racha",
+            subtitle    = if (metDaysThisWeek >= 5) "¡Excelente ritmo! Has cumplido la meta $metDaysThisWeek de 7 días. Racha actual: $currentStreak ${if (currentStreak == 1) "día consecutivo" else "días consecutivos"}."
+                          else "Has alcanzado tu objetivo $metDaysThisWeek de 7 días. Racha actual: $currentStreak ${if (currentStreak == 1) "día" else "días"}. ¡Sigue sumando pasos!",
+            color       = RingSteps,
+            badgeText   = "$metDaysThisWeek / 7 días",
+            icon        = Icons.Default.EmojiEvents,
+            recentDays  = recent7Days,
+            stepsTarget = state.stepsTarget
         )
 
         // Historial Detallado
@@ -384,7 +407,8 @@ private fun PasosSubSection(state: HealthUiState) {
 
 @Composable
 private fun SuenoSubSection(state: HealthUiState) {
-    val todayEntity = state.last14Days.firstOrNull()
+    val todayMillis = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val todayEntity = state.last14Days.find { it.dateMillis == todayMillis } ?: state.last14Days.firstOrNull()
     val todaySleep = todayEntity?.sleepHours ?: 0f
     val deepHours  = todayEntity?.sleepDeepHours ?: 0f
     val remHours   = todayEntity?.sleepRemHours ?: 0f
@@ -445,14 +469,11 @@ private fun SuenoSubSection(state: HealthUiState) {
             formatVal = { "${String.format(Locale.US, "%.1f", it)}h" }
         )
 
-        // Balance de Sueño Semanal (Diseño perfectamente balanceado)
-        ConsistencyCard(
-            title     = "Balance de Sueño Semanal",
-            subtitle  = if (sleepDebt <= 0.5f) "¡Sin deuda de sueño! Estás descansando el tiempo óptimo para recuperarte por completo."
-                        else "Déficit acumulado: ${String.format(Locale.US, "%.1f", sleepDebt)}h esta semana. Intenta descansar 30 min más hoy.",
-            color     = if (sleepDebt <= 1f) Emerald400 else Rose400,
-            badgeText = if (sleepDebt <= 0.5f) "Óptimo" else "-${String.format(Locale.US, "%.1f", sleepDebt)}h deuda",
-            icon      = Icons.Default.Nightlight
+        // Cálculo Detallado de Deuda de Sueño
+        SleepDebtDetailCard(
+            weeklyActualHours = weeklyTotal,
+            weeklyTargetHours = weeklyTarget,
+            sleepDebtHours    = sleepDebt
         )
 
         // Historial Detallado
@@ -472,16 +493,19 @@ private fun SuenoSubSection(state: HealthUiState) {
 
 @Composable
 private fun CaloriasSubSection(state: HealthUiState) {
-    val todayEntity = state.last14Days.firstOrNull()
+    val todayMillis = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val todayEntity = state.last14Days.find { it.dateMillis == todayMillis } ?: state.last14Days.firstOrNull()
     val rawCal = todayEntity?.activeCalories ?: 0f
     val todaySteps = todayEntity?.steps ?: 0
     val todayCal = (if (rawCal > 0f) rawCal else todaySteps * 0.04f).toInt()
     val progress = (todayCal.toFloat() / state.caloriesTarget).coerceIn(0f, 1f)
-    val bmr = 1650
-    val totalExpenditure = bmr + todayCal
-    val avgCal = if (state.last14Days.isNotEmpty()) {
-        state.last14Days.map { if (it.activeCalories > 0f) it.activeCalories else it.steps * 0.04f }.average().toInt()
+
+    // Cálculo de BMR real basado en peso y altura del usuario (Mifflin-St Jeor)
+    val bmr = ((10f * state.userWeightKg) + (6.25f * state.userHeightCm) - (5f * 25f) + 5f).toInt()
+    val avgActiveCal = if (state.last14Days.isNotEmpty()) {
+        state.last14Days.take(7).map { if (it.activeCalories > 0f) it.activeCalories else it.steps * 0.04f }.average().toInt()
     } else 0
+    val totalExpenditure = bmr + todayCal
 
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         // Hero Card de Calorías
@@ -493,12 +517,22 @@ private fun CaloriasSubSection(state: HealthUiState) {
             progress      = progress,
             color         = Amber400,
             icon          = Icons.Default.LocalFireDepartment,
-            metric1Label  = "Gasto Total",
+            metric1Label  = "Gasto Hoy",
             metric1Value  = "$totalExpenditure kcal",
             metric2Label  = "Basal (BMR)",
             metric2Value  = "$bmr kcal",
-            metric3Label  = "Promedio 7d",
-            metric3Value  = "$avgCal kcal"
+            metric3Label  = "Media Activa",
+            metric3Value  = "$avgActiveCal kcal"
+        )
+
+        // Tarjeta de Metabolismo Real Calculado (TDEE Fisiológico Real)
+        RealCalculatedMetabolismCard(
+            bmr            = bmr,
+            avgActiveCal   = avgActiveCal,
+            todayActiveCal = todayCal,
+            weightKg       = state.userWeightKg,
+            heightCm       = state.userHeightCm,
+            goal           = state.primaryGoal
         )
 
         // Gráfico Semanal de Calorías
@@ -940,6 +974,303 @@ private fun StageLegend(
     }
 }
 
+// ─── Componente: Cálculo Detallado de Deuda de Sueño ──────────────────────────
+
+@Composable
+private fun SleepDebtDetailCard(
+    weeklyActualHours: Float,
+    weeklyTargetHours: Float,
+    sleepDebtHours: Float
+) {
+    val isBalanced = sleepDebtHours <= 0.5f
+    val isModerateDebt = sleepDebtHours in 0.5f..3.5f
+    val color = when {
+        isBalanced -> Emerald400
+        isModerateDebt -> Amber400
+        else -> Rose400
+    }
+    val badgeText = when {
+        isBalanced -> "Equilibrio (0h)"
+        isModerateDebt -> "-${String.format(Locale.US, "%.1f", sleepDebtHours)}h deuda"
+        else -> "-${String.format(Locale.US, "%.1f", sleepDebtHours)}h deuda"
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Indigo800)
+            .border(1.dp, color.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(color.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Nightlight,
+                            contentDescription = null,
+                            tint = color,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "Deuda de Sueño",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = White,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(color.copy(alpha = 0.16f))
+                        .border(0.5.dp, color.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = badgeText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = color,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+
+            // Barra visual de comparación
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Dormido 7 días: ${String.format(Locale.US, "%.1f", weeklyActualHours)}h",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Gray300,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "Meta: ${String.format(Locale.US, "%.1f", weeklyTargetHours)}h",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Gray400
+                    )
+                }
+
+                val sleepProgress = if (weeklyTargetHours > 0) (weeklyActualHours / weeklyTargetHours).coerceIn(0f, 1f) else 1f
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Indigo700)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(sleepProgress)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(color)
+                    )
+                }
+            }
+
+            // Explicación y recomendación
+            val advice = if (isBalanced) {
+                "¡Excelente higiene de descanso! Has dormido ${String.format(Locale.US, "%.1f", weeklyActualHours)}h esta semana. Tu sistema nervioso y capacidad cognitiva están en estado óptimo."
+            } else {
+                val minutesPerNight = ((sleepDebtHours * 60) / 7).toInt().coerceAtLeast(15)
+                "Déficit acumulado de ${String.format(Locale.US, "%.1f", sleepDebtHours)}h frente a tu meta semanal. Para amortizarlo de forma natural, acuéstate $minutesPerNight min antes durante las próximas noches."
+            }
+
+            Text(
+                text = advice,
+                style = MaterialTheme.typography.bodySmall,
+                color = Gray300,
+                lineHeight = 18.sp
+            )
+        }
+    }
+}
+
+// ─── Componente: Metabolismo Real Calculado (TDEE Fisiológico Real) ────────────
+
+@Composable
+private fun RealCalculatedMetabolismCard(
+    bmr: Int,
+    avgActiveCal: Int,
+    todayActiveCal: Int,
+    weightKg: Float,
+    heightCm: Int,
+    goal: String
+) {
+    val realTdee = bmr + avgActiveCal
+    val tef = (realTdee * 0.10f).toInt()
+    val totalExpenditure = realTdee + tef
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Indigo800)
+            .border(1.dp, Amber400.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Amber400.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocalFireDepartment,
+                            contentDescription = null,
+                            tint = Amber400,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "Metabolismo Real",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = White,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Amber400.copy(alpha = 0.16f))
+                        .border(0.5.dp, Amber400.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 9.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "$totalExpenditure kcal",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Amber400,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+
+            // Desglose de los 3 pilares del gasto metabólico
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                MetabolismMiniPillar(
+                    title = "Basal (BMR)",
+                    value = "$bmr",
+                    unit = "kcal",
+                    desc = "Órganos reposo",
+                    modifier = Modifier.weight(1f)
+                )
+                MetabolismMiniPillar(
+                    title = "Actividad (NEAT)",
+                    value = "$avgActiveCal",
+                    unit = "kcal",
+                    desc = "Media 7d pasos",
+                    modifier = Modifier.weight(1f)
+                )
+                MetabolismMiniPillar(
+                    title = "Térmico (TEF)",
+                    value = "$tef",
+                    unit = "kcal",
+                    desc = "Digestión comida",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Recomendación según objetivo
+            val goalAdvice = when (goal) {
+                "GRASA", "PERDIDA_PESO" -> "Objetivo Pérdida: Tu gasto real es de $totalExpenditure kcal. Ingesta sugerida: ~${totalExpenditure - 450} kcal (-450 kcal déficit)."
+                "VOLUMEN", "MUSCULO" -> "Objetivo Músculo: Tu gasto real es de $totalExpenditure kcal. Ingesta sugerida: ~${totalExpenditure + 300} kcal (+300 kcal superávit)."
+                else -> "Objetivo Mantenimiento: Para sostener tus ${weightKg.toInt()} kg, tu equilibrio calórico es de ~$totalExpenditure kcal/día."
+            }
+
+            Text(
+                text = "Basado en tu fisiología (${weightKg.toInt()} kg, ${heightCm} cm) y tus registros de actividad reales de los últimos 7 días.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Gray400,
+                fontSize = 11.sp
+            )
+            Text(
+                text = goalAdvice,
+                style = MaterialTheme.typography.bodySmall,
+                color = Gray300,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
+private fun MetabolismMiniPillar(
+    title: String,
+    value: String,
+    unit: String,
+    desc: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(Indigo900.copy(alpha = 0.7f))
+            .border(1.dp, Indigo700, RoundedCornerShape(14.dp))
+            .padding(10.dp)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Text(text = title, style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 10.sp, maxLines = 1)
+            Spacer(Modifier.height(3.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(text = value, style = MaterialTheme.typography.titleMedium, color = White, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(2.dp))
+                Text(text = unit, style = MaterialTheme.typography.labelSmall, color = Gray400, fontSize = 10.sp)
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(text = desc, style = MaterialTheme.typography.labelSmall, color = Gray500, fontSize = 9.sp, maxLines = 1)
+        }
+    }
+}
+
 // ─── Componente: Consistencia & Racha (Sin estiramientos) ─────────────────────
 
 @Composable
@@ -948,7 +1279,9 @@ private fun ConsistencyCard(
     subtitle: String,
     color: Color,
     badgeText: String,
-    icon: ImageVector
+    icon: ImageVector,
+    recentDays: List<HealthDataEntity> = emptyList(),
+    stepsTarget: Int = 10000
 ) {
     Box(
         modifier = Modifier
@@ -958,7 +1291,7 @@ private fun ConsistencyCard(
             .border(1.dp, Indigo700, RoundedCornerShape(22.dp))
             .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -966,7 +1299,7 @@ private fun ConsistencyCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier          = Modifier.weight(1f, fill = false)
+                    modifier          = Modifier.weight(1f)
                 ) {
                     Box(
                         contentAlignment = Alignment.Center,
@@ -994,7 +1327,8 @@ private fun ConsistencyCard(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .background(color.copy(alpha = 0.18f))
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                        .border(0.5.dp, color.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 9.dp, vertical = 4.dp)
                 ) {
                     Text(
                         text       = badgeText,
@@ -1002,8 +1336,67 @@ private fun ConsistencyCard(
                         color      = color,
                         fontWeight = FontWeight.Bold,
                         fontSize   = 11.sp,
-                        maxLines   = 1
+                        maxLines   = 1,
+                        softWrap   = false
                     )
+                }
+            }
+
+            // Indicadores visuales de los últimos 7 días
+            if (recentDays.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    recentDays.forEach { entity ->
+                        val date = Instant.ofEpochMilli(entity.dateMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+                        val dayLetter = when (date.dayOfWeek.value) {
+                            1 -> "L"; 2 -> "M"; 3 -> "X"; 4 -> "J"; 5 -> "V"; 6 -> "S"; else -> "D"
+                        }
+                        val isMet = entity.steps >= stepsTarget
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = dayLetter,
+                                fontSize = 11.sp,
+                                color = if (isMet) White else Gray400,
+                                fontWeight = if (isMet) FontWeight.Bold else FontWeight.Normal
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isMet) color.copy(alpha = 0.25f) else Indigo900)
+                                    .border(1.dp, if (isMet) color else Indigo700, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isMet) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = color,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(5.dp)
+                                            .clip(CircleShape)
+                                            .background(Gray600)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = if (entity.steps >= 1000) "${(entity.steps / 1000f * 10).toInt() / 10f}K" else "${entity.steps}",
+                                fontSize = 9.sp,
+                                color = if (isMet) color else Gray500,
+                                fontWeight = if (isMet) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        }
+                    }
                 }
             }
 

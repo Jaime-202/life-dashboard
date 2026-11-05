@@ -1,5 +1,7 @@
 package com.lifedashboard.presentation.screen.workout
 
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -32,6 +34,7 @@ import com.lifedashboard.data.local.entity.WorkoutSessionEntity
 import com.lifedashboard.data.repository.UserPreferencesRepository
 import com.lifedashboard.presentation.theme.*
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -42,6 +45,8 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoField
 import java.util.Locale
 import javax.inject.Inject
+
+private const val DEFAULT_SESSION_MINUTES = 45
 
 // ─── ViewModel ────────────────────────────────────────────────────────────────
 
@@ -62,7 +67,8 @@ data class WorkoutUiState(
 class WorkoutViewModel @Inject constructor(
     private val workoutDao: WorkoutDao,
     private val scheduler: WorkManagerScheduler,
-    private val userPreferences: UserPreferencesRepository
+    private val userPreferences: UserPreferencesRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(WorkoutUiState())
@@ -77,7 +83,7 @@ class WorkoutViewModel @Inject constructor(
 
     private fun loadData() {
         val weekStart = com.lifedashboard.core.util.DateUtils.weekStartMillis()
-        val nextWeek = weekStart + 7 * 24 * 60 * 60 * 1000L
+        val nextWeek = weekStart + 7 * 24 * 60 * 60 * 1000L - 1
         val zone = ZoneId.systemDefault()
 
         combine(
@@ -85,27 +91,21 @@ class WorkoutViewModel @Inject constructor(
             workoutDao.observeRecentSessions(30),
             userPreferences.userGoals
         ) { weekSessionsList, allRecent, goals ->
-            val uniqueDays = weekSessionsList.groupBy {
+            val trainingSessions = weekSessionsList.filter { it.type != "REST" }
+            val trainedDaysCount = trainingSessions.map {
                 Instant.ofEpochMilli(it.dateMillis).atZone(zone).toLocalDate()
+            }.distinct().size
+
+            // Se suman todas las sesiones: fuerza y cardio el mismo día son entrenamientos distintos
+            val totalMins = trainingSessions.sumOf { session ->
+                if (session.durationMinutes > 0) session.durationMinutes else DEFAULT_SESSION_MINUTES
             }
-
-            val trainedDaysCount = uniqueDays.size
-
-            val totalMins = uniqueDays.values.sumOf { daySessions ->
-                val maxDuration = daySessions.maxOfOrNull { it.durationMinutes } ?: 0
-                if (maxDuration > 0) maxDuration else 45
-            }
-
-            val deduplicatedRecent = allRecent
-                .groupBy { Instant.ofEpochMilli(it.dateMillis).atZone(zone).toLocalDate() }
-                .map { (_, list) -> list.first() }
-                .sortedByDescending { it.dateMillis }
 
             val strength = weekSessionsList.count { it.type == "STRENGTH" }
             val cardio = weekSessionsList.count { it.type == "CARDIO" }
 
             WorkoutUiState(
-                recentSessions            = deduplicatedRecent,
+                recentSessions            = allRecent,
                 weekSessions              = weekSessionsList,
                 uniqueTrainedDaysThisWeek = trainedDaysCount,
                 totalMinutesThisWeek      = totalMins,
@@ -125,11 +125,12 @@ class WorkoutViewModel @Inject constructor(
     }
 
     fun triggerSync() {
+        if (_state.value.isSyncing) return
         viewModelScope.launch {
             _state.update { it.copy(isSyncing = true) }
-            scheduler.runHealthSyncNow()
-            kotlinx.coroutines.delay(1200)
+            val outcome = scheduler.syncHealthNowAndAwait()
             _state.update { it.copy(isSyncing = false) }
+            Toast.makeText(context, outcome.message, Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -588,7 +589,14 @@ private fun TrainingDistributionCard(
 
 private fun workoutTypeName(type: String): String = when (type) {
     "REST"     -> "Día de Descanso"
+    "CARDIO"   -> "Cardio"
     else       -> "Entrenamiento de Fuerza"
+}
+
+private fun workoutSourceLabel(sourceFile: String?): String = when (sourceFile) {
+    "health_connect" -> "Health Connect ✓"
+    "symmetry_csv", "file_import" -> "Importado"
+    else -> "Manual"
 }
 
 @Composable
@@ -614,7 +622,7 @@ private fun RecentWorkoutsTimeline(sessions: List<WorkoutSessionEntity>) {
                 else -> dt.format(formatter).replaceFirstChar { it.uppercase() }
             }
 
-            val typeTitle = workoutTypeName(session.type)
+            val typeTitle = session.notes?.takeIf { it.isNotBlank() } ?: workoutTypeName(session.type)
             val isStrength = session.type == "STRENGTH"
 
             Row(modifier = Modifier.fillMaxWidth()) {
@@ -671,7 +679,7 @@ private fun RecentWorkoutsTimeline(sessions: List<WorkoutSessionEntity>) {
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text       = if (session.durationMinutes > 0) "${session.durationMinutes} min" else "45 min",
+                                text       = "${if (session.durationMinutes > 0) session.durationMinutes else DEFAULT_SESSION_MINUTES} min",
                                 style      = MaterialTheme.typography.labelSmall,
                                 color      = Violet300,
                                 fontWeight = FontWeight.SemiBold,
@@ -698,7 +706,7 @@ private fun RecentWorkoutsTimeline(sessions: List<WorkoutSessionEntity>) {
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text       = "Health Connect ✓",
+                            text       = workoutSourceLabel(session.sourceFile),
                             style      = MaterialTheme.typography.labelSmall,
                             color      = Emerald400,
                             fontWeight = FontWeight.SemiBold,

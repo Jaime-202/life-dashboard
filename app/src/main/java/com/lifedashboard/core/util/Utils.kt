@@ -1,5 +1,10 @@
 package com.lifedashboard.core.util
 
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -19,6 +24,21 @@ object DateUtils {
 
     fun Long.toLocalDateTime(): LocalDateTime =
         Instant.ofEpochMilli(this).atZone(zone).toLocalDateTime()
+
+    /**
+     * Fecha actual, que vuelve a emitirse al cambiar de día. Los ViewModel sobreviven a la medianoche
+     * mientras la app sigue abierta y sin esto seguirían mostrando los datos de ayer como "hoy".
+     */
+    fun currentDateFlow(): Flow<LocalDate> = flow {
+        while (true) {
+            val now = LocalDateTime.now()
+            emit(now.toLocalDate())
+            val untilMidnight = Duration.between(now, now.toLocalDate().plusDays(1).atStartOfDay()).toMillis()
+            delay(untilMidnight.coerceIn(1_000L, MAX_DATE_CHECK_INTERVAL_MILLIS))
+        }
+    }.distinctUntilChanged()
+
+    private const val MAX_DATE_CHECK_INTERVAL_MILLIS = 15 * 60 * 1000L
 
     fun weekStartMillis(): Long = LocalDate.now()
         .with(java.time.DayOfWeek.MONDAY)

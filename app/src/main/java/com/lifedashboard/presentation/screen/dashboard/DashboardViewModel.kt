@@ -2,7 +2,10 @@ package com.lifedashboard.presentation.screen.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lifedashboard.core.notification.ReminderScheduler
+import com.lifedashboard.core.util.DateUtils
 import com.lifedashboard.core.util.DateUtils.toStartOfDayMillis
+import com.lifedashboard.core.util.ReadinessCalculator
 import com.lifedashboard.data.local.dao.HealthDao
 import com.lifedashboard.data.local.dao.ReminderDao
 import com.lifedashboard.data.local.dao.WeightDao
@@ -66,9 +69,18 @@ data class DashboardUiState(
     val showAddWeightDialog: Boolean = false,
     val workoutDaysTarget: Int = 4,
     val weeklyWorkoutsCount: Int = 0,
-    val todayReminders: List<DashboardReminderItem> = emptyList()
+    val todayReminders: List<DashboardReminderItem> = emptyList(),
+
+    // Puntuación de Preparación (Readiness Score)
+    val readinessScore: Int = 85,
+    val readinessStatus: String = "Óptima",
+
+    // Comparativa Semanal
+    val weeklyStepsDiffPercent: Int = 0,
+    val weeklySleepDiffHours: Float = 0f
 )
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val healthDao: HealthDao,
@@ -84,6 +96,9 @@ class DashboardViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
+
+    private val currentDate = DateUtils.currentDateFlow()
+        .shareIn(viewModelScope, SharingStarted.Eagerly, replay = 1)
 
     init {
         observeUserGoals()
@@ -126,18 +141,15 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun observeTodayMeals() {
-        val today = LocalDate.now()
-        val todayMillis = today.toStartOfDayMillis()
-        val tomorrowMillis = today.plusDays(1).toStartOfDayMillis()
-
-        mealDao.observeMealsForDay(todayMillis, tomorrowMillis)
+        currentDate.flatMapLatest { today ->
+            mealDao.observeMealsForDay(
+                today.toStartOfDayMillis(),
+                today.plusDays(1).toStartOfDayMillis() - 1
+            )
+        }
             .onEach { meals ->
                 val consumed = meals.sumOf { it.calories.toDouble() }.toFloat()
-                _uiState.update { state ->
-                    state.copy(
-                        todayMealsCalories = consumed
-                    )
-                }
+                _uiState.update { state -> state.copy(todayMealsCalories = consumed) }
             }
             .launchIn(viewModelScope)
     }
@@ -156,116 +168,146 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun observeTodayHealth() {
-        val today = LocalDate.now()
-        val todayMillis = today.toStartOfDayMillis()
-        val tomorrowMillis = today.plusDays(1).toStartOfDayMillis()
+        // Al cambiar de día, lo que estaba seleccionado como "hoy" pasa a la nueva fecha
+        var previousDate: LocalDate? = null
+        currentDate
+            .onEach { today ->
+                val wasFollowingToday = _uiState.value.selectedDate == previousDate
+                if (wasFollowingToday) _uiState.update { it.copy(selectedDate = today) }
+                previousDate = today
+            }
+            .launchIn(viewModelScope)
 
-        healthDao.observeLastNDays(7)
-            .onEach { list ->
-                val h = list.firstOrNull()
+        currentDate.flatMapLatest { today ->
+            combine(healthDao.observeLastNDays(14), userPreferences.userGoals) { list, goals ->
+                Triple(today, list, goals)
+            }
+        }
+            .onEach { (today, list, goals) ->
+                val todayMillis = today.toStartOfDayMillis()
+                val h = list.find { it.dateMillis == todayMillis }
                 val steps = h?.steps ?: 0
                 val sleep = h?.sleepHours ?: 0f
                 val rawCalories = h?.activeCalories ?: 0f
                 val activeCalories = if (rawCalories > 0f) rawCalories else (steps * 0.04f).coerceAtLeast(0f)
+                val yesterdayMillis = today.minusDays(1).toStartOfDayMillis()
+                val yesterdaySteps = list.find { it.dateMillis == yesterdayMillis }?.steps ?: steps
+                val readiness = ReadinessCalculator.calculate(sleep, goals.sleepTargetHours, yesterdaySteps, goals.stepsTarget)
+
+                // Comparativa semanal (últimos 7 días vs anteriores 7 días)
+                val weekStart = today.minusDays(6).toStartOfDayMillis()
+                val (thisWeek, prevWeek) = list.partition { it.dateMillis >= weekStart }
+                val thisWeekSteps = thisWeek.sumOf { it.steps }
+                val prevWeekSteps = prevWeek.sumOf { it.steps }
+                val stepsDiffPct = if (prevWeekSteps > 0) {
+                    (((thisWeekSteps - prevWeekSteps).toFloat() / prevWeekSteps) * 100).toInt()
+                } else 0
+
+                val thisWeekSleepAvg = thisWeek.map { it.sleepHours }.filter { it > 0 }.let { if (it.isNotEmpty()) it.average().toFloat() else 0f }
+                val prevWeekSleepAvg = prevWeek.map { it.sleepHours }.filter { it > 0 }.let { if (it.isNotEmpty()) it.average().toFloat() else 0f }
+                val sleepDiffHours = if (thisWeekSleepAvg > 0f && prevWeekSleepAvg > 0f) thisWeekSleepAvg - prevWeekSleepAvg else 0f
 
                 _uiState.update { state ->
-                    val calProg = if (state.caloriesTarget > 0) (activeCalories / state.caloriesTarget).coerceIn(0f, 1f) else 0f
                     state.copy(
-                        todaySteps       = steps,
-                        todaySleepHours  = sleep,
-                        todayCalories    = activeCalories,
-                        stepsProgress    = if (state.stepsTarget > 0) (steps.toFloat() / state.stepsTarget).coerceIn(0f, 1f) else 0f,
-                        sleepProgress    = if (state.sleepTargetHours > 0) (sleep / state.sleepTargetHours).coerceIn(0f, 1f) else 0f,
-                        caloriesProgress = calProg,
-                        isDataLoading    = false
+                        todaySteps             = steps,
+                        todaySleepHours        = sleep,
+                        todayCalories          = activeCalories,
+                        stepsProgress          = if (goals.stepsTarget > 0) (steps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f) else 0f,
+                        sleepProgress          = if (goals.sleepTargetHours > 0) (sleep / goals.sleepTargetHours).coerceIn(0f, 1f) else 0f,
+                        caloriesProgress       = if (goals.activeCaloriesTarget > 0) (activeCalories / goals.activeCaloriesTarget).coerceIn(0f, 1f) else 0f,
+                        readinessScore         = readiness.score,
+                        readinessStatus        = readiness.status,
+                        weeklyStepsDiffPercent = stepsDiffPct,
+                        weeklySleepDiffHours   = sleepDiffHours,
+                        isDataLoading          = false
                     )
                 }
             }
             .launchIn(viewModelScope)
 
-        workoutDao.getSessionsInRange(todayMillis, tomorrowMillis)
+        currentDate.flatMapLatest { today ->
+            workoutDao.getSessionsInRange(today.toStartOfDayMillis(), today.plusDays(1).toStartOfDayMillis() - 1)
+        }
             .onEach { sessions ->
-                val todaySession = sessions.firstOrNull()
+                val todaySession = sessions.firstOrNull { it.type != "REST" } ?: sessions.firstOrNull()
                 _uiState.update { state ->
                     state.copy(
                         workoutDoneToday = todaySession != null,
-                        workoutTypeToday = when (todaySession?.type) {
-                            "REST" -> WorkoutType.REST
-                            else   -> if (todaySession != null) WorkoutType.STRENGTH else null
-                        }
+                        workoutTypeToday = todaySession?.type?.toWorkoutType()
                     )
                 }
             }
             .launchIn(viewModelScope)
 
-        // Sesiones completadas en la semana en curso (Lunes a Domingo)
-        val monday = today.with(java.time.DayOfWeek.MONDAY)
-        val mondayMillis = monday.toStartOfDayMillis()
-        val nextMondayMillis = monday.plusDays(7).toStartOfDayMillis()
-        workoutDao.getSessionsInRange(mondayMillis, nextMondayMillis)
+        // Días entrenados en la semana en curso (lunes a domingo): la meta se mide en días, no en sesiones
+        currentDate.flatMapLatest { today ->
+            val monday = today.with(java.time.DayOfWeek.MONDAY)
+            workoutDao.getSessionsInRange(monday.toStartOfDayMillis(), monday.plusDays(7).toStartOfDayMillis() - 1)
+        }
             .onEach { weekSessions ->
-                _uiState.update { it.copy(weeklyWorkoutsCount = weekSessions.size) }
+                val trainedDays = weekSessions.filter { it.type != "REST" }.map { it.dateMillis }.distinct().size
+                _uiState.update { it.copy(weeklyWorkoutsCount = trainedDays) }
             }
             .launchIn(viewModelScope)
     }
 
     private fun observeCalendar() {
-        calendarRepository.getUpcomingEvents(limit = 4)
+        currentDate.flatMapLatest { calendarRepository.getUpcomingEvents(limit = 4) }
             .onEach { events ->
                 _uiState.update { it.copy(upcomingEvents = events) }
             }
             .launchIn(viewModelScope)
     }
 
+    private fun String.toWorkoutType(): WorkoutType = when (this) {
+        "REST" -> WorkoutType.REST
+        "CARDIO" -> WorkoutType.CARDIO
+        else -> WorkoutType.STRENGTH
+    }
+
     private fun buildProgressMap() {
-        val from = LocalDate.now().minusDays(60)
-        val to   = LocalDate.now().plusDays(7)
-        val fromMillis = from.toStartOfDayMillis()
-        val toMillis   = to.toStartOfDayMillis()
+        currentDate.flatMapLatest { today ->
+            val from = today.minusDays(60)
+            val to   = today.plusDays(7)
+            val fromMillis = from.toStartOfDayMillis()
+            val toMillis   = to.toStartOfDayMillis()
 
-        combine(
-            healthDao.getHealthRange(fromMillis, toMillis),
-            workoutDao.getSessionsInRange(fromMillis, toMillis),
-            mealDao.observeMealsForDay(fromMillis, toMillis),
-            userPreferences.userGoals
-        ) { healthList, sessions, mealsList, goals ->
-            val zone = ZoneId.systemDefault()
-            val healthByDate = healthList.associateBy { Instant.ofEpochMilli(it.dateMillis).atZone(zone).toLocalDate() }
-            val sessionsByDate = sessions.groupBy { session ->
-                Instant.ofEpochMilli(session.dateMillis).atZone(zone).toLocalDate()
+            combine(
+                healthDao.getHealthRange(fromMillis, toMillis),
+                workoutDao.getSessionsInRange(fromMillis, toMillis),
+                userPreferences.userGoals
+            ) { healthList, sessions, goals ->
+                val zone = ZoneId.systemDefault()
+                val healthByDate = healthList.associateBy { Instant.ofEpochMilli(it.dateMillis).atZone(zone).toLocalDate() }
+                val sessionsByDate = sessions.groupBy { session ->
+                    Instant.ofEpochMilli(session.dateMillis).atZone(zone).toLocalDate()
+                }
+
+                val dates = generateSequence(from) { it.plusDays(1) }
+                    .takeWhile { !it.isAfter(to) }
+                    .toList()
+
+                dates.associateWith { date ->
+                    val h = healthByDate[date]
+                    val daySessions = sessionsByDate[date].orEmpty()
+                    val daySession = daySessions.firstOrNull { it.type != "REST" } ?: daySessions.firstOrNull()
+                    val steps = h?.steps ?: 0
+                    val sleep = h?.sleepHours ?: 0f
+                    val storedCalories = h?.activeCalories ?: 0f
+
+                    DailyProgress(
+                        date             = date,
+                        workoutCompleted = daySession != null,
+                        workoutType      = daySession?.type?.toWorkoutType(),
+                        stepsProgress    = if (goals.stepsTarget > 0) (steps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f) else 0f,
+                        sleepProgress    = if (goals.sleepTargetHours > 0) (sleep / goals.sleepTargetHours).coerceIn(0f, 1f) else 0f,
+                        waterProgress    = 0f,
+                        actualSteps      = steps,
+                        actualSleepHours = sleep,
+                        actualCalories   = if (storedCalories > 0f) storedCalories else (steps * 0.04f).coerceAtLeast(0f)
+                    )
+                }
             }
-            val mealsByDate = mealsList.groupBy { meal ->
-                Instant.ofEpochMilli(meal.dateMillis).atZone(zone).toLocalDate()
-            }
-
-            val dates = generateSequence(from) { it.plusDays(1) }
-                .takeWhile { !it.isAfter(to) }
-                .toList()
-
-            val map = dates.associateWith { date ->
-                val h = healthByDate[date]
-                val daySession = sessionsByDate[date]?.firstOrNull()
-                val dayMeals = mealsByDate[date] ?: emptyList()
-                val dayCals = dayMeals.sumOf { it.calories.toDouble() }.toFloat()
-                val steps = h?.steps ?: 0
-                val sleep = h?.sleepHours ?: 0f
-
-                DailyProgress(
-                    date             = date,
-                    workoutCompleted = daySession != null,
-                    workoutType      = when (daySession?.type) {
-                        "REST"     -> WorkoutType.REST
-                        else       -> if (daySession != null) WorkoutType.STRENGTH else null
-                    },
-                    stepsProgress    = if (goals.stepsTarget > 0) (steps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f) else 0f,
-                    sleepProgress    = if (goals.sleepTargetHours > 0) (sleep / goals.sleepTargetHours).coerceIn(0f, 1f) else 0f,
-                    waterProgress    = 0f,
-                    actualSteps      = steps,
-                    actualSleepHours = sleep,
-                    actualCalories   = if ((h?.activeCalories ?: 0f) > 0f) h!!.activeCalories else (steps * 0.04f).coerceAtLeast(0f)
-                )
-            }
-            map
         }
         .flowOn(Dispatchers.Default)
         .onEach { progressMap ->
@@ -295,7 +337,6 @@ class DashboardViewModel @Inject constructor(
         _uiState.update { it.copy(showAddWeightDialog = visible) }
     }
 
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private fun observeReminders() {
         combine(
             _uiState.map { it.selectedDate }.distinctUntilChanged(),
@@ -309,16 +350,7 @@ class DashboardViewModel @Inject constructor(
                 val dayOfWeekNumber = selectedDate.dayOfWeek.value // 1 (Mon) .. 7 (Sun)
 
                 enabledReminders.filter { reminder ->
-                    when (reminder.type) {
-                        ReminderType.DIARIO -> true
-                        ReminderType.HORARIO -> true
-                        ReminderType.SEMANAL -> {
-                            val days = reminder.daysOfWeek.split(",")
-                                .mapNotNull { it.trim().toIntOrNull() }
-                            days.isEmpty() || days.contains(dayOfWeekNumber)
-                        }
-                        else -> true
-                    }
+                    ReminderScheduler.appliesOnDay(reminder.type, reminder.daysOfWeek, dayOfWeekNumber)
                 }.map { reminder ->
                     val isDone = logsMap[reminder.id]?.isCompleted == true
                     val subtitle = when (reminder.type) {
@@ -364,6 +396,13 @@ class DashboardViewModel @Inject constructor(
                 )
             )
             userPreferences.updateWeight(weight)
+        }
+    }
+
+    fun deleteWeight(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            weightDao.deleteById(id)
+            weightDao.getLatestWeight()?.let { userPreferences.updateWeight(it.weightKg) }
         }
     }
 }

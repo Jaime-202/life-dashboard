@@ -19,13 +19,28 @@ object DatabaseModule {
 
     private val MIGRATION_4_5 = object : Migration(4, 5) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            try {
-                db.execSQL("ALTER TABLE `health_data` DROP COLUMN `avgHeartRate`")
-                db.execSQL("ALTER TABLE `health_data` DROP COLUMN `minHeartRate`")
-                db.execSQL("ALTER TABLE `health_data` DROP COLUMN `maxHeartRate`")
-            } catch (_: Exception) {
-                // Ignore if SQLite version doesn't support DROP COLUMN or already migrated
-            }
+            // Se recrea la tabla porque DROP COLUMN no existe en el SQLite de Android anterior a 14
+            db.execSQL("""
+                CREATE TABLE `health_data_new` (
+                    `dateMillis` INTEGER NOT NULL,
+                    `steps` INTEGER NOT NULL,
+                    `distanceMeters` REAL NOT NULL,
+                    `activeCalories` REAL NOT NULL,
+                    `sleepHours` REAL NOT NULL,
+                    `sleepDeepHours` REAL NOT NULL,
+                    `sleepRemHours` REAL NOT NULL,
+                    `syncedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`dateMillis`)
+                )
+            """.trimIndent())
+            db.execSQL("""
+                INSERT INTO `health_data_new`
+                SELECT `dateMillis`, `steps`, `distanceMeters`, `activeCalories`,
+                       `sleepHours`, `sleepDeepHours`, `sleepRemHours`, `syncedAt`
+                FROM `health_data`
+            """.trimIndent())
+            db.execSQL("DROP TABLE `health_data`")
+            db.execSQL("ALTER TABLE `health_data_new` RENAME TO `health_data`")
         }
     }
 
@@ -86,6 +101,20 @@ object DatabaseModule {
         }
     }
 
+    private val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            val hasColumn = db.query("PRAGMA table_info(`meals`)").use { cursor ->
+                val nameIndex = cursor.getColumnIndexOrThrow("name")
+                generateSequence { if (cursor.moveToNext()) cursor.getString(nameIndex) else null }
+                    .any { it == "isFavorite" }
+            }
+            if (!hasColumn) {
+                db.execSQL("ALTER TABLE `meals` ADD COLUMN `isFavorite` INTEGER NOT NULL DEFAULT 0")
+            }
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_meals_isFavorite` ON `meals` (`isFavorite`)")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
@@ -94,9 +123,10 @@ object DatabaseModule {
             AppDatabase::class.java,
             "life_dashboard.db"
         )
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
-            .fallbackToDestructiveMigration()
-            .fallbackToDestructiveMigrationOnDowngrade()
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+            // Solo versiones sin ruta de migración. Una migración que falte en el futuro debe
+            // detectarse al desarrollar, no borrar en silencio el historial de salud y comidas.
+            .fallbackToDestructiveMigrationFrom(1, 2, 3)
             .build()
 
     @Provides fun provideHealthDao(db: AppDatabase): HealthDao = db.healthDao()

@@ -3,6 +3,7 @@ package com.lifedashboard.data.repository
 import android.content.Context
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import com.lifedashboard.core.util.FitnessGoals
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -25,6 +26,8 @@ data class UserGoals(
     val primaryGoal: String = "SALUD_GENERAL",     // "GRASA" | "MUSCULO" | "CARDIO" | "SALUD_GENERAL"
     val weightKg: Float = 75.0f,
     val heightCm: Int = 175,
+    val ageYears: Int = 25,
+    val sex: String = "HOMBRE",            // "HOMBRE" | "MUJER"
     val showHeroRings: Boolean = true,
     val showAiInsight: Boolean = true,
     val showUpcomingEvents: Boolean = true,
@@ -63,6 +66,8 @@ class UserPreferencesRepository @Inject constructor(
         val PRIMARY_GOAL           = stringPreferencesKey("primary_goal")
         val WEIGHT_KG              = floatPreferencesKey("weight_kg")
         val HEIGHT_CM              = intPreferencesKey("height_cm")
+        val AGE_YEARS              = intPreferencesKey("age_years")
+        val SEX                    = stringPreferencesKey("sex")
         val SHOW_HERO_RINGS        = booleanPreferencesKey("show_hero_rings")
         val SHOW_AI_INSIGHT        = booleanPreferencesKey("show_ai_insight")
         val SHOW_UPCOMING_EVENTS   = booleanPreferencesKey("show_upcoming_events")
@@ -103,9 +108,12 @@ class UserPreferencesRepository @Inject constructor(
                 workoutMinutesTarget = prefs[Keys.WORKOUT_MINUTES_TARGET] ?: 180,
                 userName             = prefs[Keys.USER_NAME] ?: "Jaime",
                 fitnessLevel         = prefs[Keys.FITNESS_LEVEL] ?: "INTERMEDIO",
-                primaryGoal          = prefs[Keys.PRIMARY_GOAL] ?: "SALUD_GENERAL",
+                // Versiones anteriores podían guardar aquí el vocabulario de nutrición
+                primaryGoal          = FitnessGoals.toProfileGoal(prefs[Keys.PRIMARY_GOAL] ?: "SALUD_GENERAL"),
                 weightKg             = prefs[Keys.WEIGHT_KG] ?: 75.0f,
                 heightCm             = prefs[Keys.HEIGHT_CM] ?: 175,
+                ageYears             = prefs[Keys.AGE_YEARS] ?: 25,
+                sex                  = prefs[Keys.SEX] ?: "HOMBRE",
                 showHeroRings        = prefs[Keys.SHOW_HERO_RINGS] ?: true,
                 showAiInsight        = prefs[Keys.SHOW_AI_INSIGHT] ?: true,
                 showUpcomingEvents   = prefs[Keys.SHOW_UPCOMING_EVENTS] ?: true,
@@ -157,12 +165,21 @@ class UserPreferencesRepository @Inject constructor(
         context.dataStore.edit { prefs -> prefs[Keys.USER_NAME] = name }
     }
 
-    suspend fun updateFitnessProfile(level: String, goal: String, weight: Float, height: Int) {
+    suspend fun updateFitnessProfile(
+        level: String,
+        goal: String,
+        weight: Float,
+        height: Int,
+        ageYears: Int,
+        sex: String
+    ) {
         context.dataStore.edit { prefs ->
             prefs[Keys.FITNESS_LEVEL] = level
             prefs[Keys.PRIMARY_GOAL] = goal
             prefs[Keys.WEIGHT_KG] = weight
             prefs[Keys.HEIGHT_CM] = height
+            prefs[Keys.AGE_YEARS] = ageYears
+            prefs[Keys.SEX] = com.lifedashboard.core.util.Sex.normalize(sex)
         }
     }
 
@@ -267,6 +284,8 @@ class UserPreferencesRepository @Inject constructor(
             prefs[Keys.WORKOUT_DAYS_TARGET]    = 4
             prefs[Keys.WORKOUT_MINUTES_TARGET] = 180
             prefs[Keys.FITNESS_LEVEL]          = "INTERMEDIO"
+            prefs[Keys.AGE_YEARS]              = 25
+            prefs[Keys.SEX]                    = "HOMBRE"
             prefs[Keys.PRIMARY_GOAL]           = "SALUD_GENERAL"
             prefs[Keys.SHOW_HERO_RINGS]        = true
             prefs[Keys.SHOW_AI_INSIGHT]        = true

@@ -72,6 +72,8 @@ fun DayProgressRings(
         else                   -> Violet300
     }
 
+    val trackColor = RingTrack
+
     Box(
         modifier = modifier.size(size),
         contentAlignment = Alignment.Center
@@ -87,7 +89,7 @@ fun DayProgressRings(
 
             // 1. Pista de fondo con brillo suave
             drawArc(
-                color      = RingTrack.copy(alpha = 0.6f),
+                color      = trackColor.copy(alpha = 0.6f),
                 startAngle = startAngle,
                 sweepAngle = maxSweepAngle,
                 useCenter  = false,

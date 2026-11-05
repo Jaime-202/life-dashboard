@@ -1,18 +1,23 @@
 package com.lifedashboard.presentation.widget
 
 import android.content.Context
+import android.content.Intent
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.*
+import androidx.glance.action.clickable
 import androidx.glance.appwidget.*
+import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.LinearProgressIndicator
 import androidx.glance.appwidget.provideContent
 import androidx.glance.layout.*
 import androidx.glance.text.*
 import androidx.glance.unit.ColorProvider
 import androidx.compose.ui.graphics.Color
+import com.lifedashboard.core.util.ReadinessCalculator
+import com.lifedashboard.presentation.MainActivity
 import com.lifedashboard.data.local.dao.CalendarEventDao
 import com.lifedashboard.data.local.dao.HealthDao
 import com.lifedashboard.data.local.dao.MealDao
@@ -49,24 +54,26 @@ private val TrackColor            = Color(0x33FFFFFF)
 class LifeDashboard1x1Widget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = loadWidgetData(context)
+        val launchApp = actionStartActivity(Intent(context, MainActivity::class.java))
         provideContent {
             Column(
                 modifier = GlanceModifier
                     .fillMaxSize()
                     .background(ColorProvider(GlassBackground))
                     .cornerRadius(18.dp)
+                    .clickable(launchApp)
                     .padding(8.dp),
                 verticalAlignment   = Alignment.Vertical.CenterVertically,
                 horizontalAlignment = Alignment.Horizontal.CenterHorizontally
             ) {
-                // Cabecera con Vitality Score
+                // Cabecera con Puntuación de Preparación
                 Row(
                     modifier            = GlanceModifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
                     verticalAlignment   = Alignment.CenterVertically
                 ) {
                     Text(
-                        text  = "VITAL · ${data.vitalityScore}%",
+                        text  = "PREP · ${data.readinessScore}%",
                         style = TextStyle(color = ColorProvider(NeonViolet), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     )
                 }
@@ -132,12 +139,14 @@ class LifeDashboard1x1Widget : GlanceAppWidget() {
 class LifeDashboard1x2Widget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = loadWidgetData(context)
+        val launchApp = actionStartActivity(Intent(context, MainActivity::class.java))
         provideContent {
             Row(
                 modifier = GlanceModifier
                     .fillMaxSize()
                     .background(ColorProvider(GlassBackground))
                     .cornerRadius(18.dp)
+                    .clickable(launchApp)
                     .padding(6.dp),
                 verticalAlignment   = Alignment.Vertical.CenterVertically,
                 horizontalAlignment = Alignment.Horizontal.CenterHorizontally
@@ -149,6 +158,7 @@ class LifeDashboard1x2Widget : GlanceAppWidget() {
                         .fillMaxHeight()
                         .background(ColorProvider(GlassColumnBackground))
                         .cornerRadius(12.dp)
+                        .clickable(launchApp)
                         .padding(horizontal = 4.dp, vertical = 6.dp),
                     horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
                     verticalAlignment   = Alignment.Vertical.CenterVertically
@@ -182,6 +192,7 @@ class LifeDashboard1x2Widget : GlanceAppWidget() {
                         .fillMaxHeight()
                         .background(ColorProvider(GlassColumnBackground))
                         .cornerRadius(12.dp)
+                        .clickable(launchApp)
                         .padding(horizontal = 4.dp, vertical = 6.dp),
                     horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
                     verticalAlignment   = Alignment.Vertical.CenterVertically
@@ -215,6 +226,7 @@ class LifeDashboard1x2Widget : GlanceAppWidget() {
                         .fillMaxHeight()
                         .background(ColorProvider(GlassColumnBackground))
                         .cornerRadius(12.dp)
+                        .clickable(launchApp)
                         .padding(horizontal = 4.dp, vertical = 6.dp),
                     horizontalAlignment = Alignment.Horizontal.CenterHorizontally,
                     verticalAlignment   = Alignment.Vertical.CenterVertically
@@ -253,29 +265,31 @@ class LifeDashboard1x2Widget : GlanceAppWidget() {
 class LifeDashboard2x2Widget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val data = loadWidgetData(context)
+        val launchApp = actionStartActivity(Intent(context, MainActivity::class.java))
         provideContent {
             Column(
                 modifier = GlanceModifier
                     .fillMaxSize()
                     .background(ColorProvider(GlassBackground))
                     .cornerRadius(20.dp)
+                    .clickable(launchApp)
                     .padding(12.dp),
                 verticalAlignment = Alignment.Vertical.CenterVertically
             ) {
-                // Header estilizado con Vital Score
+                // Header estilizado con Vital Score y Readiness
                 Row(
                     modifier            = GlanceModifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.Horizontal.Start,
                     verticalAlignment   = Alignment.CenterVertically
                 ) {
                     Text(
-                        text  = "VITAL",
-                        style = TextStyle(color = ColorProvider(White), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        text  = "PREP · ${data.readinessScore}%",
+                        style = TextStyle(color = ColorProvider(NeonViolet), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     )
                     Spacer(GlanceModifier.defaultWeight())
                     Text(
-                        text  = "${data.vitalityScore}% · ${data.dateString}",
-                        style = TextStyle(color = ColorProvider(NeonViolet), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        text  = "${data.vitalityScore}% vital · ${data.dateString}",
+                        style = TextStyle(color = ColorProvider(Gray400), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     )
                 }
 
@@ -345,11 +359,14 @@ class LifeDashboardWidget : GlanceAppWidget() {
 
 @Composable
 fun ExpandedWidgetContent(data: WidgetData) {
+    val context = LocalContext.current
+    val launchApp = actionStartActivity(Intent(context, MainActivity::class.java))
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(GlassBackground))
             .cornerRadius(22.dp)
+            .clickable(launchApp)
             .padding(14.dp)
     ) {
         // Cabecera
@@ -359,13 +376,13 @@ fun ExpandedWidgetContent(data: WidgetData) {
             verticalAlignment     = Alignment.CenterVertically
         ) {
             Text(
-                text  = "VITAL SUITE",
-                style = TextStyle(color = ColorProvider(White), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                text  = "PREP · ${data.readinessScore}%",
+                style = TextStyle(color = ColorProvider(NeonViolet), fontSize = 13.sp, fontWeight = FontWeight.Bold)
             )
             Spacer(GlanceModifier.defaultWeight())
             Text(
-                text  = "${data.dateString} · ${data.vitalityScore}%",
-                style = TextStyle(color = ColorProvider(NeonViolet), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                text  = "${data.dateString} · ${data.vitalityScore}% vital",
+                style = TextStyle(color = ColorProvider(White), fontSize = 11.sp, fontWeight = FontWeight.Bold)
             )
         }
 
@@ -422,11 +439,14 @@ fun ExpandedWidgetContent(data: WidgetData) {
 
 @Composable
 fun CompactWidgetContent(data: WidgetData) {
+    val context = LocalContext.current
+    val launchApp = actionStartActivity(Intent(context, MainActivity::class.java))
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(GlassBackground))
             .cornerRadius(18.dp)
+            .clickable(launchApp)
             .padding(10.dp),
         verticalAlignment   = Alignment.Vertical.CenterVertically,
         horizontalAlignment = Alignment.Horizontal.CenterHorizontally
@@ -436,9 +456,9 @@ fun CompactWidgetContent(data: WidgetData) {
             horizontalAlignment = Alignment.Horizontal.Start,
             verticalAlignment   = Alignment.CenterVertically
         ) {
-            Text(text = "Vital", style = TextStyle(color = ColorProvider(White), fontSize = 11.sp, fontWeight = FontWeight.Bold))
+            Text(text = "PREP", style = TextStyle(color = ColorProvider(White), fontSize = 11.sp, fontWeight = FontWeight.Bold))
             Spacer(GlanceModifier.defaultWeight())
-            Text(text = "${data.vitalityScore}%", style = TextStyle(color = ColorProvider(NeonViolet), fontSize = 9.sp, fontWeight = FontWeight.Bold))
+            Text(text = "${data.readinessScore}%", style = TextStyle(color = ColorProvider(NeonViolet), fontSize = 10.sp, fontWeight = FontWeight.Bold))
         }
 
         Spacer(GlanceModifier.height(6.dp))
@@ -530,7 +550,7 @@ suspend fun loadWidgetData(context: Context): WidgetData =
             val todayMillis = today.atStartOfDay(zone).toInstant().toEpochMilli()
             val tomorrowMillis = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
 
-            val health = healthDao.getHealthForDay(todayMillis) ?: healthDao.getLastNDays(1).firstOrNull()
+            val health = healthDao.getHealthForDay(todayMillis)
             val sessions = workoutDao.getRecentSessions(1)
             val workoutToday = sessions.firstOrNull()?.let { s ->
                 Instant.ofEpochMilli(s.dateMillis).atZone(zone).toLocalDate() == today
@@ -541,25 +561,31 @@ suspend fun loadWidgetData(context: Context): WidgetData =
                 .firstOrNull()?.let { ev ->
                     val dt = Instant.ofEpochMilli(ev.startTimeMillis)
                         .atZone(zone).toLocalDateTime()
-                    val timeStr = dt.format(DateTimeFormatter.ofPattern("HH:mm"))
-                    "${ev.title} ($timeStr)"
+                    if (ev.isAllDay) {
+                        ev.title
+                    } else {
+                        "${ev.title} (${dt.format(DateTimeFormatter.ofPattern("HH:mm"))})"
+                    }
                 }
-
-            val mealCalories = try {
-                entryPoint.mealDao().getMealsForDay(todayMillis, tomorrowMillis - 1).sumOf { it.calories.toDouble() }.toInt()
-            } catch (e: Exception) {
-                0
-            }
 
             val steps = health?.steps ?: 0
             val activeCal = health?.activeCalories?.toInt() ?: 0
-            val calories = if (activeCal > 0) activeCal else mealCalories
+            val calories = if (activeCal > 0) activeCal else (steps * 0.04f).toInt()
             val sleep = (health?.sleepHours ?: 0f).let { (it * 10).toInt() / 10f }
 
-            val stepsProg = (steps.toFloat() / goals.stepsTarget).coerceIn(0f, 1f)
-            val calProg   = (calories.toFloat() / goals.activeCaloriesTarget).coerceIn(0f, 1f)
-            val sleepProg = (sleep / goals.sleepTargetHours).coerceIn(0f, 1f)
+            val stepsProg = (steps.toFloat() / goals.stepsTarget.coerceAtLeast(1)).coerceIn(0f, 1f)
+            val calProg   = (calories.toFloat() / goals.activeCaloriesTarget.coerceAtLeast(1f)).coerceIn(0f, 1f)
+            val sleepProg = (sleep / goals.sleepTargetHours.coerceAtLeast(1f)).coerceIn(0f, 1f)
             val vitality  = ((stepsProg * 0.35f + sleepProg * 0.35f + calProg * 0.30f) * 100).toInt()
+
+            val yesterdayMillis = today.minusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+            val yesterdaySteps = healthDao.getHealthForDay(yesterdayMillis)?.steps ?: steps
+            val readiness = ReadinessCalculator.calculate(
+                sleepHours = health?.sleepHours ?: 0f,
+                sleepTargetHours = goals.sleepTargetHours,
+                previousDaySteps = yesterdaySteps,
+                stepsTarget = goals.stepsTarget
+            ).score
 
             WidgetData(
                 steps          = steps,
@@ -570,6 +596,7 @@ suspend fun loadWidgetData(context: Context): WidgetData =
                 sleepTarget    = goals.sleepTargetHours,
                 workoutDone    = workoutToday,
                 vitalityScore  = vitality,
+                readinessScore = readiness,
                 nextEvent      = nextEvent,
                 dateString     = today.format(DateTimeFormatter.ofPattern("d MMM"))
             )
@@ -597,6 +624,7 @@ data class WidgetData(
     val sleepTarget: Float = 8.0f,
     val workoutDone: Boolean = false,
     val vitalityScore: Int = 0,
+    val readinessScore: Int = 85,
     val nextEvent: String? = null,
     val dateString: String = ""
 )

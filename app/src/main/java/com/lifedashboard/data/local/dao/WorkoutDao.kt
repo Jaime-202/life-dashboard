@@ -26,11 +26,24 @@ interface WorkoutDao {
     @Query("DELETE FROM workout_sessions WHERE dateMillis = :dateMillis AND sourceFile = 'health_connect'")
     suspend fun deleteHealthConnectSessionsForDay(dateMillis: Long)
 
+    /** Sustituye de forma atómica las sesiones de Health Connect de un día por las recién leídas. */
+    @Transaction
+    suspend fun replaceHealthConnectSessionsForDay(dateMillis: Long, sessions: List<WorkoutSessionEntity>) {
+        deleteHealthConnectSessionsForDay(dateMillis)
+        upsertSessions(sessions)
+    }
+
+    /**
+     * Elimina reimportaciones de archivos. Solo afecta a orígenes de importación: dos sesiones
+     * iguales de un mismo día son legítimas en un registro manual o en Health Connect, y borrarlas
+     * eliminaría también sus series en cascada.
+     */
     @Query("""
-        DELETE FROM workout_sessions 
-        WHERE id NOT IN (
-            SELECT MIN(id) 
-            FROM workout_sessions 
+        DELETE FROM workout_sessions
+        WHERE sourceFile IN ('symmetry_csv', 'file_import')
+          AND id NOT IN (
+            SELECT MIN(id)
+            FROM workout_sessions
             GROUP BY dateMillis, durationMinutes, type, sourceFile
         )
     """)
@@ -45,7 +58,13 @@ interface WorkoutDao {
     @Query("SELECT COUNT(*) FROM workout_sessions WHERE type = 'STRENGTH' AND dateMillis >= :weekStartMillis")
     suspend fun countStrengthSessionsThisWeek(weekStartMillis: Long): Int
 
+    @Query("SELECT * FROM workout_sessions ORDER BY dateMillis ASC")
+    suspend fun getAllSessions(): List<WorkoutSessionEntity>
+
     // ─── Exercise Sets ───────────────────────────────────────────────────────
+
+    @Query("SELECT * FROM exercise_sets ORDER BY sessionId ASC, setNumber ASC")
+    suspend fun getAllSets(): List<ExerciseSetEntity>
 
     @Upsert
     suspend fun upsertSets(sets: List<ExerciseSetEntity>)

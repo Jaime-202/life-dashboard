@@ -3,7 +3,7 @@ package com.lifedashboard.app
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
-import androidx.work.WorkManager
+import com.lifedashboard.BuildConfig
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -23,15 +23,6 @@ class LifeDashboardApp : Application(), Configuration.Provider {
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
-            .setMinimumLoggingLevel(android.util.Log.DEBUG)
+            .setMinimumLoggingLevel(if (BuildConfig.DEBUG) android.util.Log.DEBUG else android.util.Log.ERROR)
             .build()
-
-    override fun onCreate() {
-        super.onCreate()
-        try {
-            WorkManager.initialize(this, workManagerConfiguration)
-        } catch (e: Exception) {
-            // Continuar si ya está inicializado por otra vía
-        }
-    }
 }

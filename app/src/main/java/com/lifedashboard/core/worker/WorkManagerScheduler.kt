@@ -2,8 +2,21 @@ package com.lifedashboard.core.worker
 
 import android.content.Context
 import androidx.work.*
+import com.lifedashboard.data.repository.UserGoals
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** Resultado de una sincronización solicitada por el usuario. */
+enum class HealthSyncOutcome(val message: String) {
+    SUCCESS("Datos de salud actualizados"),
+    UNAVAILABLE("Health Connect no está disponible en este dispositivo"),
+    NO_PERMISSIONS("Faltan permisos: conéctalo en Config > Health Connect"),
+    FAILED("No se pudieron leer los datos de Health Connect"),
+    TIMED_OUT("La sincronización sigue en curso; se actualizará al terminar")
+}
 
 /**
  * Centraliza el registro y programación de todos los Workers.
@@ -15,15 +28,36 @@ class WorkManagerScheduler @Inject constructor(
 ) {
     private val workManager by lazy { WorkManager.getInstance(context) }
 
-    /** Programa todos los workers si no están ya activos */
-    fun scheduleAll(symmetryFolderUri: String? = null) {
-        scheduleHealthConnectSync()
+    /**
+     * Programa todos los workers respetando las preferencias del usuario: horas configuradas,
+     * avisos desactivados y frecuencia de sincronización (incluido el modo manual).
+     */
+    fun scheduleAll(goals: UserGoals, symmetryFolderUri: String? = null) {
+        scheduleHealthConnectSync(goals.syncFrequency)
         scheduleWidgetUpdates()
         symmetryFolderUri?.let { scheduleSymmetrySync(it) }
-        scheduleBedtimeReminder()
-        scheduleDailySummaryReminder()
-        scheduleEveningReviewReminder()
+        syncBedtimeReminder(goals)
+        if (goals.dailyReminders) {
+            scheduleDailySummaryReminder(goals.wakeUpHour, goals.wakeUpMinute)
+        } else {
+            cancelDailySummaryReminder()
+        }
+        if (goals.eveningReview) scheduleEveningReviewReminder() else cancelEveningReviewReminder()
         cancelHydrationReminder()
+    }
+
+    /** Alinea el aviso de ir a dormir con los ajustes actuales. */
+    fun syncBedtimeReminder(goals: UserGoals) {
+        if (goals.bedtimeReminderEnabled) {
+            scheduleBedtimeReminder(
+                wakeUpHour = goals.wakeUpHour,
+                wakeUpMinute = goals.wakeUpMinute,
+                sleepTargetHours = goals.sleepTargetHours,
+                minutesBefore = goals.bedtimeReminderMinutesBefore
+            )
+        } else {
+            cancelBedtimeReminder()
+        }
     }
 
     fun scheduleBedtimeReminder(
@@ -189,13 +223,35 @@ class WorkManagerScheduler @Inject constructor(
         )
     }
 
-    /** Fuerza ejecución inmediata de Health Connect y actualiza los widgets al instante */
+    /** Lanza una sincronización inmediata; si ya hay una en curso no se encola otra. */
     fun runHealthSyncNow() {
-        val syncRequest = OneTimeWorkRequestBuilder<HealthConnectSyncWorker>().build()
-        val widgetRequest = OneTimeWorkRequestBuilder<WidgetUpdateWorker>().build()
-        workManager.beginWith(syncRequest)
-            .then(widgetRequest)
-            .enqueue()
+        workManager.enqueueUniqueWork(
+            HealthConnectSyncWorker.WORK_NAME_NOW,
+            ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<HealthConnectSyncWorker>().build()
+        )
+    }
+
+    /** Sincroniza y espera al resultado real, para informar al usuario en vez de simular un progreso. */
+    suspend fun syncHealthNowAndAwait(timeoutMillis: Long = 45_000L): HealthSyncOutcome {
+        workManager.enqueueUniqueWork(
+            HealthConnectSyncWorker.WORK_NAME_NOW,
+            ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<HealthConnectSyncWorker>().build()
+        ).await()
+
+        val info = withTimeoutOrNull(timeoutMillis) {
+            workManager.getWorkInfosForUniqueWorkFlow(HealthConnectSyncWorker.WORK_NAME_NOW)
+                .map { infos -> infos.firstOrNull() }
+                .first { it?.state?.isFinished == true }
+        } ?: return HealthSyncOutcome.TIMED_OUT
+
+        if (info.state == WorkInfo.State.SUCCEEDED) return HealthSyncOutcome.SUCCESS
+        return when (info.outputData.getString(HealthConnectSyncWorker.KEY_ERROR)) {
+            HealthConnectSyncWorker.ERROR_UNAVAILABLE -> HealthSyncOutcome.UNAVAILABLE
+            HealthConnectSyncWorker.ERROR_NO_PERMISSIONS -> HealthSyncOutcome.NO_PERMISSIONS
+            else -> HealthSyncOutcome.FAILED
+        }
     }
 
     fun cancelAll() {

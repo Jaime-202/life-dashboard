@@ -3,6 +3,8 @@ package com.lifedashboard.presentation.screen.nutrition
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lifedashboard.core.util.EnergyCalculator
+import com.lifedashboard.core.util.FitnessGoals
 import com.lifedashboard.data.local.dao.HealthDao
 import com.lifedashboard.data.local.dao.WeightDao
 import com.lifedashboard.data.local.entity.MealEntryEntity
@@ -23,6 +25,8 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
+
+private const val MIN_CALORIES_TARGET = 500f
 
 enum class MealSectionType(val key: String, val title: String, val iconEmoji: String) {
     DESAYUNO("DESAYUNO", "Desayuno", "☀️"),
@@ -96,7 +100,14 @@ data class NutritionUiState(
     val geminiModel: String = "gemini-3.8-flash",
     val isTestingApiKey: Boolean = false,
     val apiKeyTestMessage: String? = null,
-    val apiKeyTestSuccess: Boolean? = null
+    val apiKeyTestSuccess: Boolean? = null,
+
+    // Comidas Favoritas
+    val favoriteMeals: List<MealEntryEntity> = emptyList(),
+
+    // Historial de Comidas
+    val recentMeals: List<MealEntryEntity> = emptyList(),
+    val showFoodHistoryDialog: Boolean = false
 ) {
     val totalCalories: Float get() = meals.sumOf { it.calories.toDouble() }.toFloat()
     val totalProtein: Float get() = meals.sumOf { it.protein.toDouble() }.toFloat()
@@ -125,6 +136,9 @@ class NutritionViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(NutritionUiState())
     val uiState: StateFlow<NutritionUiState> = _uiState.asStateFlow()
 
+    private var fitnessLevel: String = "INTERMEDIO"
+    private var ageYears: Int = 25
+    private var sex: String = "HOMBRE"
     private var mealsJob: Job? = null
     private var searchJob: Job? = null
 
@@ -132,15 +146,14 @@ class NutritionViewModel @Inject constructor(
         // Observar objetivos del usuario y perfil antropométrico
         userPreferences.userGoals
             .onEach { goals ->
-                val normalizedGoal = when (goals.primaryGoal) {
-                    "GRASA" -> "PERDIDA_PESO"
-                    "MUSCULO" -> "VOLUMEN"
-                    else -> "MANTENIMIENTO"
-                }
+                val normalizedGoal = FitnessGoals.toNutritionGoal(goals.primaryGoal)
+                fitnessLevel = goals.fitnessLevel
+                ageYears = goals.ageYears
+                sex = goals.sex
 
-                // Si las calorías objetivo están desactualizadas o por debajo de un mínimo realista (< 1200 kcal),
-                // calcular automáticamente los valores óptimos basados en peso, altura y objetivo.
-                if (goals.caloriesTarget < 1200f) {
+                // Un objetivo por debajo del mínimo que admite la edición manual no es válido:
+                // se calculan valores a partir del perfil.
+                if (goals.caloriesTarget < MIN_CALORIES_TARGET) {
                     val intake = calculateIntake(goals.weightKg, goals.heightCm, normalizedGoal)
                     userPreferences.updateCalorieAndMacroTargets(
                         calories = intake.calories,
@@ -152,7 +165,7 @@ class NutritionViewModel @Inject constructor(
 
                 _uiState.update {
                     it.copy(
-                        targetCalories = if (goals.caloriesTarget < 1200f) 1850f else goals.caloriesTarget,
+                        targetCalories = if (goals.caloriesTarget < MIN_CALORIES_TARGET) 1850f else goals.caloriesTarget,
                         targetProtein  = goals.proteinTargetGrams,
                         targetCarbs    = goals.carbsTargetGrams,
                         targetFat      = goals.fatTargetGrams,
@@ -178,6 +191,22 @@ class NutritionViewModel @Inject constructor(
         // Cargar comidas y gasto calórico de hoy
         observeMealsForDate(LocalDate.now())
         loadHealthDataForDate(LocalDate.now())
+
+        // Observar comidas favoritas
+        repository.observeFavoriteMeals()
+            .onEach { favs ->
+                _uiState.update { it.copy(favoriteMeals = favs) }
+            }
+            .flowOn(Dispatchers.IO)
+            .launchIn(viewModelScope)
+
+        // Observar historial de comidas recientes
+        repository.observeRecentMeals(100)
+            .onEach { recents ->
+                _uiState.update { it.copy(recentMeals = recents) }
+            }
+            .flowOn(Dispatchers.IO)
+            .launchIn(viewModelScope)
 
         // Cargar catálogo inicial
         viewModelScope.launch {
@@ -329,6 +358,30 @@ class NutritionViewModel @Inject constructor(
         }
     }
 
+    fun openFoodHistory() {
+        _uiState.update { it.copy(showFoodHistoryDialog = true) }
+    }
+
+    fun closeFoodHistory() {
+        _uiState.update { it.copy(showFoodHistoryDialog = false) }
+    }
+
+    fun repeatMealToToday(meal: MealEntryEntity, targetMealType: String = meal.mealType) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val zone = ZoneId.systemDefault()
+            val dateMillis = _uiState.value.selectedDate.atStartOfDay(zone).toInstant().toEpochMilli()
+            val newEntry = meal.copy(
+                id = 0,
+                dateMillis = dateMillis,
+                mealType = targetMealType,
+                createdAt = System.currentTimeMillis()
+            )
+            repository.insertMeal(newEntry)
+            delay(200)
+            requestNutritionAdvice()
+        }
+    }
+
     fun updateMealGrams(meal: MealEntryEntity, newGrams: Float) {
         if (meal.grams <= 0f || newGrams <= 0f) return
         val ratio = newGrams / meal.grams
@@ -397,7 +450,7 @@ class NutritionViewModel @Inject constructor(
     fun updateCustomTargets(calories: Float, protein: Float, carbs: Float, fat: Float) {
         viewModelScope.launch {
             userPreferences.updateCalorieAndMacroTargets(
-                calories = calories.coerceAtLeast(500f),
+                calories = calories.coerceAtLeast(MIN_CALORIES_TARGET),
                 protein = protein.coerceAtLeast(0f),
                 carbs = carbs.coerceAtLeast(0f),
                 fat = fat.coerceAtLeast(0f)
@@ -405,13 +458,37 @@ class NutritionViewModel @Inject constructor(
             com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
             _uiState.update {
                 it.copy(
-                    targetCalories = calories.coerceAtLeast(500f),
+                    targetCalories = calories.coerceAtLeast(MIN_CALORIES_TARGET),
                     targetProtein = protein.coerceAtLeast(0f),
                     targetCarbs = carbs.coerceAtLeast(0f),
                     targetFat = fat.coerceAtLeast(0f)
                 )
             }
             delay(200)
+            requestNutritionAdvice()
+        }
+    }
+
+    fun toggleFavorite(meal: MealEntryEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val newFav = !meal.isFavorite
+            repository.setFavorite(meal.id, newFav)
+        }
+    }
+
+    fun addFavoriteToToday(favorite: MealEntryEntity, mealType: String = favorite.mealType) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val zone = ZoneId.systemDefault()
+            val dateMillis = _uiState.value.selectedDate.atStartOfDay(zone).toInstant().toEpochMilli()
+            val newEntry = favorite.copy(
+                id = 0,
+                dateMillis = dateMillis,
+                mealType = mealType,
+                isFavorite = true,
+                createdAt = System.currentTimeMillis()
+            )
+            repository.insertMeal(newEntry)
+            delay(150)
             requestNutritionAdvice()
         }
     }
@@ -423,39 +500,21 @@ class NutritionViewModel @Inject constructor(
     }
 
     fun calculateIntake(weightKg: Float, heightCm: Int, goal: String): CalculatedIntake {
-        // Fórmula de Mifflin-St Jeor
-        val bmr = (10f * weightKg) + (6.25f * heightCm) - (5f * 25f) + 5f
-        val tdee = bmr * 1.35f // Factor de actividad moderada habitual
-
-        val targetCalories = when (goal) {
-            "PERDIDA_PESO", "GRASA" -> (tdee - 450f).coerceAtLeast(1400f)
-            "VOLUMEN", "MUSCULO" -> tdee + 300f
-            else -> tdee
-        }
-
-        val protein = (weightKg * 2.0f).coerceIn(90f, 240f)
-        val fat = (weightKg * 0.85f).coerceIn(40f, 110f)
-        val remainingKcal = targetCalories - (protein * 4f + fat * 9f)
-        val carbs = (remainingKcal / 4f).coerceAtLeast(50f)
-
+        val targets = EnergyCalculator.targets(weightKg, heightCm, fitnessLevel, goal, ageYears, sex)
         return CalculatedIntake(
-            calories = targetCalories,
-            protein = protein,
-            carbs = carbs,
-            fat = fat,
-            bmr = bmr,
-            tdee = tdee
+            calories = targets.calories,
+            protein = targets.protein,
+            carbs = targets.carbs,
+            fat = targets.fat,
+            bmr = targets.bmr,
+            tdee = targets.tdee
         )
     }
 
     fun recalculateFromProfile() {
         viewModelScope.launch {
             val goals = userPreferences.userGoals.first()
-            val normalizedGoal = when (goals.primaryGoal) {
-                "GRASA" -> "PERDIDA_PESO"
-                "MUSCULO" -> "VOLUMEN"
-                else -> "MANTENIMIENTO"
-            }
+            val normalizedGoal = FitnessGoals.toNutritionGoal(goals.primaryGoal)
             val intake = calculateIntake(goals.weightKg, goals.heightCm, normalizedGoal)
             applyCalculatedIntake(intake, goals.weightKg, goals.heightCm, normalizedGoal)
         }
@@ -469,12 +528,14 @@ class NutritionViewModel @Inject constructor(
                 carbs = intake.carbs,
                 fat = intake.fat
             )
-            val currentFitnessLevel = userPreferences.userGoals.first().fitnessLevel
+            val currentGoals = userPreferences.userGoals.first()
             userPreferences.updateFitnessProfile(
-                level = currentFitnessLevel,
-                goal = goal,
+                level = currentGoals.fitnessLevel,
+                goal = FitnessGoals.toProfileGoal(goal, currentGoals.primaryGoal),
                 weight = weightKg,
-                height = heightCm
+                height = heightCm,
+                ageYears = currentGoals.ageYears,
+                sex = currentGoals.sex
             )
             com.lifedashboard.core.worker.WidgetUpdateWorker.updateAllWidgets(context)
             _uiState.update {
